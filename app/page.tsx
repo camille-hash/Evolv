@@ -1,21 +1,90 @@
-import { SimulatorPanel } from "@/components/simulator/simulator-panel";
+"use client";
+
+import { useState } from "react";
+import {
+  AppSidebar,
+  type PlatformSection,
+} from "@/components/layout/app-sidebar";
+import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
+import {
+  SimulatorPanel,
+  type SimulatorPanelPage,
+} from "@/components/simulator/simulator-panel";
+
+const simulatorPageBySection: Partial<Record<PlatformSection, SimulatorPanelPage>> = {
+  simulations: "simulation",
+  wealth: "journey",
+  intelligence: "intelligence",
+  history: "saved",
+  settings: "technical",
+};
+
+const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> = {
+  dashboard: {
+    title: "EVOLV Intelligence",
+    subtitle: "Planejamento patrimonial e simulacoes estrategicas",
+  },
+  simulations: {
+    title: "Simulacoes estrategicas",
+    subtitle: "Apresentacao consultiva para cenarios patrimoniais",
+  },
+  wealth: {
+    title: "Evolucao patrimonial",
+    subtitle: "Metas, jornada e proximos marcos do cliente",
+  },
+  intelligence: {
+    title: "Analise EVOLV",
+    subtitle: "Resumo executivo, insights e pontos de atencao",
+  },
+  history: {
+    title: "Historico",
+    subtitle: "Simulacoes salvas neste navegador",
+  },
+  settings: {
+    title: "Configuracoes",
+    subtitle: "Parametros tecnicos e administradoras",
+  },
+};
 
 export default function Home() {
-  return (
-    <main className="flex min-h-full flex-col gap-8 p-8">
-      <section className="max-w-3xl">
-        <p className="text-sm font-medium uppercase tracking-[0.08em] text-muted-foreground">
-          EVOLV
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold text-foreground">
-          Simulator
-        </h1>
-        <p className="mt-4 text-base leading-7 text-muted-foreground">
-          Calculo inicial dos cenarios de parcela cheia, 70% e meia parcela.
-        </p>
-      </section>
+  const [activeSection, setActiveSection] =
+    useState<PlatformSection>("dashboard");
+  const currentSimulatorPage = simulatorPageBySection[activeSection];
+  const pageTitle = pageTitles[activeSection];
 
-      <SimulatorPanel />
-    </main>
+  return (
+    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[260px_1fr]">
+      <AppSidebar
+        activeSection={activeSection}
+        onNavigate={setActiveSection}
+      />
+
+      <main className="min-w-0 p-5 sm:p-7 lg:p-8">
+        <section className="mb-7 max-w-4xl">
+          <p className="text-sm font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            EVOLV
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold text-foreground">
+            {pageTitle.title}
+          </h1>
+          <p className="mt-3 text-base leading-7 text-muted-foreground">
+            {pageTitle.subtitle}
+          </p>
+        </section>
+
+        {activeSection === "dashboard" ? (
+          <ExecutiveDashboard
+            onCreateSimulation={() => setActiveSection("simulations")}
+          />
+        ) : null}
+
+        {currentSimulatorPage ? (
+          <SimulatorPanel
+            activePage={currentSimulatorPage}
+            onOpenSimulation={() => setActiveSection("simulations")}
+          />
+        ) : null}
+      </main>
+    </div>
   );
 }

@@ -51,25 +51,13 @@ import { cn } from "@/lib/utils";
 
 type SimulatorFormState = SimulatorSavedFormState;
 
-type SimulatorPageKey =
+export type SimulatorPanelPage =
   | "simulation"
   | "results"
   | "journey"
   | "intelligence"
   | "saved"
   | "technical";
-
-const simulatorPages: Array<{
-  key: SimulatorPageKey;
-  label: string;
-}> = [
-  { key: "simulation", label: "Simulacao" },
-  { key: "results", label: "Resultado" },
-  { key: "journey", label: "Jornada Patrimonial" },
-  { key: "intelligence", label: "Analise EVOLV" },
-  { key: "saved", label: "Simulacoes Salvas" },
-  { key: "technical", label: "Dados Tecnicos" },
-];
 
 const scenarioOptions: Array<{
   key: SimulatorScenarioKey;
@@ -125,9 +113,13 @@ const percentFormatter = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 2,
 });
 
-export function SimulatorPanel() {
-  const [activePage, setActivePage] =
-    useState<SimulatorPageKey>("simulation");
+export function SimulatorPanel({
+  activePage = "simulation",
+  onOpenSimulation,
+}: {
+  activePage?: SimulatorPanelPage;
+  onOpenSimulation?: () => void;
+}) {
   const [activeSimulationId, setActiveSimulationId] = useState<string | null>(
     null,
   );
@@ -238,23 +230,6 @@ export function SimulatorPanel() {
 
   return (
     <section className="flex flex-col gap-6">
-      <section className="rounded-md border bg-card p-4 text-card-foreground sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              EVOLV
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-foreground">
-              Apresentacao consultiva
-            </h2>
-          </div>
-          <SimulatorNavigation
-            activePage={activePage}
-            onChange={setActivePage}
-          />
-        </div>
-      </section>
-
       {activePage === "simulation" ? (
         <SimulationWorkspace
           activeSimulationId={activeSimulationId}
@@ -314,10 +289,25 @@ export function SimulatorPanel() {
       ) : null}
 
       {activePage === "technical" ? (
-        <TechnicalSettingsPanel
-          formState={formState}
-          onChange={updateFormState}
-        />
+        <section className="grid gap-5">
+          <TechnicalSettingsPanel
+            formState={formState}
+            onChange={updateFormState}
+          />
+          <AdministratorSection
+            administratorDraft={administratorDraft}
+            administrators={administrators}
+            isAdministratorEditorOpen
+            selectedAdministrator={selectedAdministrator}
+            selectedAdministratorId={selectedAdministratorId}
+            onResetAdministrators={handleResetAdministrators}
+            onSaveAdministratorDraft={handleSaveAdministratorDraft}
+            onSelectAdministrator={handleSelectAdministrator}
+            onSetAdministratorDraft={updateAdministratorDraft}
+            onSetAdministratorDraftParameter={updateAdministratorDraftParameter}
+            onToggleAdministratorEditor={() => undefined}
+          />
+        </section>
       ) : null}
     </section>
   );
@@ -418,7 +408,7 @@ export function SimulatorPanel() {
     );
     setContemplationMonth(simulation.contemplationMonth);
     setBidType(simulation.bidType);
-    setActivePage("simulation");
+    onOpenSimulation?.();
   }
 
   function handleSelectAdministrator(administratorId: string) {
@@ -516,34 +506,6 @@ export function SimulatorPanel() {
       setActiveSimulationId(null);
     }
   }
-}
-
-function SimulatorNavigation({
-  activePage,
-  onChange,
-}: {
-  activePage: SimulatorPageKey;
-  onChange: (page: SimulatorPageKey) => void;
-}) {
-  return (
-    <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-      {simulatorPages.map((page) => (
-        <button
-          className={cn(
-            "h-10 shrink-0 rounded-md border px-4 text-sm font-medium transition",
-            activePage === page.key
-              ? "border-primary bg-primary text-primary-foreground"
-              : "bg-background text-foreground hover:border-primary/40 hover:bg-accent",
-          )}
-          key={page.key}
-          onClick={() => onChange(page.key)}
-          type="button"
-        >
-          {page.label}
-        </button>
-      ))}
-    </nav>
-  );
 }
 
 function SimulationWorkspace({
@@ -695,6 +657,7 @@ function SimulationWorkspace({
           onSetAdministratorDraft={onSetAdministratorDraft}
           onSetAdministratorDraftParameter={onSetAdministratorDraftParameter}
           onToggleAdministratorEditor={onToggleAdministratorEditor}
+          showEditorControls={false}
         />
       </div>
 
@@ -870,6 +833,7 @@ function AdministratorSection({
   onSetAdministratorDraft,
   onSetAdministratorDraftParameter,
   onToggleAdministratorEditor,
+  showEditorControls = true,
 }: {
   administratorDraft: SimulatorAdministrator | null;
   administrators: SimulatorAdministrator[];
@@ -884,6 +848,7 @@ function AdministratorSection({
     state: Partial<SimulatorAdministrator["parameters"]>,
   ) => void;
   onToggleAdministratorEditor: () => void;
+  showEditorControls?: boolean;
 }) {
   return (
     <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
@@ -910,14 +875,16 @@ function AdministratorSection({
           </select>
         </label>
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:w-[320px]">
-          <SecondaryActionButton onClick={onToggleAdministratorEditor}>
-            Editar parametros
-          </SecondaryActionButton>
-          <SecondaryActionButton onClick={onResetAdministrators}>
-            Resetar defaults
-          </SecondaryActionButton>
-        </div>
+        {showEditorControls ? (
+          <div className="grid gap-2 sm:grid-cols-2 lg:w-[320px]">
+            <SecondaryActionButton onClick={onToggleAdministratorEditor}>
+              Editar parametros
+            </SecondaryActionButton>
+            <SecondaryActionButton onClick={onResetAdministrators}>
+              Resetar defaults
+            </SecondaryActionButton>
+          </div>
+        ) : null}
       </div>
 
       {selectedAdministrator?.insuranceRequired ? (
@@ -926,7 +893,7 @@ function AdministratorSection({
         </p>
       ) : null}
 
-      {isAdministratorEditorOpen && administratorDraft ? (
+      {showEditorControls && isAdministratorEditorOpen && administratorDraft ? (
         <div className="mt-5 grid gap-4 border-t pt-5 md:grid-cols-2 xl:grid-cols-6">
           <AdministratorInputField
             label="Nome"
