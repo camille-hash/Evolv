@@ -1,4 +1,5 @@
 import { SimulatorPanel } from "@/components/simulator/simulator-panel";
+import { WealthEvolutionPanel } from "@/components/wealth/wealth-evolution-panel";
 
 export default function Home() {
   return (
@@ -15,6 +16,7 @@ export default function Home() {
         </p>
       </section>
 
+      <WealthEvolutionPanel />
       <SimulatorPanel />
     </main>
   );

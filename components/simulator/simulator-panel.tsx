@@ -1,31 +1,55 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown, FileDown, Minus, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ChevronDown,
+  Copy,
+  FileDown,
+  FolderOpen,
+  Minus,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
+import {
+  applyAdministratorToSimulationForm,
   buildSimulatorCommercialPresentation,
   calculateSimulatorScenarios,
+  createEmptyCommercialData,
+  createDefaultSavedAdministratorData,
+  createSavedAdministratorData,
+  deleteSimulation,
+  duplicateSimulation,
+  formatSimulationDate,
   isSimulatorExampleValid,
+  listAdministrators,
+  loadSavedSimulations,
+  resetAdministratorsDefaults,
+  saveSimulation,
+  saveAdministrator,
   simulatorExampleInput,
   type BidType,
   type InsuranceOption,
+  type SimulatorAdministrator,
+  type SimulatorCommercialData,
+  type SimulatorSavedFormState,
+  type SimulatorSavedSimulation,
   type SimulatorInput,
   type SimulatorScenarioKey,
 } from "@/modules/simulator";
 import { generateSimulatorCommercialPdf } from "@/modules/reports";
+import {
+  buildIntelligenceSummary,
+  type IntelligenceSummary,
+} from "@/modules/intelligence";
+import {
+  buildWealthEvolution,
+  buildWealthJourney,
+  loadWealthEvolutionInput,
+} from "@/modules/wealth";
 import { cn } from "@/lib/utils";
 
-type SimulatorFormState = {
-  credit: string;
-  administrativeFeePercent: string;
-  reserveFundPercent: string;
-  termMonths: string;
-  monthlyInsurancePercent: string;
-  inccPercent: string;
-  cardSalePercent: string;
-  embeddedBidPercent: string;
-  cashBidPercent: string;
-};
+type SimulatorFormState = SimulatorSavedFormState;
 
 const scenarioOptions: Array<{
   key: SimulatorScenarioKey;
@@ -83,6 +107,24 @@ const percentFormatter = new Intl.NumberFormat("pt-BR", {
 
 export function SimulatorPanel() {
   const [isTechnicalAreaOpen, setIsTechnicalAreaOpen] = useState(false);
+  const [activeSimulationId, setActiveSimulationId] = useState<string | null>(
+    null,
+  );
+  const [simulationName, setSimulationName] = useState("");
+  const [commercialData, setCommercialData] =
+    useState<SimulatorCommercialData>(() => createEmptyCommercialData());
+  const [administrators, setAdministrators] = useState<
+    SimulatorAdministrator[]
+  >([]);
+  const [selectedAdministratorId, setSelectedAdministratorId] =
+    useState("custom");
+  const [administratorDraft, setAdministratorDraft] =
+    useState<SimulatorAdministrator | null>(null);
+  const [isAdministratorEditorOpen, setIsAdministratorEditorOpen] =
+    useState(false);
+  const [savedSimulations, setSavedSimulations] = useState<
+    SimulatorSavedSimulation[]
+  >([]);
   const [selectedScenarioKey, setSelectedScenarioKey] =
     useState<SimulatorScenarioKey>("full");
   const [insuranceOption, setInsuranceOption] =
@@ -119,6 +161,59 @@ export function SimulatorPanel() {
       simulatorInput,
     ],
   );
+  const activeSavedSimulation = useMemo(
+    () =>
+      savedSimulations.find(
+        (simulation) => simulation.id === activeSimulationId,
+      ),
+    [activeSimulationId, savedSimulations],
+  );
+  const selectedAdministrator = useMemo(
+    () =>
+      administratorDraft ??
+      administrators.find(
+        (administrator) => administrator.id === selectedAdministratorId,
+      ) ??
+      null,
+    [administratorDraft, administrators, selectedAdministratorId],
+  );
+  const intelligenceSummary = useMemo(
+    () =>
+      buildIntelligenceSummary({
+        presentation,
+        selectedScenarioKey,
+        administratorInsuranceRequired: Boolean(
+          selectedAdministrator?.insuranceRequired,
+        ),
+        bidType,
+        embeddedBidRate: simulatorInput.embeddedBidRate ?? 0,
+        cashBidRate: simulatorInput.cashBidRate ?? 0,
+      }),
+    [
+      bidType,
+      presentation,
+      selectedAdministrator?.insuranceRequired,
+      selectedScenarioKey,
+      simulatorInput.cashBidRate,
+      simulatorInput.embeddedBidRate,
+    ],
+  );
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSavedSimulations(loadSavedSimulations());
+      const storedAdministrators = listAdministrators();
+      const selectedAdministratorRecord =
+        storedAdministrators.find(
+          (administrator) => administrator.id === "custom",
+        ) ?? storedAdministrators[0];
+
+      setAdministrators(storedAdministrators);
+      setAdministratorDraft(selectedAdministratorRecord ?? null);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   return (
     <section className="flex flex-col gap-7">
@@ -140,14 +235,53 @@ export function SimulatorPanel() {
                   </p>
                 </div>
 
-                <button
-                  className="inline-flex h-10 w-fit items-center gap-2 rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                  onClick={() => generateSimulatorCommercialPdf(presentation)}
-                  type="button"
-                >
-                  <FileDown className="h-4 w-4" aria-hidden="true" />
-                  Gerar PDF
-                </button>
+                <div className="grid w-full gap-3 lg:w-[320px]">
+                  <label className="grid gap-2 text-sm font-medium">
+                    Nome da simulacao
+                    <input
+                      className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+                      onChange={(event) =>
+                        setSimulationName(event.target.value)
+                      }
+                      placeholder="Simulacao do cliente"
+                      value={simulationName}
+                    />
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                      onClick={handleSaveSimulation}
+                      type="button"
+                    >
+                      <Save className="h-4 w-4" aria-hidden="true" />
+                      Salvar
+                    </button>
+                    <button
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent"
+                      onClick={() =>
+                        generateSimulatorCommercialPdf({
+                          presentation,
+                          simulationName,
+                          commercialData,
+                          intelligenceSummary,
+                          wealthJourney: getCurrentWealthJourney(),
+                          simulationDate:
+                            activeSavedSimulation?.updatedAt ??
+                            new Date().toISOString(),
+                        })
+                      }
+                      type="button"
+                    >
+                      <FileDown className="h-4 w-4" aria-hidden="true" />
+                      Gerar PDF
+                    </button>
+                  </div>
+                  {activeSimulationId ? (
+                    <p className="text-xs text-muted-foreground">
+                      Editando simulacao salva.
+                    </p>
+                  ) : null}
+                </div>
               </div>
 
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
@@ -195,9 +329,12 @@ export function SimulatorPanel() {
                     insuranceOption === option.key
                       ? "border-primary bg-primary text-primary-foreground shadow-sm"
                       : "bg-background text-foreground hover:border-primary/40 hover:bg-accent",
+                    isInsuranceOptionDisabled(option.key) &&
+                      "cursor-not-allowed opacity-50 hover:border-border hover:bg-background",
                   )}
+                  disabled={isInsuranceOptionDisabled(option.key)}
                   key={option.key}
-                  onClick={() => setInsuranceOption(option.key)}
+                  onClick={() => handleSelectInsuranceOption(option.key)}
                   type="button"
                 >
                   {option.label}
@@ -273,6 +410,171 @@ export function SimulatorPanel() {
         </div>
       </section>
 
+      <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base font-semibold">Administradora</h2>
+          <p className="text-sm text-muted-foreground">
+            Selecione uma administradora para aplicar parametros padrao. Os
+            campos tecnicos continuam editaveis manualmente.
+          </p>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <label className="grid gap-2 text-sm font-medium">
+            Administradora selecionada
+            <select
+              className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+              onChange={(event) =>
+                handleSelectAdministrator(event.target.value)
+              }
+              value={selectedAdministratorId}
+            >
+              {administrators.map((administrator) => (
+                <option key={administrator.id} value={administrator.id}>
+                  {administrator.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:w-[320px]">
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent"
+              onClick={() =>
+                setIsAdministratorEditorOpen((current) => !current)
+              }
+              type="button"
+            >
+              Editar parametros
+            </button>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent"
+              onClick={handleResetAdministrators}
+              type="button"
+            >
+              Resetar defaults
+            </button>
+          </div>
+        </div>
+
+        {selectedAdministrator?.insuranceRequired ? (
+          <p className="mt-3 text-sm font-medium text-primary">
+            Seguro obrigatorio nesta administradora.
+          </p>
+        ) : null}
+
+        {isAdministratorEditorOpen && administratorDraft ? (
+          <div className="mt-5 grid gap-4 border-t pt-5 md:grid-cols-2 xl:grid-cols-6">
+            <AdministratorInputField
+              label="Nome"
+              value={administratorDraft.name}
+              onChange={(name) => updateAdministratorDraft({ name })}
+            />
+            <AdministratorInputField
+              label="Taxa administrativa (%)"
+              value={administratorDraft.parameters.administrativeFeePercent}
+              onChange={(administrativeFeePercent) =>
+                updateAdministratorDraftParameter({
+                  administrativeFeePercent,
+                })
+              }
+            />
+            <AdministratorInputField
+              label="Fundo de reserva (%)"
+              value={administratorDraft.parameters.reserveFundPercent}
+              onChange={(reserveFundPercent) =>
+                updateAdministratorDraftParameter({ reserveFundPercent })
+              }
+            />
+            <AdministratorInputField
+              label="Prazo padrao"
+              value={administratorDraft.parameters.termMonths}
+              onChange={(termMonths) =>
+                updateAdministratorDraftParameter({ termMonths })
+              }
+            />
+            <AdministratorInputField
+              label="Seguro padrao (%)"
+              value={administratorDraft.parameters.monthlyInsurancePercent}
+              onChange={(monthlyInsurancePercent) =>
+                updateAdministratorDraftParameter({
+                  monthlyInsurancePercent,
+                })
+              }
+            />
+            <div className="grid gap-2 text-sm font-medium">
+              Seguro obrigatorio
+              <button
+                className={cn(
+                  "h-10 rounded-md border px-3 text-sm font-medium transition",
+                  administratorDraft.insuranceRequired
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "bg-background hover:border-primary/40 hover:bg-accent",
+                )}
+                onClick={() =>
+                  updateAdministratorDraft({
+                    insuranceRequired: !administratorDraft.insuranceRequired,
+                  })
+                }
+                type="button"
+              >
+                {administratorDraft.insuranceRequired ? "Sim" : "Nao"}
+              </button>
+            </div>
+            <div className="flex items-end md:col-span-2 xl:col-span-6">
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                onClick={handleSaveAdministratorDraft}
+                type="button"
+              >
+                Salvar e aplicar administradora
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base font-semibold">Dados comerciais</h2>
+          <p className="text-sm text-muted-foreground">
+            Informacoes opcionais para salvar junto com a simulacao e compor o
+            PDF comercial.
+          </p>
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <CommercialDataField
+            label="Cliente"
+            value={commercialData.clientName}
+            onChange={(clientName) => updateCommercialData({ clientName })}
+          />
+          <CommercialDataField
+            label="Telefone"
+            value={commercialData.clientPhone}
+            onChange={(clientPhone) => updateCommercialData({ clientPhone })}
+          />
+          <CommercialDataField
+            label="E-mail"
+            value={commercialData.clientEmail}
+            onChange={(clientEmail) => updateCommercialData({ clientEmail })}
+          />
+          <CommercialDataField
+            label="Consultor"
+            value={commercialData.consultantName}
+            onChange={(consultantName) =>
+              updateCommercialData({ consultantName })
+            }
+          />
+          <CommercialDataTextArea
+            label="Observacoes"
+            value={commercialData.commercialNotes}
+            onChange={(commercialNotes) =>
+              updateCommercialData({ commercialNotes })
+            }
+          />
+        </div>
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-4">
         <CommercialMetric
           label="Parcela antes"
@@ -330,6 +632,8 @@ export function SimulatorPanel() {
         />
       </section>
 
+      <IntelligenceSummaryPanel summary={intelligenceSummary} />
+
       {presentation.installmentAfterContemplationFallback ? (
         <div className="rounded-md border bg-accent px-5 py-3 text-sm text-accent-foreground">
           A contemplacao foi selecionada no ultimo mes do prazo. A parcela
@@ -372,6 +676,94 @@ export function SimulatorPanel() {
           value={percentFormatter.format(presentation.estimatedCardSaleGainRate)}
           featured
         />
+      </section>
+
+      <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Simulacoes salvas</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Historico local deste navegador.
+            </p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {savedSimulations.length} registros
+          </p>
+        </div>
+
+        {savedSimulations.length > 0 ? (
+          <div className="mt-5 grid gap-3">
+            {savedSimulations.map((simulation) => (
+              <article
+                className={cn(
+                  "grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] lg:items-center",
+                  activeSimulationId === simulation.id &&
+                    "border-primary/50 bg-primary/[0.03]",
+                )}
+                key={simulation.id}
+              >
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold">
+                    {simulation.name}
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Atualizada em {formatSimulationDate(simulation.updatedAt)}
+                  </p>
+                </div>
+
+                <div className="grid gap-2 text-sm sm:grid-cols-2">
+                  <SavedValue
+                    label="Credito"
+                    value={currencyFormatter.format(
+                      simulation.results.contractedCredit,
+                    )}
+                  />
+                  <SavedValue
+                    label="Cenario"
+                    value={simulation.results.selectedScenarioName}
+                  />
+                  <SavedValue
+                    label="Venda"
+                    value={currencyFormatter.format(
+                      simulation.results.estimatedCardSaleValue,
+                    )}
+                  />
+                  <SavedValue
+                    label="Lucro"
+                    value={currencyFormatter.format(
+                      simulation.results.estimatedCardSaleProfit,
+                    )}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 lg:justify-end">
+                  <ActionButton
+                    label="Abrir"
+                    onClick={() => handleOpenSimulation(simulation)}
+                  >
+                    <FolderOpen className="h-4 w-4" aria-hidden="true" />
+                  </ActionButton>
+                  <ActionButton
+                    label="Duplicar"
+                    onClick={() => handleDuplicateSimulation(simulation.id)}
+                  >
+                    <Copy className="h-4 w-4" aria-hidden="true" />
+                  </ActionButton>
+                  <ActionButton
+                    label="Excluir"
+                    onClick={() => handleDeleteSimulation(simulation.id)}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </ActionButton>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-md border border-dashed bg-background p-5 text-sm text-muted-foreground">
+            Nenhuma simulacao salva neste navegador.
+          </div>
+        )}
       </section>
 
       <div className="rounded-md border bg-muted/30 text-card-foreground">
@@ -479,11 +871,317 @@ export function SimulatorPanel() {
     setFormState((current) => ({ ...current, ...partialState }));
   }
 
+  function updateCommercialData(partialState: Partial<SimulatorCommercialData>) {
+    setCommercialData((current) => ({ ...current, ...partialState }));
+  }
+
+  function updateAdministratorDraft(
+    partialState: Partial<SimulatorAdministrator>,
+  ) {
+    setAdministratorDraft((current) =>
+      current ? { ...current, ...partialState } : current,
+    );
+  }
+
+  function updateAdministratorDraftParameter(
+    partialParameters: Partial<SimulatorAdministrator["parameters"]>,
+  ) {
+    setAdministratorDraft((current) =>
+      current
+        ? {
+            ...current,
+            parameters: {
+              ...current.parameters,
+              ...partialParameters,
+            },
+          }
+        : current,
+    );
+  }
+
   function updateContemplationMonth(nextMonth: number) {
     setContemplationMonth(
       Math.min(Math.max(1, Math.trunc(nextMonth)), simulatorInput.termMonths),
     );
   }
+
+  function handleSaveSimulation() {
+    const administratorData = selectedAdministrator
+      ? createSavedAdministratorData(selectedAdministrator)
+      : createDefaultSavedAdministratorData();
+    const savedSimulation = saveSimulation({
+      id: activeSimulationId,
+      draft: {
+        name: simulationName,
+        formState,
+        commercialData,
+        administratorData,
+        selectedScenarioKey,
+        insuranceOption,
+        contemplationMonth: presentation.contemplationMonth,
+        bidType,
+      },
+      presentation,
+    });
+
+    setActiveSimulationId(savedSimulation.id);
+    setSimulationName(savedSimulation.name);
+    setCommercialData(savedSimulation.commercialData);
+    setSelectedAdministratorId(
+      savedSimulation.administratorData.selectedAdministratorId,
+    );
+    setAdministratorDraft(toAdministratorFromSavedData(savedSimulation));
+    setSavedSimulations(loadSavedSimulations());
+  }
+
+  function handleOpenSimulation(simulation: SimulatorSavedSimulation) {
+    setActiveSimulationId(simulation.id);
+    setSimulationName(simulation.name);
+    setCommercialData(simulation.commercialData);
+    setSelectedAdministratorId(
+      simulation.administratorData.selectedAdministratorId,
+    );
+    setAdministratorDraft(toAdministratorFromSavedData(simulation));
+    setFormState(simulation.formState);
+    setSelectedScenarioKey(simulation.selectedScenarioKey);
+    setInsuranceOption(
+      simulation.administratorData.insuranceRequired
+        ? "with-insurance"
+        : simulation.insuranceOption,
+    );
+    setContemplationMonth(simulation.contemplationMonth);
+    setBidType(simulation.bidType);
+  }
+
+  function handleSelectAdministrator(administratorId: string) {
+    const administrator = administrators.find(
+      (currentAdministrator) => currentAdministrator.id === administratorId,
+    );
+
+    if (!administrator) {
+      return;
+    }
+
+    setSelectedAdministratorId(administrator.id);
+    setAdministratorDraft(administrator);
+    setFormState((currentFormState) =>
+      applyAdministratorToSimulationForm(currentFormState, administrator),
+    );
+
+    if (administrator.insuranceRequired) {
+      setInsuranceOption("with-insurance");
+    }
+  }
+
+  function handleSaveAdministratorDraft() {
+    if (!administratorDraft) {
+      return;
+    }
+
+    const nextAdministrators = saveAdministrator(administratorDraft);
+
+    setAdministrators(nextAdministrators);
+    setSelectedAdministratorId(administratorDraft.id);
+    setFormState((currentFormState) =>
+      applyAdministratorToSimulationForm(currentFormState, administratorDraft),
+    );
+
+    if (administratorDraft.insuranceRequired) {
+      setInsuranceOption("with-insurance");
+    }
+  }
+
+  function handleResetAdministrators() {
+    const defaultAdministrators = resetAdministratorsDefaults();
+    const customAdministrator =
+      defaultAdministrators.find(
+        (administrator) => administrator.id === "custom",
+      ) ?? defaultAdministrators[0];
+
+    setAdministrators(defaultAdministrators);
+    setSelectedAdministratorId(customAdministrator.id);
+    setAdministratorDraft(customAdministrator);
+    setFormState((currentFormState) =>
+      applyAdministratorToSimulationForm(currentFormState, customAdministrator),
+    );
+    setInsuranceOption("with-insurance");
+  }
+
+  function handleSelectInsuranceOption(option: InsuranceOption) {
+    if (isInsuranceOptionDisabled(option)) {
+      return;
+    }
+
+    setInsuranceOption(option);
+  }
+
+  function isInsuranceOptionDisabled(option: InsuranceOption) {
+    return (
+      option === "without-insurance" &&
+      Boolean(selectedAdministrator?.insuranceRequired)
+    );
+  }
+
+  function getCurrentWealthJourney() {
+    const wealthInput = loadWealthEvolutionInput();
+    const evolution = buildWealthEvolution(wealthInput);
+
+    return buildWealthJourney({ evolution, input: wealthInput });
+  }
+
+  function handleDuplicateSimulation(id: string) {
+    const duplicatedSimulation = duplicateSimulation(id);
+
+    if (!duplicatedSimulation) {
+      return;
+    }
+
+    setSavedSimulations(loadSavedSimulations());
+  }
+
+  function handleDeleteSimulation(id: string) {
+    const simulations = deleteSimulation(id);
+
+    setSavedSimulations(simulations);
+
+    if (activeSimulationId === id) {
+      setActiveSimulationId(null);
+    }
+  }
+}
+
+function IntelligenceSummaryPanel({
+  summary,
+}: {
+  summary: IntelligenceSummary;
+}) {
+  return (
+    <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-7">
+      <div className="flex flex-col gap-1">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          Intelligence
+        </p>
+        <h2 className="text-xl font-semibold text-foreground">
+          Analise EVOLV
+        </h2>
+      </div>
+
+      <div className="mt-5 rounded-md border bg-primary/[0.03] p-5">
+        <p className="text-sm font-medium text-muted-foreground">
+          Resumo Executivo
+        </p>
+        <p className="mt-2 text-base leading-7 text-foreground">
+          {summary.executiveSummary}
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <IntelligenceList title="Principais Insights" items={summary.insights} />
+        <IntelligenceList
+          title="Pontos de Atencao"
+          items={summary.attentionPoints}
+        />
+        <IntelligenceList title="Oportunidades" items={summary.opportunities} />
+      </div>
+    </section>
+  );
+}
+
+function IntelligenceList({
+  items,
+  title,
+}: {
+  items: string[];
+  title: string;
+}) {
+  return (
+    <article className="rounded-md border bg-background p-4">
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <ul className="mt-3 grid gap-2 text-sm leading-6 text-muted-foreground">
+        {items.map((item) => (
+          <li className="flex gap-2" key={item}>
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
+function toAdministratorFromSavedData(
+  simulation: SimulatorSavedSimulation,
+): SimulatorAdministrator {
+  return {
+    id: simulation.administratorData.selectedAdministratorId,
+    name: simulation.administratorData.selectedAdministratorName,
+    kind: simulation.administratorData.administratorKind,
+    parameters: simulation.administratorData.appliedParameters,
+    insuranceRequired: simulation.administratorData.insuranceRequired,
+  };
+}
+
+function AdministratorInputField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-medium">
+      {label}
+      <input
+        className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function CommercialDataField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-medium">
+      {label}
+      <input
+        className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function CommercialDataTextArea({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-medium md:col-span-2 xl:col-span-4">
+      {label}
+      <textarea
+        className="min-h-24 resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
 }
 
 function CommercialMetric({
@@ -523,6 +1221,37 @@ function SummaryLine({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label}</span>
       <span className="font-medium text-foreground">{value}</span>
     </div>
+  );
+}
+
+function SavedValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ActionButton({
+  label,
+  children,
+  onClick,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="flex h-9 w-9 items-center justify-center rounded-md border bg-card transition hover:border-primary/40 hover:bg-accent"
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 

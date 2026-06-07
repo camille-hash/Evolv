@@ -1,4 +1,19 @@
 export {
+  ADMINISTRATORS_STORAGE_KEY,
+  applyAdministratorToSimulationForm,
+  createDefaultSavedAdministratorData,
+  createSavedAdministratorData,
+  getAdministratorById,
+  listAdministrators,
+  resetAdministratorsDefaults,
+  saveAdministrator,
+  updateAdministrator,
+  type SimulatorAdministrator,
+  type SimulatorAdministratorKind,
+  type SimulatorAdministratorParameters,
+  type SimulatorSavedAdministratorData,
+} from "@/modules/simulator/administrators";
+export {
   calculateSimulatorScenarios,
   type SimulatorCalculationResult,
   type SimulatorInput,
@@ -17,4 +32,15 @@ export {
   simulatorExampleInput,
   validateSimulatorExample,
 } from "@/modules/simulator/validation";
+export {
+  createEmptyCommercialData,
+  deleteSimulation,
+  duplicateSimulation,
+  formatSimulationDate,
+  loadSavedSimulations,
+  saveSimulation,
+  type SimulatorCommercialData,
+  type SimulatorSavedFormState,
+  type SimulatorSavedSimulation,
+} from "@/modules/simulator/storage";
 export type { Comparison, Scenario, Simulation } from "@/types/simulator";

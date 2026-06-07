@@ -17,7 +17,7 @@ export const MODULES = [
   {
     key: "wealth",
     name: "Wealth",
-    description: "Placeholder arquitetural.",
+    description: "Metas patrimoniais e evolucao de renda passiva.",
   },
   {
     key: "properties",
@@ -32,6 +32,6 @@ export const MODULES = [
   {
     key: "intelligence",
     name: "Intelligence",
-    description: "Placeholder arquitetural.",
+    description: "Resumo executivo e interpretacao deterministica de simulacoes.",
   },
 ] as const;
