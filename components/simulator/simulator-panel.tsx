@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ChevronDown,
   Copy,
   FileDown,
   FolderOpen,
@@ -11,12 +10,13 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import { WealthEvolutionPanel } from "@/components/wealth/wealth-evolution-panel";
 import {
   applyAdministratorToSimulationForm,
   buildSimulatorCommercialPresentation,
   calculateSimulatorScenarios,
-  createEmptyCommercialData,
   createDefaultSavedAdministratorData,
+  createEmptyCommercialData,
   createSavedAdministratorData,
   deleteSimulation,
   duplicateSimulation,
@@ -25,16 +25,16 @@ import {
   listAdministrators,
   loadSavedSimulations,
   resetAdministratorsDefaults,
-  saveSimulation,
   saveAdministrator,
+  saveSimulation,
   simulatorExampleInput,
   type BidType,
   type InsuranceOption,
   type SimulatorAdministrator,
   type SimulatorCommercialData,
+  type SimulatorInput,
   type SimulatorSavedFormState,
   type SimulatorSavedSimulation,
-  type SimulatorInput,
   type SimulatorScenarioKey,
 } from "@/modules/simulator";
 import { generateSimulatorCommercialPdf } from "@/modules/reports";
@@ -50,6 +50,26 @@ import {
 import { cn } from "@/lib/utils";
 
 type SimulatorFormState = SimulatorSavedFormState;
+
+type SimulatorPageKey =
+  | "simulation"
+  | "results"
+  | "journey"
+  | "intelligence"
+  | "saved"
+  | "technical";
+
+const simulatorPages: Array<{
+  key: SimulatorPageKey;
+  label: string;
+}> = [
+  { key: "simulation", label: "Simulacao" },
+  { key: "results", label: "Resultado" },
+  { key: "journey", label: "Jornada Patrimonial" },
+  { key: "intelligence", label: "Analise EVOLV" },
+  { key: "saved", label: "Simulacoes Salvas" },
+  { key: "technical", label: "Dados Tecnicos" },
+];
 
 const scenarioOptions: Array<{
   key: SimulatorScenarioKey;
@@ -106,7 +126,8 @@ const percentFormatter = new Intl.NumberFormat("pt-BR", {
 });
 
 export function SimulatorPanel() {
-  const [isTechnicalAreaOpen, setIsTechnicalAreaOpen] = useState(false);
+  const [activePage, setActivePage] =
+    useState<SimulatorPageKey>("simulation");
   const [activeSimulationId, setActiveSimulationId] = useState<string | null>(
     null,
   );
@@ -153,8 +174,8 @@ export function SimulatorPanel() {
         contemplationMonth,
       }),
     [
-      calculation,
       bidType,
+      calculation,
       contemplationMonth,
       insuranceOption,
       selectedScenarioKey,
@@ -216,654 +237,88 @@ export function SimulatorPanel() {
   }, []);
 
   return (
-    <section className="flex flex-col gap-7">
-      <section className="rounded-md border bg-card text-card-foreground">
-        <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="border-b p-6 sm:p-8 xl:border-b-0 xl:border-r">
-            <div className="flex flex-col gap-7">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    EVOLV
-                  </p>
-                  <h2 className="mt-3 text-3xl font-semibold text-foreground">
-                    Simulacao patrimonial
-                  </h2>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Visao comercial da estrategia selecionada para apresentacao
-                    ao cliente.
-                  </p>
-                </div>
-
-                <div className="grid w-full gap-3 lg:w-[320px]">
-                  <label className="grid gap-2 text-sm font-medium">
-                    Nome da simulacao
-                    <input
-                      className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
-                      onChange={(event) =>
-                        setSimulationName(event.target.value)
-                      }
-                      placeholder="Simulacao do cliente"
-                      value={simulationName}
-                    />
-                  </label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                      onClick={handleSaveSimulation}
-                      type="button"
-                    >
-                      <Save className="h-4 w-4" aria-hidden="true" />
-                      Salvar
-                    </button>
-                    <button
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent"
-                      onClick={() =>
-                        generateSimulatorCommercialPdf({
-                          presentation,
-                          simulationName,
-                          commercialData,
-                          intelligenceSummary,
-                          wealthJourney: getCurrentWealthJourney(),
-                          simulationDate:
-                            activeSavedSimulation?.updatedAt ??
-                            new Date().toISOString(),
-                        })
-                      }
-                      type="button"
-                    >
-                      <FileDown className="h-4 w-4" aria-hidden="true" />
-                      Gerar PDF
-                    </button>
-                  </div>
-                  {activeSimulationId ? (
-                    <p className="text-xs text-muted-foreground">
-                      Editando simulacao salva.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    Credito contratado
-                  </p>
-                  <p className="mt-2 text-4xl font-semibold tracking-normal text-foreground">
-                    {currencyFormatter.format(presentation.contractedCredit)}
-                  </p>
-                </div>
-                <div className="rounded-md border bg-background p-4">
-                  <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                    Contemplacao
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold">
-                    Mes {presentation.contemplationMonth}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-              {scenarioOptions.map((option) => (
-                <button
-                  className={cn(
-                    "h-11 rounded-md border px-4 text-sm font-medium transition",
-                    selectedScenarioKey === option.key
-                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                      : "bg-background text-foreground hover:border-primary/40 hover:bg-accent",
-                  )}
-                  key={option.key}
-                  onClick={() => setSelectedScenarioKey(option.key)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-              {insuranceOptions.map((option) => (
-                <button
-                  className={cn(
-                    "h-11 rounded-md border px-4 text-sm font-medium transition",
-                    insuranceOption === option.key
-                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                      : "bg-background text-foreground hover:border-primary/40 hover:bg-accent",
-                    isInsuranceOptionDisabled(option.key) &&
-                      "cursor-not-allowed opacity-50 hover:border-border hover:bg-background",
-                  )}
-                  disabled={isInsuranceOptionDisabled(option.key)}
-                  key={option.key}
-                  onClick={() => handleSelectInsuranceOption(option.key)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-              <div className="grid gap-3 lg:grid-cols-3">
-              {bidOptions.map((option) => (
-                <button
-                  className={cn(
-                    "h-11 rounded-md border px-4 text-sm font-medium transition",
-                    bidType === option.key
-                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                      : "bg-background text-foreground hover:border-primary/40 hover:bg-accent",
-                  )}
-                  key={option.key}
-                  onClick={() => setBidType(option.key)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-muted/40 p-6 sm:p-8">
-            <p className="text-sm font-medium text-muted-foreground">
-              Ajuste de contemplacao
+    <section className="flex flex-col gap-6">
+      <section className="rounded-md border bg-card p-4 text-card-foreground sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              EVOLV
             </p>
-            <div className="mt-5 flex items-center justify-between gap-3">
-              <IconButton
-                label="Diminuir mes"
-                onClick={() => updateContemplationMonth(contemplationMonth - 1)}
-              >
-                <Minus className="h-4 w-4" aria-hidden="true" />
-              </IconButton>
-              <div className="min-w-28 text-center">
-                <div className="text-4xl font-semibold text-foreground">
-                  {presentation.contemplationMonth}
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  de {simulatorInput.termMonths} meses
-                </div>
-              </div>
-              <IconButton
-                label="Aumentar mes"
-                onClick={() => updateContemplationMonth(contemplationMonth + 1)}
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-              </IconButton>
-            </div>
-            <input
-              className="mt-7 w-full accent-primary"
-              max={simulatorInput.termMonths}
-              min={1}
-              onChange={(event) =>
-                updateContemplationMonth(Number(event.target.value))
-              }
-              type="range"
-              value={presentation.contemplationMonth}
-            />
-            <div className="mt-8 grid gap-3">
-              <SummaryLine
-                label="Cenario"
-                value={presentation.selectedScenarioName}
-              />
-              <SummaryLine label="Seguro" value={presentation.insuranceLabel} />
-              <SummaryLine label="Lance" value={presentation.bidLabel} />
-            </div>
+            <h2 className="mt-2 text-2xl font-semibold text-foreground">
+              Apresentacao consultiva
+            </h2>
           </div>
-        </div>
-      </section>
-
-      <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Administradora</h2>
-          <p className="text-sm text-muted-foreground">
-            Selecione uma administradora para aplicar parametros padrao. Os
-            campos tecnicos continuam editaveis manualmente.
-          </p>
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <label className="grid gap-2 text-sm font-medium">
-            Administradora selecionada
-            <select
-              className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
-              onChange={(event) =>
-                handleSelectAdministrator(event.target.value)
-              }
-              value={selectedAdministratorId}
-            >
-              {administrators.map((administrator) => (
-                <option key={administrator.id} value={administrator.id}>
-                  {administrator.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:w-[320px]">
-            <button
-              className="inline-flex h-10 items-center justify-center rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent"
-              onClick={() =>
-                setIsAdministratorEditorOpen((current) => !current)
-              }
-              type="button"
-            >
-              Editar parametros
-            </button>
-            <button
-              className="inline-flex h-10 items-center justify-center rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent"
-              onClick={handleResetAdministrators}
-              type="button"
-            >
-              Resetar defaults
-            </button>
-          </div>
-        </div>
-
-        {selectedAdministrator?.insuranceRequired ? (
-          <p className="mt-3 text-sm font-medium text-primary">
-            Seguro obrigatorio nesta administradora.
-          </p>
-        ) : null}
-
-        {isAdministratorEditorOpen && administratorDraft ? (
-          <div className="mt-5 grid gap-4 border-t pt-5 md:grid-cols-2 xl:grid-cols-6">
-            <AdministratorInputField
-              label="Nome"
-              value={administratorDraft.name}
-              onChange={(name) => updateAdministratorDraft({ name })}
-            />
-            <AdministratorInputField
-              label="Taxa administrativa (%)"
-              value={administratorDraft.parameters.administrativeFeePercent}
-              onChange={(administrativeFeePercent) =>
-                updateAdministratorDraftParameter({
-                  administrativeFeePercent,
-                })
-              }
-            />
-            <AdministratorInputField
-              label="Fundo de reserva (%)"
-              value={administratorDraft.parameters.reserveFundPercent}
-              onChange={(reserveFundPercent) =>
-                updateAdministratorDraftParameter({ reserveFundPercent })
-              }
-            />
-            <AdministratorInputField
-              label="Prazo padrao"
-              value={administratorDraft.parameters.termMonths}
-              onChange={(termMonths) =>
-                updateAdministratorDraftParameter({ termMonths })
-              }
-            />
-            <AdministratorInputField
-              label="Seguro padrao (%)"
-              value={administratorDraft.parameters.monthlyInsurancePercent}
-              onChange={(monthlyInsurancePercent) =>
-                updateAdministratorDraftParameter({
-                  monthlyInsurancePercent,
-                })
-              }
-            />
-            <div className="grid gap-2 text-sm font-medium">
-              Seguro obrigatorio
-              <button
-                className={cn(
-                  "h-10 rounded-md border px-3 text-sm font-medium transition",
-                  administratorDraft.insuranceRequired
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "bg-background hover:border-primary/40 hover:bg-accent",
-                )}
-                onClick={() =>
-                  updateAdministratorDraft({
-                    insuranceRequired: !administratorDraft.insuranceRequired,
-                  })
-                }
-                type="button"
-              >
-                {administratorDraft.insuranceRequired ? "Sim" : "Nao"}
-              </button>
-            </div>
-            <div className="flex items-end md:col-span-2 xl:col-span-6">
-              <button
-                className="inline-flex h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                onClick={handleSaveAdministratorDraft}
-                type="button"
-              >
-                Salvar e aplicar administradora
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Dados comerciais</h2>
-          <p className="text-sm text-muted-foreground">
-            Informacoes opcionais para salvar junto com a simulacao e compor o
-            PDF comercial.
-          </p>
-        </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <CommercialDataField
-            label="Cliente"
-            value={commercialData.clientName}
-            onChange={(clientName) => updateCommercialData({ clientName })}
-          />
-          <CommercialDataField
-            label="Telefone"
-            value={commercialData.clientPhone}
-            onChange={(clientPhone) => updateCommercialData({ clientPhone })}
-          />
-          <CommercialDataField
-            label="E-mail"
-            value={commercialData.clientEmail}
-            onChange={(clientEmail) => updateCommercialData({ clientEmail })}
-          />
-          <CommercialDataField
-            label="Consultor"
-            value={commercialData.consultantName}
-            onChange={(consultantName) =>
-              updateCommercialData({ consultantName })
-            }
-          />
-          <CommercialDataTextArea
-            label="Observacoes"
-            value={commercialData.commercialNotes}
-            onChange={(commercialNotes) =>
-              updateCommercialData({ commercialNotes })
-            }
+          <SimulatorNavigation
+            activePage={activePage}
+            onChange={setActivePage}
           />
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-4">
-        <CommercialMetric
-          label="Parcela antes"
-          value={currencyFormatter.format(
-            presentation.installmentBeforeContemplation,
-          )}
-          featured
+      {activePage === "simulation" ? (
+        <SimulationWorkspace
+          activeSimulationId={activeSimulationId}
+          administratorDraft={administratorDraft}
+          administrators={administrators}
+          bidType={bidType}
+          commercialData={commercialData}
+          formState={formState}
+          insuranceOption={insuranceOption}
+          intelligenceSummary={intelligenceSummary}
+          isAdministratorEditorOpen={isAdministratorEditorOpen}
+          presentation={presentation}
+          selectedAdministrator={selectedAdministrator}
+          selectedAdministratorId={selectedAdministratorId}
+          selectedScenarioKey={selectedScenarioKey}
+          simulationName={simulationName}
+          simulatorInput={simulatorInput}
+          onCommercialDataChange={updateCommercialData}
+          onContemplationMonthChange={updateContemplationMonth}
+          onFormStateChange={updateFormState}
+          onGeneratePdf={handleGeneratePdf}
+          onInsuranceOptionChange={handleSelectInsuranceOption}
+          onSaveAdministratorDraft={handleSaveAdministratorDraft}
+          onSaveSimulation={handleSaveSimulation}
+          onScenarioChange={setSelectedScenarioKey}
+          onSelectAdministrator={handleSelectAdministrator}
+          onSetAdministratorDraft={updateAdministratorDraft}
+          onSetAdministratorDraftParameter={updateAdministratorDraftParameter}
+          onSetBidType={setBidType}
+          onSetSimulationName={setSimulationName}
+          onToggleAdministratorEditor={() =>
+            setIsAdministratorEditorOpen((current) => !current)
+          }
+          onResetAdministrators={handleResetAdministrators}
+          isInsuranceOptionDisabled={isInsuranceOptionDisabled}
         />
-        <CommercialMetric
-          label="Parcela pos"
-          value={currencyFormatter.format(
-            presentation.installmentAfterContemplation,
-          )}
-          featured
-        />
-        <CommercialMetric
-          label="Valor de venda"
-          value={currencyFormatter.format(presentation.estimatedCardSaleValue)}
-          featured
-        />
-        <CommercialMetric
-          label="Alavancagem"
-          value={`${presentation.leverageMultiple.toLocaleString("pt-BR", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}x`}
-          featured
-        />
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <CommercialMetric
-          label="Credito atualizado pelo INCC"
-          value={currencyFormatter.format(presentation.updatedCredit)}
-        />
-        <CommercialMetric
-          label="Credito liquido disponivel"
-          value={currencyFormatter.format(presentation.liquidCredit)}
-        />
-        <CommercialMetric
-          label="Cenario selecionado"
-          value={presentation.selectedScenarioName}
-        />
-        <CommercialMetric
-          label="Opcao de seguro"
-          value={presentation.insuranceLabel}
-        />
-        <CommercialMetric
-          label="Tipo de lance"
-          value={presentation.bidLabel}
-        />
-        <CommercialMetric
-          label="Valor do lance"
-          value={currencyFormatter.format(presentation.bidAmount)}
-        />
-      </section>
-
-      <IntelligenceSummaryPanel summary={intelligenceSummary} />
-
-      {presentation.installmentAfterContemplationFallback ? (
-        <div className="rounded-md border bg-accent px-5 py-3 text-sm text-accent-foreground">
-          A contemplacao foi selecionada no ultimo mes do prazo. A parcela
-          cheia foi usada como referencia pos-contemplacao.
-        </div>
       ) : null}
 
-      <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-7">
-        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              Total estimado investido ate a contemplacao
-            </p>
-            <p className="mt-2 text-4xl font-semibold text-primary">
-              {currencyFormatter.format(
-                presentation.totalInvestedUntilContemplation,
-              )}
-            </p>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {presentation.contemplationMonth} parcelas no cenario{" "}
-            {presentation.selectedScenarioName.toLowerCase()}.
-          </p>
-        </div>
-      </section>
+      {activePage === "results" ? (
+        <SimulationResults presentation={presentation} />
+      ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <CommercialMetric
-          label="Investimento real"
-          value={currencyFormatter.format(presentation.realInvestment)}
-          featured
+      {activePage === "journey" ? <WealthEvolutionPanel /> : null}
+
+      {activePage === "intelligence" ? (
+        <IntelligenceSummaryPanel summary={intelligenceSummary} />
+      ) : null}
+
+      {activePage === "saved" ? (
+        <SavedSimulationsPanel
+          activeSimulationId={activeSimulationId}
+          savedSimulations={savedSimulations}
+          onDelete={handleDeleteSimulation}
+          onDuplicate={handleDuplicateSimulation}
+          onOpen={handleOpenSimulation}
         />
-        <CommercialMetric
-          label="Lucro estimado"
-          value={currencyFormatter.format(presentation.estimatedCardSaleProfit)}
-          featured
+      ) : null}
+
+      {activePage === "technical" ? (
+        <TechnicalSettingsPanel
+          formState={formState}
+          onChange={updateFormState}
         />
-        <CommercialMetric
-          label="Percentual de ganho"
-          value={percentFormatter.format(presentation.estimatedCardSaleGainRate)}
-          featured
-        />
-      </section>
-
-      <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold">Simulacoes salvas</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Historico local deste navegador.
-            </p>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {savedSimulations.length} registros
-          </p>
-        </div>
-
-        {savedSimulations.length > 0 ? (
-          <div className="mt-5 grid gap-3">
-            {savedSimulations.map((simulation) => (
-              <article
-                className={cn(
-                  "grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] lg:items-center",
-                  activeSimulationId === simulation.id &&
-                    "border-primary/50 bg-primary/[0.03]",
-                )}
-                key={simulation.id}
-              >
-                <div className="min-w-0">
-                  <h3 className="truncate text-sm font-semibold">
-                    {simulation.name}
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Atualizada em {formatSimulationDate(simulation.updatedAt)}
-                  </p>
-                </div>
-
-                <div className="grid gap-2 text-sm sm:grid-cols-2">
-                  <SavedValue
-                    label="Credito"
-                    value={currencyFormatter.format(
-                      simulation.results.contractedCredit,
-                    )}
-                  />
-                  <SavedValue
-                    label="Cenario"
-                    value={simulation.results.selectedScenarioName}
-                  />
-                  <SavedValue
-                    label="Venda"
-                    value={currencyFormatter.format(
-                      simulation.results.estimatedCardSaleValue,
-                    )}
-                  />
-                  <SavedValue
-                    label="Lucro"
-                    value={currencyFormatter.format(
-                      simulation.results.estimatedCardSaleProfit,
-                    )}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 lg:justify-end">
-                  <ActionButton
-                    label="Abrir"
-                    onClick={() => handleOpenSimulation(simulation)}
-                  >
-                    <FolderOpen className="h-4 w-4" aria-hidden="true" />
-                  </ActionButton>
-                  <ActionButton
-                    label="Duplicar"
-                    onClick={() => handleDuplicateSimulation(simulation.id)}
-                  >
-                    <Copy className="h-4 w-4" aria-hidden="true" />
-                  </ActionButton>
-                  <ActionButton
-                    label="Excluir"
-                    onClick={() => handleDeleteSimulation(simulation.id)}
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </ActionButton>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-5 rounded-md border border-dashed bg-background p-5 text-sm text-muted-foreground">
-            Nenhuma simulacao salva neste navegador.
-          </div>
-        )}
-      </section>
-
-      <div className="rounded-md border bg-muted/30 text-card-foreground">
-        <button
-          className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
-          onClick={() => setIsTechnicalAreaOpen((current) => !current)}
-          type="button"
-        >
-          <div>
-            <h2 className="text-sm font-semibold">Area tecnica</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Parametros internos da simulacao.
-            </p>
-          </div>
-          <ChevronDown
-            className={cn(
-              "h-5 w-5 shrink-0 transition-transform",
-              isTechnicalAreaOpen ? "rotate-180" : "rotate-0",
-            )}
-            aria-hidden="true"
-          />
-        </button>
-
-        {isTechnicalAreaOpen ? (
-          <div className="grid gap-4 border-t p-5 sm:grid-cols-2 lg:grid-cols-4">
-            <SimulatorInputField
-              label="Credito"
-              value={formState.credit}
-              onChange={(credit) => updateFormState({ credit })}
-            />
-            <SimulatorInputField
-              label="Taxa administrativa (%)"
-              value={formState.administrativeFeePercent}
-              onChange={(administrativeFeePercent) =>
-                updateFormState({ administrativeFeePercent })
-              }
-            />
-            <SimulatorInputField
-              label="Fundo de reserva (%)"
-              value={formState.reserveFundPercent}
-              onChange={(reserveFundPercent) =>
-                updateFormState({ reserveFundPercent })
-              }
-            />
-            <SimulatorInputField
-              label="Prazo em meses"
-              value={formState.termMonths}
-              onChange={(termMonths) => updateFormState({ termMonths })}
-            />
-            <SimulatorInputField
-              label="Seguro mensal (%)"
-              value={formState.monthlyInsurancePercent}
-              onChange={(monthlyInsurancePercent) =>
-                updateFormState({ monthlyInsurancePercent })
-              }
-            />
-            <SimulatorInputField
-              label="INCC (%)"
-              value={formState.inccPercent}
-              onChange={(inccPercent) => updateFormState({ inccPercent })}
-            />
-            <SimulatorInputField
-              label="Venda da carta (%)"
-              value={formState.cardSalePercent}
-              onChange={(cardSalePercent) =>
-                updateFormState({ cardSalePercent })
-              }
-            />
-            <SimulatorInputField
-              label="Lance embutido (%)"
-              value={formState.embeddedBidPercent}
-              onChange={(embeddedBidPercent) =>
-                updateFormState({ embeddedBidPercent })
-              }
-            />
-            <SimulatorInputField
-              label="Lance em dinheiro (%)"
-              value={formState.cashBidPercent}
-              onChange={(cashBidPercent) =>
-                updateFormState({ cashBidPercent })
-              }
-            />
-            <div className="rounded-md border bg-background p-3 text-sm">
-              <p className="font-medium">Validacao da especificacao</p>
-              <p
-                className={cn(
-                  "mt-1 font-semibold",
-                  isSimulatorExampleValid()
-                    ? "text-emerald-700"
-                    : "text-destructive",
-                )}
-              >
-                {isSimulatorExampleValid()
-                  ? "Resultados conferidos"
-                  : "Resultados divergentes"}
-              </p>
-            </div>
-          </div>
-        ) : null}
-      </div>
+      ) : null}
     </section>
   );
 
@@ -903,6 +358,18 @@ export function SimulatorPanel() {
     setContemplationMonth(
       Math.min(Math.max(1, Math.trunc(nextMonth)), simulatorInput.termMonths),
     );
+  }
+
+  function handleGeneratePdf() {
+    generateSimulatorCommercialPdf({
+      presentation,
+      simulationName,
+      commercialData,
+      intelligenceSummary,
+      wealthJourney: getCurrentWealthJourney(),
+      simulationDate:
+        activeSavedSimulation?.updatedAt ?? new Date().toISOString(),
+    });
   }
 
   function handleSaveSimulation() {
@@ -951,6 +418,7 @@ export function SimulatorPanel() {
     );
     setContemplationMonth(simulation.contemplationMonth);
     setBidType(simulation.bidType);
+    setActivePage("simulation");
   }
 
   function handleSelectAdministrator(administratorId: string) {
@@ -1050,6 +518,750 @@ export function SimulatorPanel() {
   }
 }
 
+function SimulatorNavigation({
+  activePage,
+  onChange,
+}: {
+  activePage: SimulatorPageKey;
+  onChange: (page: SimulatorPageKey) => void;
+}) {
+  return (
+    <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      {simulatorPages.map((page) => (
+        <button
+          className={cn(
+            "h-10 shrink-0 rounded-md border px-4 text-sm font-medium transition",
+            activePage === page.key
+              ? "border-primary bg-primary text-primary-foreground"
+              : "bg-background text-foreground hover:border-primary/40 hover:bg-accent",
+          )}
+          key={page.key}
+          onClick={() => onChange(page.key)}
+          type="button"
+        >
+          {page.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function SimulationWorkspace({
+  activeSimulationId,
+  administratorDraft,
+  administrators,
+  bidType,
+  commercialData,
+  formState,
+  insuranceOption,
+  intelligenceSummary,
+  isAdministratorEditorOpen,
+  presentation,
+  selectedAdministrator,
+  selectedAdministratorId,
+  selectedScenarioKey,
+  simulationName,
+  simulatorInput,
+  onCommercialDataChange,
+  onContemplationMonthChange,
+  onFormStateChange,
+  onGeneratePdf,
+  onInsuranceOptionChange,
+  onResetAdministrators,
+  onSaveAdministratorDraft,
+  onSaveSimulation,
+  onScenarioChange,
+  onSelectAdministrator,
+  onSetAdministratorDraft,
+  onSetAdministratorDraftParameter,
+  onSetBidType,
+  onSetSimulationName,
+  onToggleAdministratorEditor,
+  isInsuranceOptionDisabled,
+}: {
+  activeSimulationId: string | null;
+  administratorDraft: SimulatorAdministrator | null;
+  administrators: SimulatorAdministrator[];
+  bidType: BidType;
+  commercialData: SimulatorCommercialData;
+  formState: SimulatorFormState;
+  insuranceOption: InsuranceOption;
+  intelligenceSummary: IntelligenceSummary;
+  isAdministratorEditorOpen: boolean;
+  presentation: ReturnType<typeof buildSimulatorCommercialPresentation>;
+  selectedAdministrator: SimulatorAdministrator | null;
+  selectedAdministratorId: string;
+  selectedScenarioKey: SimulatorScenarioKey;
+  simulationName: string;
+  simulatorInput: SimulatorInput;
+  onCommercialDataChange: (state: Partial<SimulatorCommercialData>) => void;
+  onContemplationMonthChange: (month: number) => void;
+  onFormStateChange: (state: Partial<SimulatorFormState>) => void;
+  onGeneratePdf: () => void;
+  onInsuranceOptionChange: (option: InsuranceOption) => void;
+  onResetAdministrators: () => void;
+  onSaveAdministratorDraft: () => void;
+  onSaveSimulation: () => void;
+  onScenarioChange: (scenario: SimulatorScenarioKey) => void;
+  onSelectAdministrator: (administratorId: string) => void;
+  onSetAdministratorDraft: (state: Partial<SimulatorAdministrator>) => void;
+  onSetAdministratorDraftParameter: (
+    state: Partial<SimulatorAdministrator["parameters"]>,
+  ) => void;
+  onSetBidType: (bidType: BidType) => void;
+  onSetSimulationName: (name: string) => void;
+  onToggleAdministratorEditor: () => void;
+  isInsuranceOptionDisabled: (option: InsuranceOption) => boolean;
+}) {
+  return (
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-5">
+        <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-7">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Simulacao
+              </p>
+              <h2 className="mt-2 text-3xl font-semibold text-foreground">
+                Simulacao patrimonial
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                Pagina principal de trabalho para preparar a apresentacao
+                consultiva.
+              </p>
+            </div>
+            <div className="grid w-full gap-3 lg:w-[320px]">
+              <label className="grid gap-2 text-sm font-medium">
+                Nome da simulacao
+                <input
+                  className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+                  onChange={(event) => onSetSimulationName(event.target.value)}
+                  placeholder="Simulacao do cliente"
+                  value={simulationName}
+                />
+              </label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <PrimaryActionButton onClick={onSaveSimulation}>
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                  Salvar
+                </PrimaryActionButton>
+                <SecondaryActionButton onClick={onGeneratePdf}>
+                  <FileDown className="h-4 w-4" aria-hidden="true" />
+                  Gerar PDF
+                </SecondaryActionButton>
+              </div>
+              {activeSimulationId ? (
+                <p className="text-xs text-muted-foreground">
+                  Editando simulacao salva.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
+            <div>
+              <p className="text-sm text-muted-foreground">
+                Credito contratado
+              </p>
+              <p className="mt-2 text-4xl font-semibold tracking-normal text-foreground">
+                {currencyFormatter.format(presentation.contractedCredit)}
+              </p>
+            </div>
+            <div className="rounded-md border bg-background p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                Contemplacao
+              </p>
+              <p className="mt-2 text-2xl font-semibold">
+                Mes {presentation.contemplationMonth}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <CommercialDataSection
+          commercialData={commercialData}
+          onChange={onCommercialDataChange}
+        />
+
+        <AdministratorSection
+          administratorDraft={administratorDraft}
+          administrators={administrators}
+          isAdministratorEditorOpen={isAdministratorEditorOpen}
+          selectedAdministrator={selectedAdministrator}
+          selectedAdministratorId={selectedAdministratorId}
+          onResetAdministrators={onResetAdministrators}
+          onSaveAdministratorDraft={onSaveAdministratorDraft}
+          onSelectAdministrator={onSelectAdministrator}
+          onSetAdministratorDraft={onSetAdministratorDraft}
+          onSetAdministratorDraftParameter={onSetAdministratorDraftParameter}
+          onToggleAdministratorEditor={onToggleAdministratorEditor}
+        />
+      </div>
+
+      <aside className="grid gap-5">
+        <section className="rounded-md border bg-card p-5 text-card-foreground">
+          <h3 className="text-sm font-semibold">Cenario</h3>
+          <div className="mt-4 grid gap-3">
+            {scenarioOptions.map((option) => (
+              <SelectionButton
+                isActive={selectedScenarioKey === option.key}
+                key={option.key}
+                onClick={() => onScenarioChange(option.key)}
+              >
+                {option.label}
+              </SelectionButton>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border bg-card p-5 text-card-foreground">
+          <h3 className="text-sm font-semibold">Seguro</h3>
+          {selectedAdministrator?.insuranceRequired ? (
+            <p className="mt-2 text-xs font-medium text-primary">
+              Seguro obrigatorio nesta administradora.
+            </p>
+          ) : null}
+          <div className="mt-4 grid gap-3">
+            {insuranceOptions.map((option) => (
+              <SelectionButton
+                disabled={isInsuranceOptionDisabled(option.key)}
+                isActive={insuranceOption === option.key}
+                key={option.key}
+                onClick={() => onInsuranceOptionChange(option.key)}
+              >
+                {option.label}
+              </SelectionButton>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border bg-card p-5 text-card-foreground">
+          <h3 className="text-sm font-semibold">Lance</h3>
+          <div className="mt-4 grid gap-3">
+            {bidOptions.map((option) => (
+              <SelectionButton
+                isActive={bidType === option.key}
+                key={option.key}
+                onClick={() => onSetBidType(option.key)}
+              >
+                {option.label}
+              </SelectionButton>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border bg-card p-5 text-card-foreground">
+          <h3 className="text-sm font-semibold">Mes de contemplacao</h3>
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <IconButton
+              label="Diminuir mes"
+              onClick={() =>
+                onContemplationMonthChange(presentation.contemplationMonth - 1)
+              }
+            >
+              <Minus className="h-4 w-4" aria-hidden="true" />
+            </IconButton>
+            <div className="min-w-28 text-center">
+              <div className="text-4xl font-semibold text-foreground">
+                {presentation.contemplationMonth}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                de {simulatorInput.termMonths} meses
+              </div>
+            </div>
+            <IconButton
+              label="Aumentar mes"
+              onClick={() =>
+                onContemplationMonthChange(presentation.contemplationMonth + 1)
+              }
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+            </IconButton>
+          </div>
+          <input
+            className="mt-7 w-full accent-primary"
+            max={simulatorInput.termMonths}
+            min={1}
+            onChange={(event) =>
+              onContemplationMonthChange(Number(event.target.value))
+            }
+            type="range"
+            value={presentation.contemplationMonth}
+          />
+        </section>
+
+        <section className="rounded-md border bg-primary/[0.03] p-5 text-card-foreground">
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Resumo EVOLV
+          </p>
+          <p className="mt-3 text-sm leading-6 text-foreground">
+            {intelligenceSummary.executiveSummary}
+          </p>
+        </section>
+
+        <section className="rounded-md border bg-card p-5 text-card-foreground">
+          <SimulatorInputField
+            label="Credito"
+            value={formState.credit}
+            onChange={(credit) => onFormStateChange({ credit })}
+          />
+        </section>
+      </aside>
+    </section>
+  );
+}
+
+function CommercialDataSection({
+  commercialData,
+  onChange,
+}: {
+  commercialData: SimulatorCommercialData;
+  onChange: (state: Partial<SimulatorCommercialData>) => void;
+}) {
+  return (
+    <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-base font-semibold">Dados comerciais</h2>
+        <p className="text-sm text-muted-foreground">
+          Informacoes opcionais para salvar junto com a simulacao e compor o
+          PDF comercial.
+        </p>
+      </div>
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CommercialDataField
+          label="Cliente"
+          value={commercialData.clientName}
+          onChange={(clientName) => onChange({ clientName })}
+        />
+        <CommercialDataField
+          label="Telefone"
+          value={commercialData.clientPhone}
+          onChange={(clientPhone) => onChange({ clientPhone })}
+        />
+        <CommercialDataField
+          label="E-mail"
+          value={commercialData.clientEmail}
+          onChange={(clientEmail) => onChange({ clientEmail })}
+        />
+        <CommercialDataField
+          label="Consultor"
+          value={commercialData.consultantName}
+          onChange={(consultantName) => onChange({ consultantName })}
+        />
+        <CommercialDataTextArea
+          label="Observacoes"
+          value={commercialData.commercialNotes}
+          onChange={(commercialNotes) => onChange({ commercialNotes })}
+        />
+      </div>
+    </section>
+  );
+}
+
+function AdministratorSection({
+  administratorDraft,
+  administrators,
+  isAdministratorEditorOpen,
+  selectedAdministrator,
+  selectedAdministratorId,
+  onResetAdministrators,
+  onSaveAdministratorDraft,
+  onSelectAdministrator,
+  onSetAdministratorDraft,
+  onSetAdministratorDraftParameter,
+  onToggleAdministratorEditor,
+}: {
+  administratorDraft: SimulatorAdministrator | null;
+  administrators: SimulatorAdministrator[];
+  isAdministratorEditorOpen: boolean;
+  selectedAdministrator: SimulatorAdministrator | null;
+  selectedAdministratorId: string;
+  onResetAdministrators: () => void;
+  onSaveAdministratorDraft: () => void;
+  onSelectAdministrator: (administratorId: string) => void;
+  onSetAdministratorDraft: (state: Partial<SimulatorAdministrator>) => void;
+  onSetAdministratorDraftParameter: (
+    state: Partial<SimulatorAdministrator["parameters"]>,
+  ) => void;
+  onToggleAdministratorEditor: () => void;
+}) {
+  return (
+    <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-base font-semibold">Administradora</h2>
+        <p className="text-sm text-muted-foreground">
+          Parametros padrao aplicaveis sem bloquear edicao manual.
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <label className="grid gap-2 text-sm font-medium">
+          Administradora selecionada
+          <select
+            className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+            onChange={(event) => onSelectAdministrator(event.target.value)}
+            value={selectedAdministratorId}
+          >
+            {administrators.map((administrator) => (
+              <option key={administrator.id} value={administrator.id}>
+                {administrator.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="grid gap-2 sm:grid-cols-2 lg:w-[320px]">
+          <SecondaryActionButton onClick={onToggleAdministratorEditor}>
+            Editar parametros
+          </SecondaryActionButton>
+          <SecondaryActionButton onClick={onResetAdministrators}>
+            Resetar defaults
+          </SecondaryActionButton>
+        </div>
+      </div>
+
+      {selectedAdministrator?.insuranceRequired ? (
+        <p className="mt-3 text-sm font-medium text-primary">
+          Seguro obrigatorio nesta administradora.
+        </p>
+      ) : null}
+
+      {isAdministratorEditorOpen && administratorDraft ? (
+        <div className="mt-5 grid gap-4 border-t pt-5 md:grid-cols-2 xl:grid-cols-6">
+          <AdministratorInputField
+            label="Nome"
+            value={administratorDraft.name}
+            onChange={(name) => onSetAdministratorDraft({ name })}
+          />
+          <AdministratorInputField
+            label="Taxa administrativa (%)"
+            value={administratorDraft.parameters.administrativeFeePercent}
+            onChange={(administrativeFeePercent) =>
+              onSetAdministratorDraftParameter({ administrativeFeePercent })
+            }
+          />
+          <AdministratorInputField
+            label="Fundo de reserva (%)"
+            value={administratorDraft.parameters.reserveFundPercent}
+            onChange={(reserveFundPercent) =>
+              onSetAdministratorDraftParameter({ reserveFundPercent })
+            }
+          />
+          <AdministratorInputField
+            label="Prazo padrao"
+            value={administratorDraft.parameters.termMonths}
+            onChange={(termMonths) =>
+              onSetAdministratorDraftParameter({ termMonths })
+            }
+          />
+          <AdministratorInputField
+            label="Seguro padrao (%)"
+            value={administratorDraft.parameters.monthlyInsurancePercent}
+            onChange={(monthlyInsurancePercent) =>
+              onSetAdministratorDraftParameter({ monthlyInsurancePercent })
+            }
+          />
+          <div className="grid gap-2 text-sm font-medium">
+            Seguro obrigatorio
+            <button
+              className={cn(
+                "h-10 rounded-md border px-3 text-sm font-medium transition",
+                administratorDraft.insuranceRequired
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "bg-background hover:border-primary/40 hover:bg-accent",
+              )}
+              onClick={() =>
+                onSetAdministratorDraft({
+                  insuranceRequired: !administratorDraft.insuranceRequired,
+                })
+              }
+              type="button"
+            >
+              {administratorDraft.insuranceRequired ? "Sim" : "Nao"}
+            </button>
+          </div>
+          <div className="flex items-end md:col-span-2 xl:col-span-6">
+            <PrimaryActionButton onClick={onSaveAdministratorDraft}>
+              Salvar e aplicar administradora
+            </PrimaryActionButton>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SimulationResults({
+  presentation,
+}: {
+  presentation: ReturnType<typeof buildSimulatorCommercialPresentation>;
+}) {
+  return (
+    <section className="grid gap-5">
+      <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-7">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          Resultado
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold text-foreground">
+          Resultado comercial
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Visao consolidada dos principais indicadores da simulacao.
+        </p>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CommercialMetric
+          label="Credito contratado"
+          value={currencyFormatter.format(presentation.contractedCredit)}
+          featured
+        />
+        <CommercialMetric
+          label="Credito atualizado"
+          value={currencyFormatter.format(presentation.updatedCredit)}
+        />
+        <CommercialMetric
+          label="Credito liquido"
+          value={currencyFormatter.format(presentation.liquidCredit)}
+        />
+        <CommercialMetric
+          label="Total investido"
+          value={currencyFormatter.format(
+            presentation.totalInvestedUntilContemplation,
+          )}
+          featured
+        />
+        <CommercialMetric
+          label="Parcela antes"
+          value={currencyFormatter.format(
+            presentation.installmentBeforeContemplation,
+          )}
+          featured
+        />
+        <CommercialMetric
+          label="Parcela pos"
+          value={currencyFormatter.format(
+            presentation.installmentAfterContemplation,
+          )}
+          featured
+        />
+        <CommercialMetric
+          label="Venda estimada"
+          value={currencyFormatter.format(presentation.estimatedCardSaleValue)}
+          featured
+        />
+        <CommercialMetric
+          label="Lucro"
+          value={currencyFormatter.format(presentation.estimatedCardSaleProfit)}
+          featured
+        />
+        <CommercialMetric
+          label="Percentual de ganho"
+          value={percentFormatter.format(presentation.estimatedCardSaleGainRate)}
+        />
+        <CommercialMetric
+          label="Multiplo de alavancagem"
+          value={`${presentation.leverageMultiple.toLocaleString("pt-BR", {
+            maximumFractionDigits: 2,
+            minimumFractionDigits: 2,
+          })}x`}
+        />
+      </section>
+
+      {presentation.installmentAfterContemplationFallback ? (
+        <div className="rounded-md border bg-accent px-5 py-3 text-sm text-accent-foreground">
+          A contemplacao foi selecionada no ultimo mes do prazo. A parcela
+          cheia foi usada como referencia pos-contemplacao.
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SavedSimulationsPanel({
+  activeSimulationId,
+  savedSimulations,
+  onDelete,
+  onDuplicate,
+  onOpen,
+}: {
+  activeSimulationId: string | null;
+  savedSimulations: SimulatorSavedSimulation[];
+  onDelete: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onOpen: (simulation: SimulatorSavedSimulation) => void;
+}) {
+  return (
+    <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Simulacoes salvas</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Historico local deste navegador.
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {savedSimulations.length} registros
+        </p>
+      </div>
+
+      {savedSimulations.length > 0 ? (
+        <div className="mt-5 grid gap-3">
+          {savedSimulations.map((simulation) => (
+            <article
+              className={cn(
+                "grid gap-4 rounded-md border bg-background p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] lg:items-center",
+                activeSimulationId === simulation.id &&
+                  "border-primary/50 bg-primary/[0.03]",
+              )}
+              key={simulation.id}
+            >
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold">
+                  {simulation.name}
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Atualizada em {formatSimulationDate(simulation.updatedAt)}
+                </p>
+              </div>
+
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <SavedValue
+                  label="Credito"
+                  value={currencyFormatter.format(
+                    simulation.results.contractedCredit,
+                  )}
+                />
+                <SavedValue
+                  label="Cenario"
+                  value={simulation.results.selectedScenarioName}
+                />
+                <SavedValue
+                  label="Venda"
+                  value={currencyFormatter.format(
+                    simulation.results.estimatedCardSaleValue,
+                  )}
+                />
+                <SavedValue
+                  label="Lucro"
+                  value={currencyFormatter.format(
+                    simulation.results.estimatedCardSaleProfit,
+                  )}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 lg:justify-end">
+                <ActionButton label="Abrir" onClick={() => onOpen(simulation)}>
+                  <FolderOpen className="h-4 w-4" aria-hidden="true" />
+                </ActionButton>
+                <ActionButton
+                  label="Duplicar"
+                  onClick={() => onDuplicate(simulation.id)}
+                >
+                  <Copy className="h-4 w-4" aria-hidden="true" />
+                </ActionButton>
+                <ActionButton
+                  label="Excluir"
+                  onClick={() => onDelete(simulation.id)}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </ActionButton>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-md border border-dashed bg-background p-5 text-sm text-muted-foreground">
+          Nenhuma simulacao salva neste navegador.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TechnicalSettingsPanel({
+  formState,
+  onChange,
+}: {
+  formState: SimulatorFormState;
+  onChange: (state: Partial<SimulatorFormState>) => void;
+}) {
+  return (
+    <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+      <div>
+        <h2 className="text-base font-semibold">Dados Tecnicos</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Parametros completos da simulacao.
+        </p>
+      </div>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SimulatorInputField
+          label="Credito"
+          value={formState.credit}
+          onChange={(credit) => onChange({ credit })}
+        />
+        <SimulatorInputField
+          label="Taxa administrativa (%)"
+          value={formState.administrativeFeePercent}
+          onChange={(administrativeFeePercent) =>
+            onChange({ administrativeFeePercent })
+          }
+        />
+        <SimulatorInputField
+          label="Fundo de reserva (%)"
+          value={formState.reserveFundPercent}
+          onChange={(reserveFundPercent) => onChange({ reserveFundPercent })}
+        />
+        <SimulatorInputField
+          label="Prazo em meses"
+          value={formState.termMonths}
+          onChange={(termMonths) => onChange({ termMonths })}
+        />
+        <SimulatorInputField
+          label="Seguro mensal (%)"
+          value={formState.monthlyInsurancePercent}
+          onChange={(monthlyInsurancePercent) =>
+            onChange({ monthlyInsurancePercent })
+          }
+        />
+        <SimulatorInputField
+          label="INCC (%)"
+          value={formState.inccPercent}
+          onChange={(inccPercent) => onChange({ inccPercent })}
+        />
+        <SimulatorInputField
+          label="Venda da carta (%)"
+          value={formState.cardSalePercent}
+          onChange={(cardSalePercent) => onChange({ cardSalePercent })}
+        />
+        <SimulatorInputField
+          label="Lance embutido (%)"
+          value={formState.embeddedBidPercent}
+          onChange={(embeddedBidPercent) => onChange({ embeddedBidPercent })}
+        />
+        <SimulatorInputField
+          label="Lance em dinheiro (%)"
+          value={formState.cashBidPercent}
+          onChange={(cashBidPercent) => onChange({ cashBidPercent })}
+        />
+        <div className="rounded-md border bg-background p-3 text-sm">
+          <p className="font-medium">Validacao da especificacao</p>
+          <p
+            className={cn(
+              "mt-1 font-semibold",
+              isSimulatorExampleValid() ? "text-emerald-700" : "text-destructive",
+            )}
+          >
+            {isSimulatorExampleValid()
+              ? "Resultados conferidos"
+              : "Resultados divergentes"}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function IntelligenceSummaryPanel({
   summary,
 }: {
@@ -1106,6 +1318,72 @@ function IntelligenceList({
         ))}
       </ul>
     </article>
+  );
+}
+
+function PrimaryActionButton({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SecondaryActionButton({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent"
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SelectionButton({
+  children,
+  disabled = false,
+  isActive,
+  onClick,
+}: {
+  children: React.ReactNode;
+  disabled?: boolean;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        "h-11 rounded-md border px-4 text-sm font-medium transition",
+        isActive
+          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+          : "bg-background text-foreground hover:border-primary/40 hover:bg-accent",
+        disabled &&
+          "cursor-not-allowed opacity-50 hover:border-border hover:bg-background",
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -1185,13 +1463,13 @@ function CommercialDataTextArea({
 }
 
 function CommercialMetric({
+  featured = false,
   label,
   value,
-  featured = false,
 }: {
+  featured?: boolean;
   label: string;
   value: string;
-  featured?: boolean;
 }) {
   return (
     <article
@@ -1215,15 +1493,6 @@ function CommercialMetric({
   );
 }
 
-function SummaryLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b pb-3 text-sm last:border-b-0 last:pb-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium text-foreground">{value}</span>
-    </div>
-  );
-}
-
 function SavedValue({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -1234,12 +1503,12 @@ function SavedValue({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({
-  label,
   children,
+  label,
   onClick,
 }: {
-  label: string;
   children: React.ReactNode;
+  label: string;
   onClick: () => void;
 }) {
   return (
@@ -1256,12 +1525,12 @@ function ActionButton({
 }
 
 function IconButton({
-  label,
   children,
+  label,
   onClick,
 }: {
-  label: string;
   children: React.ReactNode;
+  label: string;
   onClick: () => void;
 }) {
   return (
