@@ -35,6 +35,11 @@ export const MODULES = [
     description: "Gestao local de multiplas operacoes patrimoniais por cliente.",
   },
   {
+    key: "roadmap",
+    name: "Roadmap",
+    description: "Linha estrategica entre cliente, operacoes e metas patrimoniais.",
+  },
+  {
     key: "strategies",
     name: "Strategies",
     description: "Planos patrimoniais e estrategias de evolucao.",

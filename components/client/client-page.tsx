@@ -7,6 +7,7 @@ import {
   saveClientContext,
   type ClientContext,
 } from "@/modules/client-context";
+import { generateEvolvMasterReport } from "@/modules/reports";
 
 type ClientFormState = {
   nome: string;
@@ -62,7 +63,7 @@ export function ClientPage({
   return (
     <section className="grid gap-6">
       <section className="executive-surface rounded-md p-6 text-card-foreground sm:p-7">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Cliente atual
@@ -75,9 +76,18 @@ export function ClientPage({
               Dashboard executivo.
             </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Salvo automaticamente neste navegador.
-          </p>
+          <div className="flex flex-col items-start gap-3 sm:items-end">
+            <p className="text-sm text-muted-foreground">
+              Salvo automaticamente neste navegador.
+            </p>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+              onClick={() => generateEvolvMasterReport(clientContext)}
+              type="button"
+            >
+              Gerar Dossie EVOLV
+            </button>
+          </div>
         </div>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -291,4 +301,3 @@ function parsePositiveNumber(value: string) {
 function parsePositiveInteger(value: string) {
   return Math.max(1, Math.trunc(parsePositiveNumber(value)));
 }
-

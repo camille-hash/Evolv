@@ -7,6 +7,7 @@ import {
   FolderClock,
   Landmark,
   ListChecks,
+  Map,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -20,6 +21,7 @@ export type PlatformSection =
   | "strategies"
   | "wealth"
   | "intelligence"
+  | "roadmap"
   | "history";
 
 const navigationItems: Array<{
@@ -34,6 +36,7 @@ const navigationItems: Array<{
   { key: "strategies", label: "Estrategias", icon: ListChecks },
   { key: "wealth", label: "Patrimonio", icon: Landmark },
   { key: "intelligence", label: "Inteligencia", icon: Brain },
+  { key: "roadmap", label: "Roadmap", icon: Map },
   { key: "history", label: "Historico", icon: FolderClock },
 ];
 

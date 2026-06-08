@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { loadOperations, type Operation } from "@/modules/operations";
 import {
   createEmptyStrategyDraft,
   createStrategyDraftFromTemplate,
@@ -35,6 +36,7 @@ type StrategyFormState = {
 
 export function StrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [operations, setOperations] = useState<Operation[]>([]);
   const [activeStrategyId, setActiveStrategyId] = useState<string | null>(null);
   const [formState, setFormState] = useState<StrategyFormState>(() =>
     toFormState(createEmptyStrategyDraft()),
@@ -43,12 +45,59 @@ export function StrategiesPage() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setStrategies(listStrategies());
+      setOperations(loadOperations());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, []);
 
+  const activeStrategy = useMemo(
+    () =>
+      strategies.find((strategy) => strategy.id === activeStrategyId) ??
+      strategies[0] ??
+      null,
+    [activeStrategyId, strategies],
+  );
+
   return (
+    <section className="grid gap-6">
+      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          Estrategia Ativa
+        </p>
+        <div className="mt-3 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">
+              {activeStrategy?.name ?? "Nenhuma estrategia cadastrada"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {activeStrategy?.objective ??
+                "Crie uma estrategia para orientar o portfolio de operacoes."}
+            </p>
+          </div>
+
+          <div className="rounded-md border bg-background/70 p-4">
+            <p className="text-sm font-semibold text-foreground">
+              Operacoes previstas nessa jornada
+            </p>
+            <div className="mt-3 grid gap-2">
+              {operations.length > 0 ? (
+                operations.map((operation) => (
+                  <StrategyOperationPreview
+                    key={operation.id}
+                    operation={operation}
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma operacao registrada para compor a jornada.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
     <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
       <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -186,6 +235,7 @@ export function StrategiesPage() {
       </section>
       </section>
     </section>
+    </section>
   );
 
   function updateFormState(partialState: Partial<StrategyFormState>) {
@@ -299,6 +349,24 @@ function StrategyCard({
         <StrategyAction label="Excluir" onClick={onDelete}>
           <Trash2 className="h-4 w-4" aria-hidden />
         </StrategyAction>
+      </div>
+    </article>
+  );
+}
+
+function StrategyOperationPreview({ operation }: { operation: Operation }) {
+  return (
+    <article className="rounded-md border bg-card p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-foreground">{operation.nome}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {operation.administradora}
+          </p>
+        </div>
+        <p className="text-sm font-semibold text-foreground">
+          {currencyFormatter.format(operation.credito)}
+        </p>
       </div>
     </article>
   );

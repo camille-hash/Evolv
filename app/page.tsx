@@ -8,6 +8,7 @@ import {
 import { ClientPage } from "@/components/client/client-page";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
 import { PortfolioPage } from "@/components/portfolio/portfolio-page";
+import { RoadmapPage } from "@/components/roadmap/roadmap-page";
 import { StrategiesPage } from "@/components/strategies/strategies-page";
 import {
   SimulatorPanel,
@@ -54,6 +55,10 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   intelligence: {
     title: "Analise EVOLV",
     subtitle: "Resumo executivo, insights e pontos de atencao",
+  },
+  roadmap: {
+    title: "Roadmap patrimonial",
+    subtitle: "Plano visual entre cliente, operacoes e metas",
   },
   history: {
     title: "Historico",
@@ -114,6 +119,8 @@ export default function Home() {
         {activeSection === "portfolio" ? <PortfolioPage /> : null}
 
         {activeSection === "strategies" ? <StrategiesPage /> : null}
+
+        {activeSection === "roadmap" ? <RoadmapPage /> : null}
 
         {activeSection === "simulations" ? (
           <SimulationWorkspace

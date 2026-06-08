@@ -38,6 +38,8 @@ import {
   summarizeOperations,
   type Operation,
 } from "@/modules/operations";
+import { buildStrategicRoadmap } from "@/modules/roadmap";
+import { generateEvolvMasterReport } from "@/modules/reports";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -171,6 +173,16 @@ export function ExecutiveDashboard({
     () => summarizeOperations(operations),
     [operations],
   );
+  const roadmap = useMemo(
+    () =>
+      buildStrategicRoadmap({
+        clientContext,
+        operations,
+        activeStrategy,
+        wealthInput: dashboardWealthInput,
+      }),
+    [activeStrategy, clientContext, dashboardWealthInput, operations],
+  );
 
   return (
     <section className="grid gap-6">
@@ -201,6 +213,13 @@ export function ExecutiveDashboard({
           >
             <Plus className="h-4 w-4" aria-hidden />
             Criar simulacao
+          </button>
+          <button
+            className="inline-flex h-11 w-fit items-center justify-center rounded-md border border-primary-foreground/18 bg-primary-foreground/8 px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-foreground/14"
+            onClick={() => generateEvolvMasterReport(clientContext)}
+            type="button"
+          >
+            Gerar Dossie EVOLV
           </button>
         </div>
 
@@ -358,6 +377,23 @@ export function ExecutiveDashboard({
               value={currencyFormatter.format(
                 operationsSummary.totalContractedCredit,
               )}
+            />
+          </div>
+        </ExecutiveCard>
+
+        <ExecutiveCard title="Roadmap">
+          <div className="grid gap-4">
+            <DashboardDetail
+              label="Quantidade de etapas"
+              value={String(roadmap.steps.length)}
+            />
+            <DashboardDetail
+              label="Proxima etapa"
+              value={roadmap.nextStep?.nome ?? "Meta Patrimonial"}
+            />
+            <DashboardDetail
+              label="Meta final"
+              value={currencyFormatter.format(roadmap.finalGoal.metaPatrimonial)}
             />
           </div>
         </ExecutiveCard>
