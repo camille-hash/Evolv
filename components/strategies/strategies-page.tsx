@@ -83,6 +83,20 @@ export function StrategiesPage() {
         )}
       </section>
 
+      <section className="grid gap-4">
+        <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Arquitetura futura
+          </p>
+          <h2 className="mt-2 text-base font-semibold text-foreground">
+            Estrategia para operacoes
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Estrutura preparada para associar uma estrategia a um portfolio de
+            operacoes patrimoniais em etapa futura.
+          </p>
+        </section>
+
       <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -169,6 +183,7 @@ export function StrategiesPage() {
             Salvar estrategia
           </button>
         </div>
+      </section>
       </section>
     </section>
   );

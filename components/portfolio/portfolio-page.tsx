@@ -16,6 +16,7 @@ import {
   type PortfolioProperty,
   type PortfolioSnapshot,
 } from "@/modules/portfolio";
+import { loadOperations, type Operation } from "@/modules/operations";
 
 type PropertyFormState = {
   id: string;
@@ -48,10 +49,12 @@ export function PortfolioPage() {
   const [letterForm, setLetterForm] = useState<LetterFormState>(
     toLetterFormState(createEmptyPortfolioLetter()),
   );
+  const [operations, setOperations] = useState<Operation[]>([]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setSnapshot(loadPortfolioSnapshot());
+      setOperations(loadOperations());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -104,6 +107,43 @@ export function PortfolioPage() {
               consolidation.rendaPassivaConsolidada,
             )}
           />
+        </div>
+      </section>
+
+      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Operacoes Patrimoniais
+          </p>
+          <h3 className="text-lg font-semibold text-foreground">
+            Portfolio de operacoes
+          </h3>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          {operations.length > 0 ? (
+            operations.map((operation) => (
+              <article
+                className="rounded-md border bg-background/70 p-4"
+                key={operation.id}
+              >
+                <div className="grid gap-3 md:grid-cols-4">
+                  <PortfolioDetail label="Nome" value={operation.nome} />
+                  <PortfolioDetail
+                    label="Administradora"
+                    value={operation.administradora}
+                  />
+                  <PortfolioDetail
+                    label="Credito"
+                    value={currencyFormatter.format(operation.credito)}
+                  />
+                  <PortfolioDetail label="Status" value={operation.status} />
+                </div>
+              </article>
+            ))
+          ) : (
+            <EmptyPortfolioState text="Nenhuma operacao patrimonial registrada." />
+          )}
         </div>
       </section>
 

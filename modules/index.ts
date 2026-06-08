@@ -30,6 +30,11 @@ export const MODULES = [
     description: "Diagnostico deterministico da saude patrimonial da carteira.",
   },
   {
+    key: "operations",
+    name: "Operations",
+    description: "Gestao local de multiplas operacoes patrimoniais por cliente.",
+  },
+  {
     key: "strategies",
     name: "Strategies",
     description: "Planos patrimoniais e estrategias de evolucao.",

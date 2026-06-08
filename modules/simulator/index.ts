@@ -34,6 +34,7 @@ export {
 } from "@/modules/simulator/validation";
 export {
   createEmptyCommercialData,
+  createResultSnapshot,
   deleteSimulation,
   duplicateSimulation,
   formatSimulationDate,
@@ -41,6 +42,7 @@ export {
   saveSimulation,
   type SimulatorCommercialData,
   type SimulatorSavedFormState,
+  type SimulatorSavedResultSnapshot,
   type SimulatorSavedSimulation,
 } from "@/modules/simulator/storage";
 export type { Comparison, Scenario, Simulation } from "@/types/simulator";

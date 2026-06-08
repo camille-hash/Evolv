@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
   FileDown,
@@ -38,8 +38,10 @@ import {
   type BidType,
   type InsuranceOption,
   type SimulatorAdministrator,
+  type SimulatorCommercialPresentation,
   type SimulatorCommercialData,
   type SimulatorInput,
+  type SimulatorSavedAdministratorData,
   type SimulatorSavedFormState,
   type SimulatorSavedSimulation,
   type SimulatorScenarioKey,
@@ -70,6 +72,7 @@ import {
   type PortfolioIntelligence,
 } from "@/modules/portfolio-intelligence";
 import { listStrategies, type Strategy } from "@/modules/strategies";
+import type { Operation, OperationDraft } from "@/modules/operations";
 import { cn } from "@/lib/utils";
 
 type SimulatorFormState = SimulatorSavedFormState;
@@ -155,9 +158,16 @@ const percentFormatter = new Intl.NumberFormat("pt-BR", {
 
 export function SimulatorPanel({
   activePage = "simulation",
+  operation,
+  onOperationChange,
   onOpenSimulation,
 }: {
   activePage?: SimulatorPanelPage;
+  operation?: Operation | null;
+  onOperationChange?: (payload: {
+    draft: OperationDraft;
+    presentation: SimulatorCommercialPresentation;
+  }) => void;
   onOpenSimulation?: () => void;
 }) {
   const [activeSimulationId, setActiveSimulationId] = useState<string | null>(
@@ -193,6 +203,8 @@ export function SimulatorPanel({
   const [contemplationMonth, setContemplationMonth] = useState(1);
   const [formState, setFormState] =
     useState<SimulatorFormState>(initialFormState);
+  const appliedOperationIdRef = useRef<string | null>(null);
+  const lastOperationSignatureRef = useRef<string>("");
 
   const simulatorInput = useMemo(
     () => toSimulatorInput(formState),
@@ -331,6 +343,91 @@ export function SimulatorPanel({
 
     return () => window.clearTimeout(timeoutId);
   }, []);
+
+  useEffect(() => {
+    if (!operation || appliedOperationIdRef.current === operation.id) {
+      return;
+    }
+
+    appliedOperationIdRef.current = operation.id;
+    setActiveSimulationId(null);
+    setSimulationName(operation.nome);
+    setCommercialData(operation.commercialData);
+    setSelectedAdministratorId(
+      operation.administratorData.selectedAdministratorId,
+    );
+    setAdministratorDraft(toAdministratorFromSavedData(operation));
+    setFormState(operation.formState);
+    setSelectedScenarioKey(operation.selectedScenarioKey);
+    setInsuranceOption(
+      operation.administratorData.insuranceRequired
+        ? "with-insurance"
+        : operation.insuranceOption,
+    );
+    setContemplationMonth(operation.contemplationMonth);
+    setBidType(operation.bidType);
+  }, [operation]);
+
+  useEffect(() => {
+    if (!onOperationChange) {
+      return;
+    }
+
+    const draft: OperationDraft = {
+        id: operation?.id ?? null,
+        nome: simulationName || operation?.nome || "Operacao 1",
+        formState,
+        commercialData,
+        administratorData: selectedAdministrator
+          ? createSavedAdministratorData(selectedAdministrator)
+          : operation?.administratorData ?? createDefaultSavedAdministratorData(),
+        selectedScenarioKey,
+        insuranceOption,
+        contemplationMonth: presentation.contemplationMonth,
+        bidType,
+        status: operation?.status ?? "active",
+        tipoOperacao: operation?.tipoOperacao ?? "consortium",
+        createdAt: operation?.createdAt,
+      };
+    const operationSignature = JSON.stringify({
+      draft,
+      snapshot: {
+        cenario: presentation.selectedScenarioName,
+        contemplacao: presentation.contemplationMonth,
+        parcela: presentation.installmentBeforeContemplation,
+        posContemplacao: presentation.installmentAfterContemplation,
+        lucro: presentation.estimatedCardSaleProfit,
+        ganho: presentation.estimatedCardSaleGainRate,
+        alavancagem: presentation.leverageMultiple,
+      },
+    });
+
+    if (lastOperationSignatureRef.current === operationSignature) {
+      return;
+    }
+
+    lastOperationSignatureRef.current = operationSignature;
+    onOperationChange({
+      draft,
+      presentation,
+    });
+  }, [
+    bidType,
+    commercialData,
+    formState,
+    insuranceOption,
+    onOperationChange,
+    operation?.administratorData,
+    operation?.createdAt,
+    operation?.id,
+    operation?.nome,
+    operation?.status,
+    operation?.tipoOperacao,
+    presentation,
+    selectedAdministrator,
+    selectedScenarioKey,
+    simulationName,
+  ]);
 
   return (
     <section className="flex flex-col gap-6">
@@ -1439,9 +1536,9 @@ function SelectionButton({
   );
 }
 
-function toAdministratorFromSavedData(
-  simulation: SimulatorSavedSimulation,
-): SimulatorAdministrator {
+function toAdministratorFromSavedData(simulation: {
+  administratorData: SimulatorSavedAdministratorData;
+}): SimulatorAdministrator {
   return {
     id: simulation.administratorData.selectedAdministratorId,
     name: simulation.administratorData.selectedAdministratorName,

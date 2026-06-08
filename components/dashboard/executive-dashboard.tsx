@@ -33,6 +33,11 @@ import {
   type PortfolioSnapshot,
 } from "@/modules/portfolio";
 import { buildPortfolioIntelligence } from "@/modules/portfolio-intelligence";
+import {
+  loadOperations,
+  summarizeOperations,
+  type Operation,
+} from "@/modules/operations";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -92,6 +97,7 @@ export function ExecutiveDashboard({
     useState<PortfolioConsolidation>(emptyPortfolioConsolidation);
   const [portfolioSnapshot, setPortfolioSnapshot] =
     useState<PortfolioSnapshot>(emptyPortfolioSnapshot);
+  const [operations, setOperations] = useState<Operation[]>([]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -100,6 +106,7 @@ export function ExecutiveDashboard({
       setWealthInput(loadWealthEvolutionInput());
       setPortfolioConsolidation(loadPortfolioConsolidation());
       setPortfolioSnapshot(loadPortfolioSnapshot());
+      setOperations(loadOperations());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -159,6 +166,10 @@ export function ExecutiveDashboard({
         wealthCompletionRate: wealthEvolution.wealth.completionRate,
       }),
     [portfolioSnapshot, wealthEvolution.wealth.completionRate],
+  );
+  const operationsSummary = useMemo(
+    () => summarizeOperations(operations),
+    [operations],
   );
 
   return (
@@ -327,6 +338,25 @@ export function ExecutiveDashboard({
               label="Renda passiva consolidada"
               value={currencyFormatter.format(
                 portfolioConsolidation.rendaPassivaConsolidada,
+              )}
+            />
+          </div>
+        </ExecutiveCard>
+
+        <ExecutiveCard title="Operacoes Ativas">
+          <div className="grid gap-4">
+            <DashboardDetail
+              label="Quantidade"
+              value={String(operationsSummary.activeOperationsCount)}
+            />
+            <DashboardDetail
+              label="Patrimonio potencial agregado"
+              value={currencyFormatter.format(operationsSummary.potentialPatrimony)}
+            />
+            <DashboardDetail
+              label="Credito total contratado"
+              value={currencyFormatter.format(
+                operationsSummary.totalContractedCredit,
               )}
             />
           </div>
