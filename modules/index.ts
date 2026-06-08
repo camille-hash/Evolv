@@ -25,6 +25,11 @@ export const MODULES = [
     description: "Carteira patrimonial local com imoveis, cartas e consolidacao.",
   },
   {
+    key: "portfolio-intelligence",
+    name: "Portfolio Intelligence",
+    description: "Diagnostico deterministico da saude patrimonial da carteira.",
+  },
+  {
     key: "strategies",
     name: "Strategies",
     description: "Planos patrimoniais e estrategias de evolucao.",

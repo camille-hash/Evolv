@@ -10,6 +10,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import { PortfolioIntelligencePanel } from "@/components/portfolio-intelligence/portfolio-intelligence-panel";
 import { RecommendationsPanel } from "@/components/recommendations/recommendations-panel";
 import { WealthEvolutionPanel } from "@/components/wealth/wealth-evolution-panel";
 import {
@@ -60,6 +61,14 @@ import {
   calculateRecommendationJourneySpeed,
   type Recommendation,
 } from "@/modules/recommendations";
+import {
+  loadPortfolioSnapshot,
+  type PortfolioSnapshot,
+} from "@/modules/portfolio";
+import {
+  buildPortfolioIntelligence,
+  type PortfolioIntelligence,
+} from "@/modules/portfolio-intelligence";
 import { listStrategies, type Strategy } from "@/modules/strategies";
 import { cn } from "@/lib/utils";
 
@@ -127,6 +136,11 @@ const emptyWealthInput: WealthEvolutionInput = {
   averageLetterValue: 0,
 };
 
+const emptyPortfolioSnapshot: PortfolioSnapshot = {
+  properties: [],
+  letters: [],
+};
+
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
@@ -168,6 +182,8 @@ export function SimulatorPanel({
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [wealthInput, setWealthInput] =
     useState<WealthEvolutionInput>(emptyWealthInput);
+  const [portfolioSnapshot, setPortfolioSnapshot] =
+    useState<PortfolioSnapshot>(emptyPortfolioSnapshot);
   const [selectedScenarioKey, setSelectedScenarioKey] =
     useState<SimulatorScenarioKey>("full");
   const [insuranceOption, setInsuranceOption] =
@@ -286,6 +302,14 @@ export function SimulatorPanel({
       strategies,
     ],
   );
+  const portfolioIntelligence = useMemo(
+    () =>
+      buildPortfolioIntelligence({
+        snapshot: portfolioSnapshot,
+        wealthCompletionRate: recommendationWealthEvolution.wealth.completionRate,
+      }),
+    [portfolioSnapshot, recommendationWealthEvolution.wealth.completionRate],
+  );
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -293,6 +317,7 @@ export function SimulatorPanel({
       setClientContext(loadClientContext());
       setStrategies(listStrategies());
       setWealthInput(loadWealthEvolutionInput());
+      setPortfolioSnapshot(loadPortfolioSnapshot());
       const storedAdministrators = listAdministrators();
       const selectedAdministratorRecord =
         storedAdministrators.find(
@@ -354,6 +379,7 @@ export function SimulatorPanel({
 
       {activePage === "intelligence" ? (
         <IntelligenceSummaryPanel
+          portfolioIntelligence={portfolioIntelligence}
           recommendations={consultativeRecommendations}
           summary={intelligenceSummary}
         />
@@ -1311,9 +1337,11 @@ function TechnicalSettingsPanel({
 }
 
 function IntelligenceSummaryPanel({
+  portfolioIntelligence,
   recommendations,
   summary,
 }: {
+  portfolioIntelligence: PortfolioIntelligence;
   recommendations: Recommendation[];
   summary: IntelligenceSummary;
 }) {
@@ -1357,6 +1385,11 @@ function IntelligenceSummaryPanel({
       <RecommendationsPanel
         recommendations={recommendations}
         title="Recomendacoes Consultivas"
+      />
+
+      <PortfolioIntelligencePanel
+        intelligence={portfolioIntelligence}
+        title="Diagnostico Patrimonial"
       />
     </section>
   );

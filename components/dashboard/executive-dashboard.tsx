@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Plus } from "lucide-react";
+import { PortfolioIntelligencePanel } from "@/components/portfolio-intelligence/portfolio-intelligence-panel";
 import { RecommendationsPanel } from "@/components/recommendations/recommendations-panel";
 import { WealthMilestoneTimeline } from "@/components/wealth/wealth-milestone-timeline";
 import {
@@ -27,8 +28,11 @@ import {
 } from "@/modules/recommendations";
 import {
   loadPortfolioConsolidation,
+  loadPortfolioSnapshot,
   type PortfolioConsolidation,
+  type PortfolioSnapshot,
 } from "@/modules/portfolio";
+import { buildPortfolioIntelligence } from "@/modules/portfolio-intelligence";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -66,6 +70,11 @@ const emptyPortfolioConsolidation: PortfolioConsolidation = {
   rendaPassivaConsolidada: 0,
 };
 
+const emptyPortfolioSnapshot: PortfolioSnapshot = {
+  properties: [],
+  letters: [],
+};
+
 export function ExecutiveDashboard({
   clientContext,
   onCreateSimulation,
@@ -81,6 +90,8 @@ export function ExecutiveDashboard({
     useState<WealthEvolutionInput>(emptyWealthInput);
   const [portfolioConsolidation, setPortfolioConsolidation] =
     useState<PortfolioConsolidation>(emptyPortfolioConsolidation);
+  const [portfolioSnapshot, setPortfolioSnapshot] =
+    useState<PortfolioSnapshot>(emptyPortfolioSnapshot);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -88,6 +99,7 @@ export function ExecutiveDashboard({
       setStrategies(listStrategies());
       setWealthInput(loadWealthEvolutionInput());
       setPortfolioConsolidation(loadPortfolioConsolidation());
+      setPortfolioSnapshot(loadPortfolioSnapshot());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -139,6 +151,14 @@ export function ExecutiveDashboard({
       wealthEvolution.wealth,
       wealthJourney,
     ],
+  );
+  const portfolioIntelligence = useMemo(
+    () =>
+      buildPortfolioIntelligence({
+        snapshot: portfolioSnapshot,
+        wealthCompletionRate: wealthEvolution.wealth.completionRate,
+      }),
+    [portfolioSnapshot, wealthEvolution.wealth.completionRate],
   );
 
   return (
@@ -280,6 +300,11 @@ export function ExecutiveDashboard({
       />
 
       <RecommendationsPanel recommendations={recommendations.slice(0, 5)} />
+
+      <PortfolioIntelligencePanel
+        intelligence={portfolioIntelligence}
+        title="Saude Patrimonial"
+      />
 
       <section className="grid gap-4 xl:grid-cols-3">
         <ExecutiveCard title="Carteira Consolidada">
