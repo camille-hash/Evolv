@@ -20,6 +20,11 @@ export const MODULES = [
     description: "Metas patrimoniais e evolucao de renda passiva.",
   },
   {
+    key: "portfolio",
+    name: "Portfolio",
+    description: "Carteira patrimonial local com imoveis, cartas e consolidacao.",
+  },
+  {
     key: "strategies",
     name: "Strategies",
     description: "Planos patrimoniais e estrategias de evolucao.",

@@ -25,6 +25,10 @@ import {
   buildRecommendationWealthInput,
   calculateRecommendationJourneySpeed,
 } from "@/modules/recommendations";
+import {
+  loadPortfolioConsolidation,
+  type PortfolioConsolidation,
+} from "@/modules/portfolio";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -55,6 +59,13 @@ const emptyWealthInput: WealthEvolutionInput = {
   averageLetterValue: 0,
 };
 
+const emptyPortfolioConsolidation: PortfolioConsolidation = {
+  totalImoveis: 0,
+  totalCartas: 0,
+  patrimonioConsolidado: 0,
+  rendaPassivaConsolidada: 0,
+};
+
 export function ExecutiveDashboard({
   clientContext,
   onCreateSimulation,
@@ -68,12 +79,15 @@ export function ExecutiveDashboard({
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [wealthInput, setWealthInput] =
     useState<WealthEvolutionInput>(emptyWealthInput);
+  const [portfolioConsolidation, setPortfolioConsolidation] =
+    useState<PortfolioConsolidation>(emptyPortfolioConsolidation);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setSavedSimulations(loadSavedSimulations());
       setStrategies(listStrategies());
       setWealthInput(loadWealthEvolutionInput());
+      setPortfolioConsolidation(loadPortfolioConsolidation());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -268,6 +282,31 @@ export function ExecutiveDashboard({
       <RecommendationsPanel recommendations={recommendations.slice(0, 5)} />
 
       <section className="grid gap-4 xl:grid-cols-3">
+        <ExecutiveCard title="Carteira Consolidada">
+          <div className="grid gap-4">
+            <DashboardDetail
+              label="Imoveis"
+              value={String(portfolioConsolidation.totalImoveis)}
+            />
+            <DashboardDetail
+              label="Cartas"
+              value={String(portfolioConsolidation.totalCartas)}
+            />
+            <DashboardDetail
+              label="Patrimonio consolidado"
+              value={currencyFormatter.format(
+                portfolioConsolidation.patrimonioConsolidado,
+              )}
+            />
+            <DashboardDetail
+              label="Renda passiva consolidada"
+              value={currencyFormatter.format(
+                portfolioConsolidation.rendaPassivaConsolidada,
+              )}
+            />
+          </div>
+        </ExecutiveCard>
+
         <ExecutiveCard title="Estrategia Ativa">
           {activeStrategy ? (
             <div className="grid gap-4">

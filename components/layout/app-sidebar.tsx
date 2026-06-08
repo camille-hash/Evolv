@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  BriefcaseBusiness,
   Brain,
   FolderClock,
   Landmark,
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 export type PlatformSection =
   | "dashboard"
   | "client"
+  | "portfolio"
   | "simulations"
   | "strategies"
   | "wealth"
@@ -29,6 +31,7 @@ const navigationItems: Array<{
 }> = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3 },
   { key: "client", label: "Cliente", icon: UserRound },
+  { key: "portfolio", label: "Carteira", icon: BriefcaseBusiness },
   { key: "simulations", label: "Simulacoes", icon: Sparkles },
   { key: "strategies", label: "Estrategias", icon: ListChecks },
   { key: "wealth", label: "Patrimonio", icon: Landmark },

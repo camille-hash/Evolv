@@ -7,6 +7,7 @@ import {
 } from "@/components/layout/app-sidebar";
 import { ClientPage } from "@/components/client/client-page";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
+import { PortfolioPage } from "@/components/portfolio/portfolio-page";
 import { StrategiesPage } from "@/components/strategies/strategies-page";
 import {
   SimulatorPanel,
@@ -34,6 +35,10 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   client: {
     title: "Cliente atual",
     subtitle: "Contexto comercial e patrimonial persistido neste navegador",
+  },
+  portfolio: {
+    title: "Carteira patrimonial",
+    subtitle: "Imoveis, cartas e consolidacao da posicao atual",
   },
   simulations: {
     title: "Simulacoes estrategicas",
@@ -110,6 +115,8 @@ export default function Home() {
         {activeSection === "client" ? (
           <ClientPage onClientContextChange={handleClientContextChange} />
         ) : null}
+
+        {activeSection === "portfolio" ? <PortfolioPage /> : null}
 
         {activeSection === "strategies" ? <StrategiesPage /> : null}
 
