@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Plus } from "lucide-react";
+import { RecommendationsPanel } from "@/components/recommendations/recommendations-panel";
 import { WealthMilestoneTimeline } from "@/components/wealth/wealth-milestone-timeline";
 import {
   buildWealthEvolution,
@@ -18,6 +19,12 @@ import {
   strategyTypeLabels,
   type Strategy,
 } from "@/modules/strategies";
+import type { ClientContext } from "@/modules/client-context";
+import {
+  buildConsultativeRecommendations,
+  buildRecommendationWealthInput,
+  calculateRecommendationJourneySpeed,
+} from "@/modules/recommendations";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -49,8 +56,10 @@ const emptyWealthInput: WealthEvolutionInput = {
 };
 
 export function ExecutiveDashboard({
+  clientContext,
   onCreateSimulation,
 }: {
+  clientContext: ClientContext;
   onCreateSimulation: () => void;
 }) {
   const [savedSimulations, setSavedSimulations] = useState<
@@ -70,13 +79,21 @@ export function ExecutiveDashboard({
     return () => window.clearTimeout(timeoutId);
   }, []);
 
+  const dashboardWealthInput = useMemo(
+    () => buildRecommendationWealthInput({ clientContext, wealthInput }),
+    [clientContext, wealthInput],
+  );
   const wealthEvolution = useMemo(
-    () => buildWealthEvolution(wealthInput),
-    [wealthInput],
+    () => buildWealthEvolution(dashboardWealthInput),
+    [dashboardWealthInput],
   );
   const wealthJourney = useMemo(
-    () => buildWealthJourney({ evolution: wealthEvolution, input: wealthInput }),
-    [wealthEvolution, wealthInput],
+    () =>
+      buildWealthJourney({
+        evolution: wealthEvolution,
+        input: dashboardWealthInput,
+      }),
+    [dashboardWealthInput, wealthEvolution],
   );
   const latestSimulation = savedSimulations[0];
   const activeStrategy = strategies[0];
@@ -84,10 +101,31 @@ export function ExecutiveDashboard({
   const passiveIncomeCompletion =
     wealthEvolution.passiveIncome.completionRate;
   const cappedPassiveIncomeCompletion = Math.min(passiveIncomeCompletion, 1);
-  const journeySpeed = calculateRequiredJourneySpeed({
+  const journeySpeed = calculateRecommendationJourneySpeed({
     missingWealth: wealthJourney.missingWealth,
     termMonths: wealthEvolution.wealth.termMonths,
   });
+  const recommendations = useMemo(
+    () =>
+      buildConsultativeRecommendations({
+        clientContext,
+        activeStrategy,
+        latestSimulation: latestSimulation ?? null,
+        wealthJourney,
+        wealthProgress: wealthEvolution.wealth,
+        passiveIncomeProgress: wealthEvolution.passiveIncome,
+        journeySpeed,
+      }),
+    [
+      activeStrategy,
+      clientContext,
+      journeySpeed,
+      latestSimulation,
+      wealthEvolution.passiveIncome,
+      wealthEvolution.wealth,
+      wealthJourney,
+    ],
+  );
 
   return (
     <section className="grid gap-6">
@@ -161,12 +199,73 @@ export function ExecutiveDashboard({
             value={`${wealthEvolution.wealth.termMonths} meses`}
           />
         </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <HeroInsight
+            label="Estrategia Atual"
+            title={activeStrategy?.name ?? "Nenhuma estrategia cadastrada"}
+            description={
+              activeStrategy
+                ? strategyTypeLabels[activeStrategy.type]
+                : "Cadastre uma estrategia para orientar o plano patrimonial."
+            }
+          />
+          <HeroInsight
+            label="Proximo Marco Patrimonial"
+            title={
+              wealthJourney.nextWealthMilestone
+                ? currencyFormatter.format(wealthJourney.nextWealthMilestone.value)
+                : "Meta atingida"
+            }
+            description={
+              wealthJourney.nextWealthMilestone
+                ? `${currencyFormatter.format(
+                    wealthJourney.nextWealthMilestone.missingValue,
+                  )} ate o proximo marco.`
+                : "Nao ha marco pendente acima do patrimonio atual."
+            }
+          />
+        </div>
+      </section>
+
+      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Cliente atual
+          </p>
+          <h2 className="text-xl font-semibold text-foreground">
+            {clientContext.nome || "Nenhum cliente informado"}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {clientContext.perfil || "Perfil ainda nao definido"}
+          </p>
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <DashboardDetail
+            label="Patrimonio Atual"
+            value={currencyFormatter.format(wealthJourney.currentWealth)}
+          />
+          <DashboardDetail
+            label="Meta Patrimonial"
+            value={currencyFormatter.format(wealthJourney.targetWealth)}
+          />
+          <DashboardDetail
+            label="Renda Atual"
+            value={currencyFormatter.format(wealthJourney.currentPassiveIncome)}
+          />
+          <DashboardDetail
+            label="Meta de Renda"
+            value={currencyFormatter.format(wealthJourney.targetPassiveIncome)}
+          />
+        </div>
       </section>
 
       <WealthMilestoneTimeline
         compact
         currentWealth={wealthJourney.currentWealth}
       />
+
+      <RecommendationsPanel recommendations={recommendations.slice(0, 5)} />
 
       <section className="grid gap-4 xl:grid-cols-3">
         <ExecutiveCard title="Estrategia Ativa">
@@ -297,20 +396,6 @@ export function ExecutiveDashboard({
   );
 }
 
-function calculateRequiredJourneySpeed({
-  missingWealth,
-  termMonths,
-}: {
-  missingWealth: number;
-  termMonths: number;
-}) {
-  if (missingWealth <= 0 || termMonths <= 0) {
-    return 0;
-  }
-
-  return missingWealth / termMonths;
-}
-
 function HeroMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 p-4">
@@ -321,6 +406,30 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
         {value}
       </p>
     </div>
+  );
+}
+
+function HeroInsight({
+  description,
+  label,
+  title,
+}: {
+  description: string;
+  label: string;
+  title: string;
+}) {
+  return (
+    <article className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 p-4">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-primary-foreground/62">
+        {label}
+      </p>
+      <p className="mt-2 text-lg font-semibold text-primary-foreground">
+        {title}
+      </p>
+      <p className="mt-2 text-sm leading-6 text-primary-foreground/72">
+        {description}
+      </p>
+    </article>
   );
 }
 

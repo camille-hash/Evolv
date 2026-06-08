@@ -8,11 +8,13 @@ import {
   ListChecks,
   Settings,
   Sparkles,
+  UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type PlatformSection =
   | "dashboard"
+  | "client"
   | "simulations"
   | "strategies"
   | "wealth"
@@ -26,6 +28,7 @@ const navigationItems: Array<{
   icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
 }> = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3 },
+  { key: "client", label: "Cliente", icon: UserRound },
   { key: "simulations", label: "Simulacoes", icon: Sparkles },
   { key: "strategies", label: "Estrategias", icon: ListChecks },
   { key: "wealth", label: "Patrimonio", icon: Landmark },

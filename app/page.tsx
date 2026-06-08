@@ -1,16 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AppSidebar,
   type PlatformSection,
 } from "@/components/layout/app-sidebar";
+import { ClientPage } from "@/components/client/client-page";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
 import { StrategiesPage } from "@/components/strategies/strategies-page";
 import {
   SimulatorPanel,
   type SimulatorPanelPage,
 } from "@/components/simulator/simulator-panel";
+import {
+  emptyClientContext,
+  loadClientContext,
+  type ClientContext,
+} from "@/modules/client-context";
 
 const simulatorPageBySection: Partial<Record<PlatformSection, SimulatorPanelPage>> = {
   simulations: "simulation",
@@ -24,6 +30,10 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   dashboard: {
     title: "EVOLV Intelligence",
     subtitle: "Planejamento patrimonial, estrategias de crescimento e evolucao de patrimonio",
+  },
+  client: {
+    title: "Cliente atual",
+    subtitle: "Contexto comercial e patrimonial persistido neste navegador",
   },
   simulations: {
     title: "Simulacoes estrategicas",
@@ -54,8 +64,21 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
 export default function Home() {
   const [activeSection, setActiveSection] =
     useState<PlatformSection>("dashboard");
+  const [clientContext, setClientContext] =
+    useState<ClientContext>(emptyClientContext);
   const currentSimulatorPage = simulatorPageBySection[activeSection];
   const pageTitle = pageTitles[activeSection];
+  const handleClientContextChange = useCallback((context: ClientContext) => {
+    setClientContext(context);
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setClientContext(loadClientContext());
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   return (
     <div className="grid min-h-screen grid-cols-1 md:grid-cols-[280px_1fr]">
@@ -79,8 +102,13 @@ export default function Home() {
 
         {activeSection === "dashboard" ? (
           <ExecutiveDashboard
+            clientContext={clientContext}
             onCreateSimulation={() => setActiveSection("simulations")}
           />
+        ) : null}
+
+        {activeSection === "client" ? (
+          <ClientPage onClientContextChange={handleClientContextChange} />
         ) : null}
 
         {activeSection === "strategies" ? <StrategiesPage /> : null}

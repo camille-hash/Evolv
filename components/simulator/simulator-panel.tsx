@@ -10,7 +10,13 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import { RecommendationsPanel } from "@/components/recommendations/recommendations-panel";
 import { WealthEvolutionPanel } from "@/components/wealth/wealth-evolution-panel";
+import {
+  emptyClientContext,
+  loadClientContext,
+  type ClientContext,
+} from "@/modules/client-context";
 import {
   applyAdministratorToSimulationForm,
   buildSimulatorCommercialPresentation,
@@ -46,7 +52,15 @@ import {
   buildWealthEvolution,
   buildWealthJourney,
   loadWealthEvolutionInput,
+  type WealthEvolutionInput,
 } from "@/modules/wealth";
+import {
+  buildConsultativeRecommendations,
+  buildRecommendationWealthInput,
+  calculateRecommendationJourneySpeed,
+  type Recommendation,
+} from "@/modules/recommendations";
+import { listStrategies, type Strategy } from "@/modules/strategies";
 import { cn } from "@/lib/utils";
 
 type SimulatorFormState = SimulatorSavedFormState;
@@ -102,6 +116,17 @@ const initialFormState: SimulatorFormState = {
   cashBidPercent: "25",
 };
 
+const emptyWealthInput: WealthEvolutionInput = {
+  currentWealth: 0,
+  targetWealth: 0,
+  wealthGoalTermMonths: 120,
+  currentPassiveIncome: 0,
+  targetPassiveIncome: 0,
+  passiveIncomeGoalTermMonths: 120,
+  averagePropertyValue: 0,
+  averageLetterValue: 0,
+};
+
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
@@ -138,6 +163,11 @@ export function SimulatorPanel({
   const [savedSimulations, setSavedSimulations] = useState<
     SimulatorSavedSimulation[]
   >([]);
+  const [clientContext, setClientContext] =
+    useState<ClientContext>(emptyClientContext);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [wealthInput, setWealthInput] =
+    useState<WealthEvolutionInput>(emptyWealthInput);
   const [selectedScenarioKey, setSelectedScenarioKey] =
     useState<SimulatorScenarioKey>("full");
   const [insuranceOption, setInsuranceOption] =
@@ -211,10 +241,58 @@ export function SimulatorPanel({
       simulatorInput.embeddedBidRate,
     ],
   );
+  const recommendationWealthInput = useMemo(
+    () => buildRecommendationWealthInput({ clientContext, wealthInput }),
+    [clientContext, wealthInput],
+  );
+  const recommendationWealthEvolution = useMemo(
+    () => buildWealthEvolution(recommendationWealthInput),
+    [recommendationWealthInput],
+  );
+  const recommendationWealthJourney = useMemo(
+    () =>
+      buildWealthJourney({
+        evolution: recommendationWealthEvolution,
+        input: recommendationWealthInput,
+      }),
+    [recommendationWealthEvolution, recommendationWealthInput],
+  );
+  const recommendationJourneySpeed = useMemo(
+    () =>
+      calculateRecommendationJourneySpeed({
+        missingWealth: recommendationWealthJourney.missingWealth,
+        termMonths: recommendationWealthEvolution.wealth.termMonths,
+      }),
+    [recommendationWealthEvolution.wealth.termMonths, recommendationWealthJourney],
+  );
+  const consultativeRecommendations = useMemo(
+    () =>
+      buildConsultativeRecommendations({
+        clientContext,
+        activeStrategy: strategies[0] ?? null,
+        latestSimulation: savedSimulations[0] ?? null,
+        wealthJourney: recommendationWealthJourney,
+        wealthProgress: recommendationWealthEvolution.wealth,
+        passiveIncomeProgress: recommendationWealthEvolution.passiveIncome,
+        journeySpeed: recommendationJourneySpeed,
+      }),
+    [
+      clientContext,
+      recommendationJourneySpeed,
+      recommendationWealthEvolution.passiveIncome,
+      recommendationWealthEvolution.wealth,
+      recommendationWealthJourney,
+      savedSimulations,
+      strategies,
+    ],
+  );
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setSavedSimulations(loadSavedSimulations());
+      setClientContext(loadClientContext());
+      setStrategies(listStrategies());
+      setWealthInput(loadWealthEvolutionInput());
       const storedAdministrators = listAdministrators();
       const selectedAdministratorRecord =
         storedAdministrators.find(
@@ -275,7 +353,10 @@ export function SimulatorPanel({
       {activePage === "journey" ? <WealthEvolutionPanel /> : null}
 
       {activePage === "intelligence" ? (
-        <IntelligenceSummaryPanel summary={intelligenceSummary} />
+        <IntelligenceSummaryPanel
+          recommendations={consultativeRecommendations}
+          summary={intelligenceSummary}
+        />
       ) : null}
 
       {activePage === "saved" ? (
@@ -1230,38 +1311,53 @@ function TechnicalSettingsPanel({
 }
 
 function IntelligenceSummaryPanel({
+  recommendations,
   summary,
 }: {
+  recommendations: Recommendation[];
   summary: IntelligenceSummary;
 }) {
   return (
-    <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-7">
-      <div className="flex flex-col gap-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          Intelligence
-        </p>
-        <h2 className="text-xl font-semibold text-foreground">
-          Analise EVOLV
-        </h2>
-      </div>
+    <section className="grid gap-5">
+      <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-7">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Intelligence
+          </p>
+          <h2 className="text-xl font-semibold text-foreground">
+            Analise EVOLV
+          </h2>
+        </div>
 
-      <div className="mt-5 rounded-md border bg-primary/[0.03] p-5">
-        <p className="text-sm font-medium text-muted-foreground">
-          Resumo Executivo
-        </p>
-        <p className="mt-2 text-base leading-7 text-foreground">
-          {summary.executiveSummary}
-        </p>
-      </div>
+        <div className="mt-5 rounded-md border bg-primary/[0.03] p-5">
+          <p className="text-sm font-medium text-muted-foreground">
+            Resumo Executivo
+          </p>
+          <p className="mt-2 text-base leading-7 text-foreground">
+            {summary.executiveSummary}
+          </p>
+        </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-3">
-        <IntelligenceList title="Principais Insights" items={summary.insights} />
-        <IntelligenceList
-          title="Pontos de Atencao"
-          items={summary.attentionPoints}
-        />
-        <IntelligenceList title="Oportunidades" items={summary.opportunities} />
-      </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <IntelligenceList
+            title="Principais Insights"
+            items={summary.insights}
+          />
+          <IntelligenceList
+            title="Pontos de Atencao"
+            items={summary.attentionPoints}
+          />
+          <IntelligenceList
+            title="Oportunidades"
+            items={summary.opportunities}
+          />
+        </div>
+      </section>
+
+      <RecommendationsPanel
+        recommendations={recommendations}
+        title="Recomendacoes Consultivas"
+      />
     </section>
   );
 }
