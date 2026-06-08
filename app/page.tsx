@@ -13,6 +13,7 @@ import {
   SimulatorPanel,
   type SimulatorPanelPage,
 } from "@/components/simulator/simulator-panel";
+import { SimulationWorkspace } from "@/components/simulator/simulation-workspace";
 import {
   emptyClientContext,
   loadClientContext,
@@ -20,11 +21,9 @@ import {
 } from "@/modules/client-context";
 
 const simulatorPageBySection: Partial<Record<PlatformSection, SimulatorPanelPage>> = {
-  simulations: "simulation",
   wealth: "journey",
   intelligence: "intelligence",
   history: "saved",
-  settings: "technical",
 };
 
 const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> = {
@@ -59,10 +58,6 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   history: {
     title: "Historico",
     subtitle: "Simulacoes salvas neste navegador",
-  },
-  settings: {
-    title: "Governanca da Plataforma",
-    subtitle: "Parametros tecnicos e administradoras",
   },
 };
 
@@ -119,6 +114,12 @@ export default function Home() {
         {activeSection === "portfolio" ? <PortfolioPage /> : null}
 
         {activeSection === "strategies" ? <StrategiesPage /> : null}
+
+        {activeSection === "simulations" ? (
+          <SimulationWorkspace
+            onOpenSimulation={() => setActiveSection("simulations")}
+          />
+        ) : null}
 
         {currentSimulatorPage ? (
           <SimulatorPanel

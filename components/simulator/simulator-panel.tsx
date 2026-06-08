@@ -80,6 +80,7 @@ export type SimulatorPanelPage =
   | "journey"
   | "intelligence"
   | "saved"
+  | "administrators"
   | "technical";
 
 const scenarioOptions: Array<{
@@ -334,19 +335,15 @@ export function SimulatorPanel({
   return (
     <section className="flex flex-col gap-6">
       {activePage === "simulation" ? (
-        <SimulationWorkspace
+        <SimulationOperationPanel
           activeSimulationId={activeSimulationId}
-          administratorDraft={administratorDraft}
-          administrators={administrators}
           bidType={bidType}
           commercialData={commercialData}
           formState={formState}
           insuranceOption={insuranceOption}
           intelligenceSummary={intelligenceSummary}
-          isAdministratorEditorOpen={isAdministratorEditorOpen}
           presentation={presentation}
           selectedAdministrator={selectedAdministrator}
-          selectedAdministratorId={selectedAdministratorId}
           selectedScenarioKey={selectedScenarioKey}
           simulationName={simulationName}
           simulatorInput={simulatorInput}
@@ -355,18 +352,10 @@ export function SimulatorPanel({
           onFormStateChange={updateFormState}
           onGeneratePdf={handleGeneratePdf}
           onInsuranceOptionChange={handleSelectInsuranceOption}
-          onSaveAdministratorDraft={handleSaveAdministratorDraft}
           onSaveSimulation={handleSaveSimulation}
           onScenarioChange={setSelectedScenarioKey}
-          onSelectAdministrator={handleSelectAdministrator}
-          onSetAdministratorDraft={updateAdministratorDraft}
-          onSetAdministratorDraftParameter={updateAdministratorDraftParameter}
           onSetBidType={setBidType}
           onSetSimulationName={setSimulationName}
-          onToggleAdministratorEditor={() =>
-            setIsAdministratorEditorOpen((current) => !current)
-          }
-          onResetAdministrators={handleResetAdministrators}
           isInsuranceOptionDisabled={isInsuranceOptionDisabled}
         />
       ) : null}
@@ -396,25 +385,28 @@ export function SimulatorPanel({
       ) : null}
 
       {activePage === "technical" ? (
-        <section className="grid gap-5">
-          <TechnicalSettingsPanel
-            formState={formState}
-            onChange={updateFormState}
-          />
-          <AdministratorSection
-            administratorDraft={administratorDraft}
-            administrators={administrators}
-            isAdministratorEditorOpen
-            selectedAdministrator={selectedAdministrator}
-            selectedAdministratorId={selectedAdministratorId}
-            onResetAdministrators={handleResetAdministrators}
-            onSaveAdministratorDraft={handleSaveAdministratorDraft}
-            onSelectAdministrator={handleSelectAdministrator}
-            onSetAdministratorDraft={updateAdministratorDraft}
-            onSetAdministratorDraftParameter={updateAdministratorDraftParameter}
-            onToggleAdministratorEditor={() => undefined}
-          />
-        </section>
+        <TechnicalSettingsPanel
+          formState={formState}
+          onChange={updateFormState}
+        />
+      ) : null}
+
+      {activePage === "administrators" ? (
+        <AdministratorSection
+          administratorDraft={administratorDraft}
+          administrators={administrators}
+          isAdministratorEditorOpen={isAdministratorEditorOpen}
+          selectedAdministrator={selectedAdministrator}
+          selectedAdministratorId={selectedAdministratorId}
+          onResetAdministrators={handleResetAdministrators}
+          onSaveAdministratorDraft={handleSaveAdministratorDraft}
+          onSelectAdministrator={handleSelectAdministrator}
+          onSetAdministratorDraft={updateAdministratorDraft}
+          onSetAdministratorDraftParameter={updateAdministratorDraftParameter}
+          onToggleAdministratorEditor={() =>
+            setIsAdministratorEditorOpen((current) => !current)
+          }
+        />
       ) : null}
     </section>
   );
@@ -615,19 +607,15 @@ export function SimulatorPanel({
   }
 }
 
-function SimulationWorkspace({
+function SimulationOperationPanel({
   activeSimulationId,
-  administratorDraft,
-  administrators,
   bidType,
   commercialData,
   formState,
   insuranceOption,
   intelligenceSummary,
-  isAdministratorEditorOpen,
   presentation,
   selectedAdministrator,
-  selectedAdministratorId,
   selectedScenarioKey,
   simulationName,
   simulatorInput,
@@ -636,30 +624,20 @@ function SimulationWorkspace({
   onFormStateChange,
   onGeneratePdf,
   onInsuranceOptionChange,
-  onResetAdministrators,
-  onSaveAdministratorDraft,
   onSaveSimulation,
   onScenarioChange,
-  onSelectAdministrator,
-  onSetAdministratorDraft,
-  onSetAdministratorDraftParameter,
   onSetBidType,
   onSetSimulationName,
-  onToggleAdministratorEditor,
   isInsuranceOptionDisabled,
 }: {
   activeSimulationId: string | null;
-  administratorDraft: SimulatorAdministrator | null;
-  administrators: SimulatorAdministrator[];
   bidType: BidType;
   commercialData: SimulatorCommercialData;
   formState: SimulatorFormState;
   insuranceOption: InsuranceOption;
   intelligenceSummary: IntelligenceSummary;
-  isAdministratorEditorOpen: boolean;
   presentation: ReturnType<typeof buildSimulatorCommercialPresentation>;
   selectedAdministrator: SimulatorAdministrator | null;
-  selectedAdministratorId: string;
   selectedScenarioKey: SimulatorScenarioKey;
   simulationName: string;
   simulatorInput: SimulatorInput;
@@ -668,18 +646,10 @@ function SimulationWorkspace({
   onFormStateChange: (state: Partial<SimulatorFormState>) => void;
   onGeneratePdf: () => void;
   onInsuranceOptionChange: (option: InsuranceOption) => void;
-  onResetAdministrators: () => void;
-  onSaveAdministratorDraft: () => void;
   onSaveSimulation: () => void;
   onScenarioChange: (scenario: SimulatorScenarioKey) => void;
-  onSelectAdministrator: (administratorId: string) => void;
-  onSetAdministratorDraft: (state: Partial<SimulatorAdministrator>) => void;
-  onSetAdministratorDraftParameter: (
-    state: Partial<SimulatorAdministrator["parameters"]>,
-  ) => void;
   onSetBidType: (bidType: BidType) => void;
   onSetSimulationName: (name: string) => void;
-  onToggleAdministratorEditor: () => void;
   isInsuranceOptionDisabled: (option: InsuranceOption) => boolean;
 }) {
   return (
@@ -752,20 +722,6 @@ function SimulationWorkspace({
           onChange={onCommercialDataChange}
         />
 
-        <AdministratorSection
-          administratorDraft={administratorDraft}
-          administrators={administrators}
-          isAdministratorEditorOpen={isAdministratorEditorOpen}
-          selectedAdministrator={selectedAdministrator}
-          selectedAdministratorId={selectedAdministratorId}
-          onResetAdministrators={onResetAdministrators}
-          onSaveAdministratorDraft={onSaveAdministratorDraft}
-          onSelectAdministrator={onSelectAdministrator}
-          onSetAdministratorDraft={onSetAdministratorDraft}
-          onSetAdministratorDraftParameter={onSetAdministratorDraftParameter}
-          onToggleAdministratorEditor={onToggleAdministratorEditor}
-          showEditorControls={false}
-        />
       </div>
 
       <aside className="grid gap-5">
