@@ -22,7 +22,15 @@ import {
   calculateRecommendationJourneySpeed,
 } from "@/modules/recommendations";
 import { buildStrategicRoadmap } from "@/modules/roadmap";
-import { loadSavedSimulations } from "@/modules/simulator";
+import {
+  buildSimulatorCommercialPresentation,
+  calculateSimulatorScenarios,
+  loadSavedSimulations,
+  type SimulatorCommercialPresentation,
+  type SimulatorInput,
+  type SimulatorSavedFormState,
+} from "@/modules/simulator";
+import { generateSimulatorCommercialPdf } from "@/modules/reports";
 import {
   listStrategies,
   strategyTypeLabels,
@@ -41,6 +49,7 @@ type PresentationSection =
   | "today"
   | "goal"
   | "strategy"
+  | "simulation"
   | "operations"
   | "results"
   | "next";
@@ -53,9 +62,10 @@ const presentationSections: Array<{
   { key: "today", label: "2. Hoje" },
   { key: "goal", label: "3. Meta" },
   { key: "strategy", label: "4. Estrategia" },
-  { key: "operations", label: "5. Operacoes" },
-  { key: "results", label: "6. Resultado" },
-  { key: "next", label: "7. Proximos passos" },
+  { key: "simulation", label: "5. Simulacao" },
+  { key: "operations", label: "6. Operacoes" },
+  { key: "results", label: "7. Resultado" },
+  { key: "next", label: "8. Proximos passos" },
 ];
 
 const emptyWealthInput: WealthEvolutionInput = {
@@ -77,6 +87,17 @@ const emptyPortfolioSnapshot: PortfolioSnapshot = {
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
   style: "currency",
+});
+
+const percentFormatter = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+  style: "percent",
+});
+
+const multipleFormatter = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
 });
 
 export function ClientPresentationPage() {
@@ -104,6 +125,11 @@ export function ClientPresentationPage() {
   }, []);
 
   const activeStrategy = strategies[0] ?? null;
+  const activeOperation = operations[0] ?? null;
+  const activeOperationPresentation = useMemo(
+    () => (activeOperation ? buildOperationPresentation(activeOperation) : null),
+    [activeOperation],
+  );
   const presentationWealthInput = useMemo(
     () => buildRecommendationWealthInput({ clientContext, wealthInput }),
     [clientContext, wealthInput],
@@ -278,6 +304,13 @@ export function ClientPresentationPage() {
         </PresentationSlide>
       ) : null}
 
+      {activeSection === "simulation" ? (
+        <SimulationPresentationSlide
+          operation={activeOperation}
+          presentation={activeOperationPresentation}
+        />
+      ) : null}
+
       {activeSection === "operations" ? (
         <PresentationSlide
           eyebrow="Operacoes planejadas"
@@ -361,6 +394,106 @@ export function ClientPresentationPage() {
   );
 }
 
+function SimulationPresentationSlide({
+  operation,
+  presentation,
+}: {
+  operation: Operation | null;
+  presentation: SimulatorCommercialPresentation | null;
+}) {
+  if (!operation || !presentation) {
+    return (
+      <PresentationSlide
+        eyebrow="Simulacao"
+        title="Nenhuma operacao ativa para apresentar."
+        description="Crie uma operacao no workspace de Simulacoes para exibir a leitura comercial ao cliente."
+      >
+        <div className="md:col-span-2 xl:col-span-4">
+          <PresentationEmpty text="A simulacao comercial aparecera aqui quando houver uma operacao cadastrada." />
+        </div>
+      </PresentationSlide>
+    );
+  }
+
+  return (
+    <PresentationSlide
+      eyebrow="Simulacao"
+      title="Leitura comercial da operacao atual."
+      description="Resumo da simulacao em linguagem executiva, sem parametros tecnicos internos."
+      action={
+        <button
+          className="inline-flex h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+          onClick={() =>
+            generateSimulatorCommercialPdf({
+              presentation,
+              simulationName: operation.nome,
+              commercialData: operation.commercialData,
+              simulationDate: operation.updatedAt,
+            })
+          }
+          type="button"
+        >
+          Gerar PDF da Simulacao
+        </button>
+      }
+    >
+      <PresentationMetric
+        label="Administradora"
+        value={operation.administradora || "Nao definida"}
+      />
+      <PresentationMetric
+        label="Credito contratado"
+        value={currencyFormatter.format(presentation.contractedCredit)}
+      />
+      <PresentationMetric
+        label="Cenario selecionado"
+        value={presentation.selectedScenarioName}
+      />
+      <PresentationMetric
+        label="Opcao de seguro"
+        value={presentation.insuranceLabel}
+      />
+      <PresentationMetric label="Tipo de lance" value={presentation.bidLabel} />
+      <PresentationMetric
+        label="Mes de contemplacao"
+        value={`Mes ${presentation.contemplationMonth}`}
+      />
+      <PresentationMetric
+        label="Parcela antes"
+        value={currencyFormatter.format(
+          presentation.installmentBeforeContemplation,
+        )}
+      />
+      <PresentationMetric
+        label="Parcela pos"
+        value={currencyFormatter.format(
+          presentation.installmentAfterContemplation,
+        )}
+      />
+      <PresentationMetric
+        label="Credito liquido"
+        value={currencyFormatter.format(presentation.liquidCredit)}
+      />
+      <PresentationMetric
+        label="Venda estimada"
+        value={currencyFormatter.format(presentation.estimatedCardSaleValue)}
+      />
+      <PresentationMetric
+        label="Lucro estimado"
+        value={currencyFormatter.format(presentation.estimatedCardSaleProfit)}
+      />
+      <PresentationMetric
+        label="Percentual de ganho"
+        value={percentFormatter.format(presentation.estimatedCardSaleGainRate)}
+      />
+      <PresentationMetric
+        label="Multiplo de alavancagem"
+        value={`${multipleFormatter.format(presentation.leverageMultiple)}x`}
+      />
+    </PresentationSlide>
+  );
+}
+
 function PresentationHero({
   activeStrategy,
   clientContext,
@@ -395,11 +528,13 @@ function PresentationHero({
 }
 
 function PresentationSlide({
+  action,
   children,
   description,
   eyebrow,
   title,
 }: {
+  action?: React.ReactNode;
   children: React.ReactNode;
   description: string;
   eyebrow: string;
@@ -416,6 +551,7 @@ function PresentationSlide({
       <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">
         {description}
       </p>
+      {action ? <div className="mt-6">{action}</div> : null}
       <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {children}
       </div>
@@ -489,3 +625,41 @@ function PresentationEmpty({ text }: { text: string }) {
   );
 }
 
+function buildOperationPresentation(operation: Operation) {
+  const simulatorInput = toSimulatorInput(operation.formState);
+  const calculation = calculateSimulatorScenarios(simulatorInput);
+
+  return buildSimulatorCommercialPresentation({
+    calculation,
+    input: simulatorInput,
+    selectedScenarioKey: operation.selectedScenarioKey,
+    insuranceOption: operation.insuranceOption,
+    bidType: operation.bidType,
+    contemplationMonth: operation.contemplationMonth,
+  });
+}
+
+function toSimulatorInput(formState: SimulatorSavedFormState): SimulatorInput {
+  return {
+    credit: parsePositiveNumber(formState.credit),
+    administrativeFeeRate:
+      parsePositiveNumber(formState.administrativeFeePercent) / 100,
+    reserveFundRate: parsePositiveNumber(formState.reserveFundPercent) / 100,
+    termMonths: Math.max(
+      1,
+      Math.trunc(parsePositiveNumber(formState.termMonths)),
+    ),
+    monthlyInsuranceRate:
+      parsePositiveNumber(formState.monthlyInsurancePercent) / 100,
+    inccRate: parsePositiveNumber(formState.inccPercent) / 100,
+    cardSaleRate: parsePositiveNumber(formState.cardSalePercent) / 100,
+    embeddedBidRate: parsePositiveNumber(formState.embeddedBidPercent) / 100,
+    cashBidRate: parsePositiveNumber(formState.cashBidPercent) / 100,
+  };
+}
+
+function parsePositiveNumber(value: string) {
+  const normalized = Number(value.replace(",", "."));
+
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : 0;
+}
