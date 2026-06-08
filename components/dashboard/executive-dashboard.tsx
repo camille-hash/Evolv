@@ -38,6 +38,11 @@ import {
   summarizeOperations,
   type Operation,
 } from "@/modules/operations";
+import {
+  loadFollowUpEvents,
+  summarizeFollowUpEvents,
+  type FollowUpEvent,
+} from "@/modules/followup";
 import { buildStrategicRoadmap } from "@/modules/roadmap";
 import { generateEvolvMasterReport } from "@/modules/reports";
 
@@ -100,6 +105,7 @@ export function ExecutiveDashboard({
   const [portfolioSnapshot, setPortfolioSnapshot] =
     useState<PortfolioSnapshot>(emptyPortfolioSnapshot);
   const [operations, setOperations] = useState<Operation[]>([]);
+  const [followUpEvents, setFollowUpEvents] = useState<FollowUpEvent[]>([]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -109,6 +115,7 @@ export function ExecutiveDashboard({
       setPortfolioConsolidation(loadPortfolioConsolidation());
       setPortfolioSnapshot(loadPortfolioSnapshot());
       setOperations(loadOperations());
+      setFollowUpEvents(loadFollowUpEvents());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -172,6 +179,10 @@ export function ExecutiveDashboard({
   const operationsSummary = useMemo(
     () => summarizeOperations(operations),
     [operations],
+  );
+  const followUpSummary = useMemo(
+    () => summarizeFollowUpEvents(followUpEvents),
+    [followUpEvents],
   );
   const roadmap = useMemo(
     () =>
@@ -398,6 +409,27 @@ export function ExecutiveDashboard({
           </div>
         </ExecutiveCard>
 
+        <ExecutiveCard title="Proximos Eventos">
+          <div className="grid gap-4">
+            <DashboardDetail
+              label="Pendentes"
+              value={String(followUpSummary.pendingCount)}
+            />
+            <DashboardDetail
+              label="Proximo evento"
+              value={followUpSummary.nextEvent?.titulo ?? "Nenhum evento"}
+            />
+            <DashboardDetail
+              label="Dias restantes"
+              value={
+                followUpSummary.daysUntilNextEvent === null
+                  ? "-"
+                  : formatDaysRemaining(followUpSummary.daysUntilNextEvent)
+              }
+            />
+          </div>
+        </ExecutiveCard>
+
         <ExecutiveCard title="Estrategia Ativa">
           {activeStrategy ? (
             <div className="grid gap-4">
@@ -585,4 +617,16 @@ function DashboardDetail({ label, value }: { label: string; value: string }) {
       <p className="mt-1 font-medium text-foreground">{value}</p>
     </div>
   );
+}
+
+function formatDaysRemaining(days: number) {
+  if (days === 0) {
+    return "Hoje";
+  }
+
+  if (days > 0) {
+    return `${days} dias`;
+  }
+
+  return `${Math.abs(days)} dias em atraso`;
 }

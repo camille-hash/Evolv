@@ -4,6 +4,7 @@ import {
   BarChart3,
   BriefcaseBusiness,
   Brain,
+  CalendarClock,
   FolderClock,
   Landmark,
   ListChecks,
@@ -24,6 +25,7 @@ export type PlatformSection =
   | "wealth"
   | "intelligence"
   | "roadmap"
+  | "followup"
   | "history";
 
 const navigationItems: Array<{
@@ -40,6 +42,7 @@ const navigationItems: Array<{
   { key: "wealth", label: "Patrimonio", icon: Landmark },
   { key: "intelligence", label: "Inteligencia", icon: Brain },
   { key: "roadmap", label: "Roadmap", icon: Map },
+  { key: "followup", label: "Acompanhamento", icon: CalendarClock },
   { key: "history", label: "Historico", icon: FolderClock },
 ];
 

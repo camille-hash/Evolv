@@ -40,6 +40,11 @@ export const MODULES = [
     description: "Linha estrategica entre cliente, operacoes e metas patrimoniais.",
   },
   {
+    key: "followup",
+    name: "Follow-up",
+    description: "Central local de acompanhamento de eventos e prazos do cliente.",
+  },
+  {
     key: "strategies",
     name: "Strategies",
     description: "Planos patrimoniais e estrategias de evolucao.",
