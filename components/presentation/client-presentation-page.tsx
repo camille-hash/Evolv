@@ -1,7 +1,7 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { buildIntelligenceSummary } from "@/modules/intelligence";
 import { loadOperations, type Operation } from "@/modules/operations";
 import { generateSimulatorCommercialPdf } from "@/modules/reports";
@@ -68,11 +68,13 @@ export function ClientPresentationPage() {
     useState<InsuranceOption>("with-insurance");
   const [bidType, setBidType] = useState<BidType>("none");
   const [contemplationMonth, setContemplationMonth] = useState(1);
+  const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
+  const [scenariosOpen, setScenariosOpen] = useState(false);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       const loadedOperations = loadOperations();
-      const loadedActiveOperation = loadedOperations[0] ?? null;
+      const loadedActiveOperation = resolveActiveOperation(loadedOperations);
 
       setOperations(loadedOperations);
 
@@ -98,8 +100,7 @@ export function ClientPresentationPage() {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  const activeOperation = operations[0] ?? null;
-
+  const activeOperation = resolveActiveOperation(operations);
   const simulatorInput = useMemo(
     () => (activeOperation ? toSimulatorInput(activeOperation.formState) : null),
     [activeOperation],
@@ -207,25 +208,31 @@ export function ClientPresentationPage() {
 
   return (
     <section className="grid gap-6">
-      <MeetingHero operation={activeOperation} presentation={presentation} />
+      <ContemplationHero
+        contemplationMonth={presentation.contemplationMonth}
+        maxContemplationMonth={maxContemplationMonth}
+        onContemplationMonthChange={updateContemplationMonth}
+        operation={activeOperation}
+        presentation={presentation}
+      />
+
+      <CommercialResultGrid presentation={presentation} />
+
+      <CollapsibleScenarios
+        comparisons={scenarioComparisons}
+        isOpen={scenariosOpen}
+        onOpenChange={setScenariosOpen}
+        onScenarioChange={setSelectedScenarioKey}
+        selectedScenarioKey={selectedScenarioKey}
+      />
 
       <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <CommercialControls
-          administratorName={
-            activeOperation.administratorData.selectedAdministratorName ||
-            activeOperation.administradora ||
-            "Personalizada"
-          }
+        <MeetingControls
           bidType={bidType}
-          contemplationMonth={presentation.contemplationMonth}
           insuranceOption={insuranceOption}
           insuranceRequired={activeOperation.administratorData.insuranceRequired}
-          maxContemplationMonth={maxContemplationMonth}
           onBidTypeChange={setBidType}
-          onContemplationMonthChange={updateContemplationMonth}
           onInsuranceOptionChange={handleInsuranceChange}
-          onScenarioChange={setSelectedScenarioKey}
-          selectedScenarioKey={selectedScenarioKey}
         />
 
         <section className="executive-surface rounded-md p-6">
@@ -235,11 +242,11 @@ export function ClientPresentationPage() {
                 Operacao ativa
               </p>
               <h2 className="mt-3 text-2xl font-semibold text-foreground">
-                Apresentacao consultiva
+                Apresentacao ao vivo
               </h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                Os numeros abaixo reagem aos ajustes comerciais feitos durante a
-                conversa.
+                Ajuste os pontos comerciais da conversa e acompanhe a resposta
+                da operacao em tempo real.
               </p>
             </div>
             <Button
@@ -257,44 +264,20 @@ export function ClientPresentationPage() {
             </Button>
           </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            <CommercialMetric
-              label="Parcela antes da contemplacao"
-              value={currencyFormatter.format(
-                presentation.installmentBeforeContemplation,
-              )}
-            />
-            <CommercialMetric
-              label="Parcela pos-contemplacao"
-              value={currencyFormatter.format(
-                presentation.installmentAfterContemplation,
-              )}
-            />
-            <CommercialMetric
-              label="Credito liquido disponivel"
-              value={currencyFormatter.format(presentation.liquidCredit)}
-            />
-            <CommercialMetric
-              label="Valor estimado de venda"
-              value={currencyFormatter.format(
-                presentation.estimatedCardSaleValue,
-              )}
-            />
-            <CommercialMetric
-              label="Percentual de ganho"
-              value={percentFormatter.format(
-                presentation.estimatedCardSaleGainRate,
-              )}
-            />
-            <CommercialMetric
-              label="Mes de contemplacao"
-              value={`Mes ${presentation.contemplationMonth}`}
-            />
-          </div>
+          <TechnicalDetails
+            bidType={bidType}
+            insuranceOption={insuranceOption}
+            isOpen={technicalDetailsOpen}
+            onBidTypeChange={setBidType}
+            onInsuranceOptionChange={handleInsuranceChange}
+            onOpenChange={setTechnicalDetailsOpen}
+            onScenarioChange={setSelectedScenarioKey}
+            operation={activeOperation}
+            selectedScenarioKey={selectedScenarioKey}
+            simulatorInput={simulatorInput}
+          />
         </section>
       </section>
-
-      <ScenarioComparison comparisons={scenarioComparisons} />
 
       {intelligenceSummary ? (
         <OpportunitySection
@@ -307,25 +290,31 @@ export function ClientPresentationPage() {
   );
 }
 
-function MeetingHero({
+function ContemplationHero({
+  contemplationMonth,
+  maxContemplationMonth,
+  onContemplationMonthChange,
   operation,
   presentation,
 }: {
+  contemplationMonth: number;
+  maxContemplationMonth: number;
+  onContemplationMonthChange: (month: number) => void;
   operation: Operation;
   presentation: SimulatorCommercialPresentation;
 }) {
   return (
-    <section className="executive-hero rounded-md p-7 text-primary-foreground sm:p-9">
+    <section className="executive-hero rounded-md p-7 text-center text-primary-foreground sm:p-9">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+        <div className="text-left">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
             EVOLV Intelligence
           </p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-normal sm:text-5xl">
-            Reuniao patrimonial
+          <h1 className="mt-4 text-3xl font-semibold tracking-normal sm:text-4xl">
+            Apresentacao ao vivo
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-primary-foreground/70">
-            {operation.nome} · {presentation.selectedScenarioName} ·{" "}
+            {operation.nome} - {presentation.selectedScenarioName} -{" "}
             {presentation.insuranceLabel}
           </p>
         </div>
@@ -334,54 +323,201 @@ function MeetingHero({
         </div>
       </div>
 
-      <div className="mt-10 grid gap-4 lg:grid-cols-4">
-        <HeroNumber
+      <div className="mx-auto mt-10 max-w-5xl rounded-md border border-primary-foreground/14 bg-primary-foreground/8 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground/66">
+          Mes de contemplacao
+        </p>
+        <div className="mt-5 flex items-center justify-center gap-4">
+          <Button
+            aria-label="Reduzir mes de contemplacao"
+            className="h-12 w-12 border-primary-foreground/18 bg-primary-foreground/10 p-0 text-primary-foreground hover:bg-primary-foreground/15"
+            disabled={contemplationMonth <= 1}
+            onClick={() => onContemplationMonthChange(contemplationMonth - 1)}
+            type="button"
+            variant="secondary"
+          >
+            <Minus className="h-5 w-5" />
+          </Button>
+          <div className="min-w-40">
+            <p className="text-7xl font-semibold leading-none tracking-normal sm:text-8xl">
+              {contemplationMonth}
+            </p>
+            <p className="mt-2 text-sm font-medium uppercase tracking-[0.12em] text-primary-foreground/62">
+              meses
+            </p>
+          </div>
+          <Button
+            aria-label="Aumentar mes de contemplacao"
+            className="h-12 w-12 border-primary-foreground/18 bg-primary-foreground/10 p-0 text-primary-foreground hover:bg-primary-foreground/15"
+            disabled={contemplationMonth >= maxContemplationMonth}
+            onClick={() => onContemplationMonthChange(contemplationMonth + 1)}
+            type="button"
+            variant="secondary"
+          >
+            <Plus className="h-5 w-5" />
+          </Button>
+        </div>
+        <input
+          aria-label="Selecionar mes de contemplacao"
+          className="mt-8 h-2 w-full accent-primary-foreground"
+          max={maxContemplationMonth}
+          min={1}
+          onChange={(event) =>
+            onContemplationMonthChange(Number(event.target.value))
+          }
+          type="range"
+          value={contemplationMonth}
+        />
+        <div className="mt-3 flex justify-between text-xs font-medium text-primary-foreground/56">
+          <span>Mes 1</span>
+          <span>Mes {maxContemplationMonth}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CommercialResultGrid({
+  presentation,
+}: {
+  presentation: SimulatorCommercialPresentation;
+}) {
+  const patrimonialLeverage = calculatePatrimonialLeverage(presentation);
+
+  return (
+    <section className="executive-surface rounded-md p-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Resultado comercial
+      </p>
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CommercialMetric
           label="Credito contratado"
           value={currencyFormatter.format(presentation.contractedCredit)}
         />
-        <HeroNumber
+        <CommercialMetric
+          label="Parcela antes"
+          value={currencyFormatter.format(
+            presentation.installmentBeforeContemplation,
+          )}
+        />
+        <CommercialMetric
+          label="Parcela pos"
+          value={currencyFormatter.format(
+            presentation.installmentAfterContemplation,
+          )}
+        />
+        <CommercialMetric
           label="Investimento ate contemplacao"
           value={currencyFormatter.format(
             presentation.totalInvestedUntilContemplation,
           )}
         />
-        <HeroNumber
-          label="Lucro estimado"
+        <CommercialMetric
+          label="Venda estimada"
+          value={currencyFormatter.format(presentation.estimatedCardSaleValue)}
+        />
+        <CommercialMetric
+          label="Lucro estimado venda da carta"
           value={currencyFormatter.format(presentation.estimatedCardSaleProfit)}
         />
-        <HeroNumber
-          label="Alavancagem"
+        <CommercialMetric
+          label="Ganho percentual"
+          value={percentFormatter.format(presentation.estimatedCardSaleGainRate)}
+        />
+        <CommercialMetric
+          label="Alavancagem venda da carta"
           value={`${multipleFormatter.format(presentation.leverageMultiple)}x`}
+        />
+        <CommercialMetric
+          label="Alavancagem patrimonial"
+          value={percentFormatter.format(patrimonialLeverage)}
         />
       </div>
     </section>
   );
 }
 
-function CommercialControls({
-  administratorName,
-  bidType,
-  contemplationMonth,
-  insuranceOption,
-  insuranceRequired,
-  maxContemplationMonth,
-  onBidTypeChange,
-  onContemplationMonthChange,
-  onInsuranceOptionChange,
+function CollapsibleScenarios({
+  comparisons,
+  isOpen,
+  onOpenChange,
   onScenarioChange,
   selectedScenarioKey,
 }: {
-  administratorName: string;
-  bidType: BidType;
-  contemplationMonth: number;
-  insuranceOption: InsuranceOption;
-  insuranceRequired: boolean;
-  maxContemplationMonth: number;
-  onBidTypeChange: (bidType: BidType) => void;
-  onContemplationMonthChange: (month: number) => void;
-  onInsuranceOptionChange: (insuranceOption: InsuranceOption) => void;
+  comparisons: Array<{
+    key: SimulatorScenarioKey;
+    label: string;
+    presentation: SimulatorCommercialPresentation;
+  }>;
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
   onScenarioChange: (scenarioKey: SimulatorScenarioKey) => void;
   selectedScenarioKey: SimulatorScenarioKey;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Cenarios comerciais
+          </p>
+          <h2 className="mt-3 text-2xl font-semibold text-foreground">
+            Simular alternativas de parcela
+          </h2>
+        </div>
+        <button
+          className="inline-flex h-10 items-center rounded-md border bg-background/70 px-4 text-sm font-medium text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+          onClick={() => onOpenChange(!isOpen)}
+          type="button"
+        >
+          Cenarios
+        </button>
+      </div>
+
+      {isOpen ? (
+        <div className="mt-6 grid gap-6">
+          <div className="grid gap-3 md:grid-cols-3">
+            {scenarioOptions.map((scenario) => (
+              <button
+                className={cn(
+                  "min-h-24 rounded-md border px-5 py-4 text-left transition",
+                  selectedScenarioKey === scenario.key
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "bg-background/70 text-foreground hover:border-primary/40",
+                )}
+                key={scenario.key}
+                onClick={() => onScenarioChange(scenario.key)}
+                type="button"
+              >
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] opacity-70">
+                  Cenario
+                </span>
+                <span className="mt-3 block text-2xl font-semibold">
+                  {scenario.label}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <ScenarioComparison comparisons={comparisons} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MeetingControls({
+  bidType,
+  insuranceOption,
+  insuranceRequired,
+  onBidTypeChange,
+  onInsuranceOptionChange,
+}: {
+  bidType: BidType;
+  insuranceOption: InsuranceOption;
+  insuranceRequired: boolean;
+  onBidTypeChange: (bidType: BidType) => void;
+  onInsuranceOptionChange: (insuranceOption: InsuranceOption) => void;
 }) {
   return (
     <section className="executive-surface rounded-md p-6">
@@ -389,36 +525,14 @@ function CommercialControls({
         Ajustes comerciais
       </p>
       <h2 className="mt-3 text-2xl font-semibold text-foreground">
-        Parametros da conversa
+        Decisoes da conversa
       </h2>
-
-      <div className="mt-6 rounded-md border bg-background/70 p-4">
-        <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-          Administradora
-        </p>
-        <p className="mt-2 text-xl font-semibold text-foreground">
-          {administratorName}
-        </p>
-      </div>
-
-      <ControlGroup label="Cenario">
-        {scenarioOptions.map((scenario) => (
-          <MeetingToggle
-            active={selectedScenarioKey === scenario.key}
-            key={scenario.key}
-            label={scenario.label}
-            onClick={() => onScenarioChange(scenario.key)}
-          />
-        ))}
-      </ControlGroup>
 
       <ControlGroup label="Seguro">
         {insuranceOptions.map((option) => (
           <MeetingToggle
             active={insuranceOption === option.key}
-            disabled={
-              insuranceRequired && option.key === "without-insurance"
-            }
+            disabled={insuranceRequired && option.key === "without-insurance"}
             key={option.key}
             label={option.label}
             onClick={() => onInsuranceOptionChange(option.key)}
@@ -441,42 +555,134 @@ function CommercialControls({
           />
         ))}
       </ControlGroup>
+    </section>
+  );
+}
 
-      <div className="mt-6 rounded-md border bg-background/70 p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              Mes de contemplacao
-            </p>
-            <p className="mt-2 text-3xl font-semibold text-foreground">
-              Mes {contemplationMonth}
-            </p>
+function TechnicalDetails({
+  bidType,
+  insuranceOption,
+  isOpen,
+  onBidTypeChange,
+  onInsuranceOptionChange,
+  onOpenChange,
+  onScenarioChange,
+  operation,
+  selectedScenarioKey,
+  simulatorInput,
+}: {
+  bidType: BidType;
+  insuranceOption: InsuranceOption;
+  isOpen: boolean;
+  onBidTypeChange: (bidType: BidType) => void;
+  onInsuranceOptionChange: (insuranceOption: InsuranceOption) => void;
+  onOpenChange: (isOpen: boolean) => void;
+  onScenarioChange: (scenarioKey: SimulatorScenarioKey) => void;
+  operation: Operation;
+  selectedScenarioKey: SimulatorScenarioKey;
+  simulatorInput: SimulatorInput;
+}) {
+  return (
+    <div className="mt-6 border-t pt-5">
+      <button
+        className="inline-flex h-10 items-center rounded-md border bg-background/70 px-4 text-sm font-medium text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+        onClick={() => onOpenChange(!isOpen)}
+        type="button"
+      >
+        Dados tecnicos
+      </button>
+
+      {isOpen ? (
+        <div className="mt-5 rounded-md border bg-background/70 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Apoio operacional do consultor
+          </p>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <TechnicalMetric
+              label="Credito"
+              value={currencyFormatter.format(simulatorInput.credit)}
+            />
+            <TechnicalMetric
+              label="Administradora"
+              value={
+                operation.administratorData.selectedAdministratorName ||
+                operation.administradora ||
+                "Personalizada"
+              }
+            />
+            <TechnicalMetric
+              label="Taxa administrativa"
+              value={`${operation.formState.administrativeFeePercent}%`}
+            />
+            <TechnicalMetric
+              label="Fundo de reserva"
+              value={`${operation.formState.reserveFundPercent}%`}
+            />
+            <TechnicalMetric
+              label="Prazo"
+              value={`${simulatorInput.termMonths} meses`}
+            />
+            <TechnicalMetric
+              label="Seguro"
+              value={`${operation.formState.monthlyInsurancePercent}% ao mes`}
+            />
+            <TechnicalMetric
+              label="INCC"
+              value={`${operation.formState.inccPercent}%`}
+            />
+            <TechnicalMetric
+              label="Venda da carta"
+              value={`${operation.formState.cardSalePercent}%`}
+            />
+            <TechnicalMetric
+              label="Lance embutido"
+              value={`${operation.formState.embeddedBidPercent}%`}
+            />
+            <TechnicalMetric
+              label="Lance em dinheiro"
+              value={`${operation.formState.cashBidPercent}%`}
+            />
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              aria-label="Reduzir mes de contemplacao"
-              disabled={contemplationMonth <= 1}
-              onClick={() => onContemplationMonthChange(contemplationMonth - 1)}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-            <Button
-              aria-label="Aumentar mes de contemplacao"
-              disabled={contemplationMonth >= maxContemplationMonth}
-              onClick={() => onContemplationMonthChange(contemplationMonth + 1)}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            <ControlGroup label="Cenario">
+              {scenarioOptions.map((scenario) => (
+                <MeetingToggle
+                  active={selectedScenarioKey === scenario.key}
+                  key={scenario.key}
+                  label={scenario.label}
+                  onClick={() => onScenarioChange(scenario.key)}
+                />
+              ))}
+            </ControlGroup>
+            <ControlGroup label="Tipo de lance">
+              {bidOptions.map((option) => (
+                <MeetingToggle
+                  active={bidType === option.key}
+                  key={option.key}
+                  label={option.label}
+                  onClick={() => onBidTypeChange(option.key)}
+                />
+              ))}
+            </ControlGroup>
+            <ControlGroup label="Seguro">
+              {insuranceOptions.map((option) => (
+                <MeetingToggle
+                  active={insuranceOption === option.key}
+                  disabled={
+                    operation.administratorData.insuranceRequired &&
+                    option.key === "without-insurance"
+                  }
+                  key={option.key}
+                  label={option.label}
+                  onClick={() => onInsuranceOptionChange(option.key)}
+                />
+              ))}
+            </ControlGroup>
           </div>
         </div>
-      </div>
-    </section>
+      ) : null}
+    </div>
   );
 }
 
@@ -490,14 +696,11 @@ function ScenarioComparison({
   }>;
 }) {
   return (
-    <section className="executive-surface rounded-md p-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        Cenarios
-      </p>
-      <h2 className="mt-3 text-2xl font-semibold text-foreground">
+    <div>
+      <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         Comparativo comercial
-      </h2>
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      </h3>
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
         {comparisons.map((comparison) => (
           <article
             className="rounded-md border bg-background/70 p-5"
@@ -526,7 +729,7 @@ function ScenarioComparison({
                 )}
               />
               <ComparisonLine
-                label="Lucro"
+                label="Lucro venda carta"
                 value={currencyFormatter.format(
                   comparison.presentation.estimatedCardSaleProfit,
                 )}
@@ -535,7 +738,7 @@ function ScenarioComparison({
           </article>
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -594,26 +797,24 @@ function InsightList({ items, title }: { items: string[]; title: string }) {
   );
 }
 
-function HeroNumber({ label, value }: { label: string; value: string }) {
+function CommercialMetric({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 p-5">
-      <p className="text-xs font-medium uppercase tracking-[0.08em] text-primary-foreground/62">
+    <article className="rounded-md border bg-background/70 p-5">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-4 text-3xl font-semibold tracking-normal text-primary-foreground">
-        {value}
-      </p>
+      <p className="mt-3 text-2xl font-semibold text-foreground">{value}</p>
     </article>
   );
 }
 
-function CommercialMetric({ label, value }: { label: string; value: string }) {
+function TechnicalMetric({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-md border bg-background/70 p-4">
+    <article className="rounded-md border bg-card p-4">
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-3 text-xl font-semibold text-foreground">{value}</p>
+      <p className="mt-2 text-base font-semibold text-foreground">{value}</p>
     </article>
   );
 }
@@ -622,11 +823,11 @@ function ControlGroup({
   children,
   label,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   label: string;
 }) {
   return (
-    <div className="mt-6">
+    <div className="mt-6 first:mt-0">
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
@@ -672,6 +873,12 @@ function ComparisonLine({ label, value }: { label: string; value: string }) {
   );
 }
 
+function resolveActiveOperation(operations: Operation[]) {
+  return operations.find((operation) => operation.status === "active") ??
+    operations[0] ??
+    null;
+}
+
 function toSimulatorInput(formState: SimulatorSavedFormState): SimulatorInput {
   return {
     credit: parsePositiveNumber(formState.credit),
@@ -699,4 +906,16 @@ function parsePositiveNumber(value: string) {
 
 function clampContemplationMonth(month: number, termMonths: number) {
   return Math.min(Math.max(1, Math.trunc(month)), Math.max(1, termMonths));
+}
+
+function calculatePatrimonialLeverage(
+  presentation: SimulatorCommercialPresentation,
+) {
+  if (presentation.liquidCredit <= 0) {
+    return 0;
+  }
+
+  return (
+    presentation.totalInvestedUntilContemplation / presentation.liquidCredit
+  );
 }
