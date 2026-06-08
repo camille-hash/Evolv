@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Plus } from "lucide-react";
+import { WealthMilestoneTimeline } from "@/components/wealth/wealth-milestone-timeline";
 import {
   buildWealthEvolution,
   buildWealthJourney,
@@ -9,7 +10,6 @@ import {
   type WealthEvolutionInput,
 } from "@/modules/wealth";
 import {
-  formatSimulationDate,
   loadSavedSimulations,
   type SimulatorSavedSimulation,
 } from "@/modules/simulator";
@@ -17,6 +17,19 @@ import {
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
+});
+
+const compactCurrencyFormatter = new Intl.NumberFormat("pt-BR", {
+  currency: "BRL",
+  maximumFractionDigits: 0,
+  notation: "compact",
+  style: "currency",
+});
+
+const percentFormatter = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 1,
+  style: "percent",
 });
 
 const emptyWealthInput: WealthEvolutionInput = {
@@ -59,6 +72,14 @@ export function ExecutiveDashboard({
     [wealthEvolution, wealthInput],
   );
   const latestSimulation = savedSimulations[0];
+  const cappedWealthCompletion = Math.min(wealthJourney.completionRate, 1);
+  const passiveIncomeCompletion =
+    wealthEvolution.passiveIncome.completionRate;
+  const cappedPassiveIncomeCompletion = Math.min(passiveIncomeCompletion, 1);
+  const journeySpeed = calculateRequiredJourneySpeed({
+    missingWealth: wealthJourney.missingWealth,
+    termMonths: wealthEvolution.wealth.termMonths,
+  });
 
   return (
     <section className="grid gap-6">
@@ -66,7 +87,7 @@ export function ExecutiveDashboard({
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Dashboard
+              Dashboard executivo
             </p>
             <h1 className="mt-3 text-3xl font-semibold text-foreground">
               EVOLV Intelligence
@@ -86,101 +107,208 @@ export function ExecutiveDashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardMetric
-          label="Patrimonio atual"
-          value={currencyFormatter.format(wealthEvolution.wealth.currentValue)}
-        />
-        <DashboardMetric
-          label="Meta patrimonial"
-          value={currencyFormatter.format(wealthEvolution.wealth.targetValue)}
-        />
-        <DashboardMetric
-          label="Renda passiva atual"
-          value={currencyFormatter.format(
-            wealthEvolution.passiveIncome.currentValue,
-          )}
-        />
-        <DashboardMetric
-          label="Meta de renda passiva"
-          value={currencyFormatter.format(
-            wealthEvolution.passiveIncome.targetValue,
-          )}
-        />
+      <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-8">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Patrimonio projetado
+            </p>
+            <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3">
+              <div>
+                <p className="text-sm text-muted-foreground">Patrimonio atual</p>
+                <p className="mt-1 text-4xl font-semibold text-foreground">
+                  {currencyFormatter.format(wealthJourney.currentWealth)}
+                </p>
+              </div>
+              <div className="pb-1">
+                <p className="text-sm text-muted-foreground">Meta patrimonial</p>
+                <p className="mt-1 text-2xl font-semibold text-primary">
+                  {currencyFormatter.format(wealthJourney.targetWealth)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[360px]">
+            <HeroMetric
+              label="Patrimonio faltante"
+              value={currencyFormatter.format(wealthJourney.missingWealth)}
+            />
+            <HeroMetric
+              label="Prazo da meta"
+              value={`${wealthEvolution.wealth.termMonths} meses`}
+            />
+          </div>
+        </div>
+
+        <div className="mt-7">
+          <div className="mb-3 flex items-center justify-between gap-4 text-sm">
+            <span className="font-medium text-foreground">
+              {percentFormatter.format(wealthJourney.completionRate)} concluido
+            </span>
+            <span className="text-muted-foreground">
+              {percentFormatter.format(wealthJourney.remainingRate)} restante
+            </span>
+          </div>
+          <div className="h-4 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${cappedWealthCompletion * 100}%` }}
+            />
+          </div>
+        </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <article className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-base font-semibold">Ultima simulacao</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Historico operacional deste navegador.
-              </p>
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
-          </div>
+      <WealthMilestoneTimeline
+        compact
+        currentWealth={wealthJourney.currentWealth}
+      />
 
-          {latestSimulation ? (
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <DashboardDetail label="Nome" value={latestSimulation.name} />
-              <DashboardDetail
-                label="Atualizada em"
-                value={formatSimulationDate(latestSimulation.updatedAt)}
-              />
-              <DashboardDetail
-                label="Credito"
-                value={currencyFormatter.format(
-                  latestSimulation.results.contractedCredit,
-                )}
-              />
-              <DashboardDetail
-                label="Lucro estimado"
-                value={currencyFormatter.format(
-                  latestSimulation.results.estimatedCardSaleProfit,
-                )}
-              />
-            </div>
-          ) : (
-            <div className="mt-5 rounded-md border border-dashed bg-background p-5 text-sm text-muted-foreground">
-              Nenhuma simulacao salva ainda.
-            </div>
-          )}
-        </article>
-
-        <article className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
-          <h2 className="text-base font-semibold">Proximo marco patrimonial</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Referencia de evolucao para a jornada.
+      <section className="grid gap-4 xl:grid-cols-3">
+        <ExecutiveCard title="Proximo marco patrimonial">
+          <p className="text-sm text-muted-foreground">Marco</p>
+          <p className="mt-2 text-3xl font-semibold text-primary">
+            {wealthJourney.nextWealthMilestone
+              ? currencyFormatter.format(wealthJourney.nextWealthMilestone.value)
+              : "Meta atingida"}
           </p>
-          <div className="mt-5 rounded-md border bg-primary/[0.03] p-5">
-            <p className="text-sm text-muted-foreground">Marco</p>
-            <p className="mt-2 text-3xl font-semibold text-primary">
-              {wealthJourney.nextWealthMilestone
-                ? currencyFormatter.format(wealthJourney.nextWealthMilestone.value)
-                : "Meta atingida"}
-            </p>
-            <p className="mt-3 text-sm text-muted-foreground">
-              {wealthJourney.nextWealthMilestone
-                ? `${currencyFormatter.format(
-                    wealthJourney.nextWealthMilestone.missingValue,
-                  )} para o proximo marco.`
-                : "Nao ha marco pendente acima do patrimonio atual."}
+          <p className="mt-4 text-sm leading-6 text-muted-foreground">
+            {wealthJourney.nextWealthMilestone
+              ? `${currencyFormatter.format(
+                  wealthJourney.nextWealthMilestone.missingValue,
+                )} ate o proximo marco.`
+              : "Nao ha marco pendente acima do patrimonio atual."}
+          </p>
+        </ExecutiveCard>
+
+        <ExecutiveCard title="Renda passiva">
+          <div className="grid gap-4">
+            <DashboardDetail
+              label="Renda atual"
+              value={currencyFormatter.format(
+                wealthJourney.currentPassiveIncome,
+              )}
+            />
+            <DashboardDetail
+              label="Meta de renda"
+              value={currencyFormatter.format(wealthJourney.targetPassiveIncome)}
+            />
+            <DashboardDetail
+              label="Valor faltante"
+              value={currencyFormatter.format(wealthJourney.missingPassiveIncome)}
+            />
+          </div>
+          <div className="mt-5">
+            <div className="mb-2 flex justify-between text-sm">
+              <span className="font-medium text-foreground">
+                {percentFormatter.format(passiveIncomeCompletion)}
+              </span>
+              <span className="text-muted-foreground">concluido</span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${cappedPassiveIncomeCompletion * 100}%` }}
+              />
+            </div>
+          </div>
+        </ExecutiveCard>
+
+        <ExecutiveCard title="Velocidade da jornada">
+          <p className="text-3xl font-semibold text-foreground">
+            {compactCurrencyFormatter.format(journeySpeed)}
+            <span className="text-base font-medium text-muted-foreground">
+              /mes
+            </span>
+          </p>
+          <p className="mt-4 text-sm leading-6 text-muted-foreground">
+            Necessario evoluir {currencyFormatter.format(journeySpeed)} por mes
+            para atingir a meta no prazo.
+          </p>
+        </ExecutiveCard>
+      </section>
+
+      <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold">Ultima simulacao</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Registro mais recente do historico local.
             </p>
           </div>
-        </article>
+          <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+        </div>
+
+        {latestSimulation ? (
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <DashboardDetail label="Nome" value={latestSimulation.name} />
+            <DashboardDetail
+              label="Administradora"
+              value={latestSimulation.administratorData.selectedAdministratorName}
+            />
+            <DashboardDetail
+              label="Credito"
+              value={currencyFormatter.format(
+                latestSimulation.results.contractedCredit,
+              )}
+            />
+            <DashboardDetail
+              label="Mes contemplacao"
+              value={`Mes ${latestSimulation.contemplationMonth}`}
+            />
+            <DashboardDetail
+              label="Lucro estimado"
+              value={currencyFormatter.format(
+                latestSimulation.results.estimatedCardSaleProfit,
+              )}
+            />
+          </div>
+        ) : (
+          <div className="mt-5 rounded-md border border-dashed bg-background p-5 text-sm text-muted-foreground">
+            Nenhuma simulacao registrada.
+          </div>
+        )}
       </section>
     </section>
   );
 }
 
-function DashboardMetric({ label, value }: { label: string; value: string }) {
+function calculateRequiredJourneySpeed({
+  missingWealth,
+  termMonths,
+}: {
+  missingWealth: number;
+  termMonths: number;
+}) {
+  if (missingWealth <= 0 || termMonths <= 0) {
+    return 0;
+  }
+
+  return missingWealth / termMonths;
+}
+
+function HeroMetric({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-md border bg-card p-5 text-card-foreground">
+    <div className="rounded-md border bg-background p-4">
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-3 text-2xl font-semibold text-foreground">{value}</p>
+      <p className="mt-2 text-xl font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ExecutiveCard({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <article className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <div className="mt-5">{children}</div>
     </article>
   );
 }

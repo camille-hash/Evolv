@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PassiveIncomeTimeline } from "@/components/wealth/passive-income-timeline";
+import { WealthMilestoneTimeline } from "@/components/wealth/wealth-milestone-timeline";
 import {
   buildWealthJourney,
   buildWealthEvolution,
@@ -185,6 +187,13 @@ export function WealthEvolutionPanel() {
           />
         }
       />
+
+      <div className="mt-6 grid gap-4">
+        <WealthMilestoneTimeline currentWealth={journey.currentWealth} />
+        <PassiveIncomeTimeline
+          currentPassiveIncome={journey.currentPassiveIncome}
+        />
+      </div>
     </section>
   );
 
@@ -209,7 +218,7 @@ function WealthJourneySection({
       <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h3 className="text-lg font-semibold text-foreground">
-            Jornada Patrimonial
+            Visao da Jornada
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Onde o cliente esta, quanto falta e quais sao os proximos marcos.

@@ -9,10 +9,13 @@ export {
   type WealthJourney,
 } from "@/modules/wealth/journey";
 export {
+  buildMilestoneSteps,
   findNextMilestone,
   passiveIncomeMilestones,
   wealthMilestones,
   type WealthMilestone,
+  type WealthMilestoneState,
+  type WealthMilestoneStep,
 } from "@/modules/wealth/milestones";
 export {
   loadWealthEvolutionInput,
