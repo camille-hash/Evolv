@@ -1,88 +1,48 @@
 "use client";
 
+import { Minus, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  emptyClientContext,
-  loadClientContext,
-  type ClientContext,
-} from "@/modules/client-context";
-import {
-  consolidatePortfolio,
-  loadPortfolioSnapshot,
-  type PortfolioSnapshot,
-} from "@/modules/portfolio";
-import {
-  buildPortfolioIntelligence,
-  portfolioExpansionPotentialLabels,
-} from "@/modules/portfolio-intelligence";
+import { buildIntelligenceSummary } from "@/modules/intelligence";
 import { loadOperations, type Operation } from "@/modules/operations";
-import {
-  buildConsultativeRecommendations,
-  buildRecommendationWealthInput,
-  calculateRecommendationJourneySpeed,
-} from "@/modules/recommendations";
-import { buildStrategicRoadmap } from "@/modules/roadmap";
+import { generateSimulatorCommercialPdf } from "@/modules/reports";
 import {
   buildSimulatorCommercialPresentation,
   calculateSimulatorScenarios,
-  loadSavedSimulations,
+  type BidType,
+  type InsuranceOption,
   type SimulatorCommercialPresentation,
   type SimulatorInput,
   type SimulatorSavedFormState,
+  type SimulatorScenarioKey,
 } from "@/modules/simulator";
-import { generateSimulatorCommercialPdf } from "@/modules/reports";
-import {
-  listStrategies,
-  strategyTypeLabels,
-  type Strategy,
-} from "@/modules/strategies";
-import {
-  buildWealthEvolution,
-  buildWealthJourney,
-  loadWealthEvolutionInput,
-  type WealthEvolutionInput,
-} from "@/modules/wealth";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-type PresentationSection =
-  | "opening"
-  | "today"
-  | "goal"
-  | "strategy"
-  | "simulation"
-  | "operations"
-  | "results"
-  | "next";
-
-const presentationSections: Array<{
-  key: PresentationSection;
+const scenarioOptions: Array<{
+  key: SimulatorScenarioKey;
   label: string;
 }> = [
-  { key: "opening", label: "1. Abertura" },
-  { key: "today", label: "2. Hoje" },
-  { key: "goal", label: "3. Meta" },
-  { key: "strategy", label: "4. Estrategia" },
-  { key: "simulation", label: "5. Simulacao" },
-  { key: "operations", label: "6. Operacoes" },
-  { key: "results", label: "7. Resultado" },
-  { key: "next", label: "8. Proximos passos" },
+  { key: "full", label: "Parcela Cheia" },
+  { key: "seventy", label: "70%" },
+  { key: "half", label: "50%" },
 ];
 
-const emptyWealthInput: WealthEvolutionInput = {
-  currentWealth: 0,
-  targetWealth: 0,
-  wealthGoalTermMonths: 120,
-  currentPassiveIncome: 0,
-  targetPassiveIncome: 0,
-  passiveIncomeGoalTermMonths: 120,
-  averagePropertyValue: 0,
-  averageLetterValue: 0,
-};
+const insuranceOptions: Array<{
+  key: InsuranceOption;
+  label: string;
+}> = [
+  { key: "with-insurance", label: "Com seguro" },
+  { key: "without-insurance", label: "Sem seguro" },
+];
 
-const emptyPortfolioSnapshot: PortfolioSnapshot = {
-  properties: [],
-  letters: [],
-};
+const bidOptions: Array<{
+  key: BidType;
+  label: string;
+}> = [
+  { key: "none", label: "Sem lance" },
+  { key: "embedded", label: "Lance embutido" },
+  { key: "cash", label: "Lance em dinheiro" },
+];
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
@@ -101,542 +61,615 @@ const multipleFormatter = new Intl.NumberFormat("pt-BR", {
 });
 
 export function ClientPresentationPage() {
-  const [activeSection, setActiveSection] =
-    useState<PresentationSection>("opening");
-  const [clientContext, setClientContext] =
-    useState<ClientContext>(emptyClientContext);
   const [operations, setOperations] = useState<Operation[]>([]);
-  const [portfolioSnapshot, setPortfolioSnapshot] =
-    useState<PortfolioSnapshot>(emptyPortfolioSnapshot);
-  const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [wealthInput, setWealthInput] =
-    useState<WealthEvolutionInput>(emptyWealthInput);
+  const [selectedScenarioKey, setSelectedScenarioKey] =
+    useState<SimulatorScenarioKey>("full");
+  const [insuranceOption, setInsuranceOption] =
+    useState<InsuranceOption>("with-insurance");
+  const [bidType, setBidType] = useState<BidType>("none");
+  const [contemplationMonth, setContemplationMonth] = useState(1);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      setClientContext(loadClientContext());
-      setOperations(loadOperations());
-      setPortfolioSnapshot(loadPortfolioSnapshot());
-      setStrategies(listStrategies());
-      setWealthInput(loadWealthEvolutionInput());
+      const loadedOperations = loadOperations();
+      const loadedActiveOperation = loadedOperations[0] ?? null;
+
+      setOperations(loadedOperations);
+
+      if (loadedActiveOperation) {
+        const simulatorInput = toSimulatorInput(loadedActiveOperation.formState);
+
+        setSelectedScenarioKey(loadedActiveOperation.selectedScenarioKey);
+        setInsuranceOption(
+          loadedActiveOperation.administratorData.insuranceRequired
+            ? "with-insurance"
+            : loadedActiveOperation.insuranceOption,
+        );
+        setBidType(loadedActiveOperation.bidType);
+        setContemplationMonth(
+          clampContemplationMonth(
+            loadedActiveOperation.contemplationMonth,
+            simulatorInput.termMonths,
+          ),
+        );
+      }
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  const activeStrategy = strategies[0] ?? null;
   const activeOperation = operations[0] ?? null;
-  const activeOperationPresentation = useMemo(
-    () => (activeOperation ? buildOperationPresentation(activeOperation) : null),
+
+  const simulatorInput = useMemo(
+    () => (activeOperation ? toSimulatorInput(activeOperation.formState) : null),
     [activeOperation],
   );
-  const presentationWealthInput = useMemo(
-    () => buildRecommendationWealthInput({ clientContext, wealthInput }),
-    [clientContext, wealthInput],
+  const calculation = useMemo(
+    () => (simulatorInput ? calculateSimulatorScenarios(simulatorInput) : null),
+    [simulatorInput],
   );
-  const wealthEvolution = useMemo(
-    () => buildWealthEvolution(presentationWealthInput),
-    [presentationWealthInput],
-  );
-  const wealthJourney = useMemo(
-    () =>
-      buildWealthJourney({
-        evolution: wealthEvolution,
-        input: presentationWealthInput,
+  const presentation = useMemo(() => {
+    if (!activeOperation || !calculation || !simulatorInput) {
+      return null;
+    }
+
+    return buildSimulatorCommercialPresentation({
+      calculation,
+      input: simulatorInput,
+      selectedScenarioKey,
+      insuranceOption,
+      bidType,
+      contemplationMonth,
+    });
+  }, [
+    activeOperation,
+    bidType,
+    calculation,
+    contemplationMonth,
+    insuranceOption,
+    selectedScenarioKey,
+    simulatorInput,
+  ]);
+  const scenarioComparisons = useMemo(() => {
+    if (!calculation || !simulatorInput) {
+      return [];
+    }
+
+    return scenarioOptions.map((scenario) => ({
+      key: scenario.key,
+      label: scenario.label,
+      presentation: buildSimulatorCommercialPresentation({
+        calculation,
+        input: simulatorInput,
+        selectedScenarioKey: scenario.key,
+        insuranceOption,
+        bidType,
+        contemplationMonth,
       }),
-    [presentationWealthInput, wealthEvolution],
-  );
-  const portfolioConsolidation = useMemo(
-    () => consolidatePortfolio(portfolioSnapshot),
-    [portfolioSnapshot],
-  );
-  const portfolioIntelligence = useMemo(
-    () =>
-      buildPortfolioIntelligence({
-        snapshot: portfolioSnapshot,
-        wealthCompletionRate: wealthEvolution.wealth.completionRate,
-      }),
-    [portfolioSnapshot, wealthEvolution.wealth.completionRate],
-  );
-  const roadmap = useMemo(
-    () =>
-      buildStrategicRoadmap({
-        activeStrategy,
-        clientContext,
-        operations,
-        wealthInput: presentationWealthInput,
-      }),
-    [activeStrategy, clientContext, operations, presentationWealthInput],
-  );
-  const journeySpeed = calculateRecommendationJourneySpeed({
-    missingWealth: wealthJourney.missingWealth,
-    termMonths: wealthEvolution.wealth.termMonths,
-  });
-  const recommendations = useMemo(
-    () =>
-      buildConsultativeRecommendations({
-        clientContext,
-        activeStrategy,
-        latestSimulation: loadSavedSimulations()[0] ?? null,
-        wealthJourney,
-        wealthProgress: wealthEvolution.wealth,
-        passiveIncomeProgress: wealthEvolution.passiveIncome,
-        journeySpeed,
-      }),
-    [
-      activeStrategy,
-      clientContext,
-      journeySpeed,
-      wealthEvolution.passiveIncome,
-      wealthEvolution.wealth,
-      wealthJourney,
-    ],
-  );
+    }));
+  }, [bidType, calculation, contemplationMonth, insuranceOption, simulatorInput]);
+  const intelligenceSummary = useMemo(() => {
+    if (!activeOperation || !presentation || !simulatorInput) {
+      return null;
+    }
 
-  return (
-    <section className="grid gap-6">
-      <nav className="flex gap-2 overflow-x-auto pb-1">
-        {presentationSections.map((section) => (
-          <button
-            className={cn(
-              "h-10 shrink-0 rounded-md border px-3 text-sm font-medium transition",
-              activeSection === section.key
-                ? "border-primary bg-primary text-primary-foreground"
-                : "bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
-            )}
-            key={section.key}
-            onClick={() => setActiveSection(section.key)}
-            type="button"
-          >
-            {section.label}
-          </button>
-        ))}
-      </nav>
+    return buildIntelligenceSummary({
+      presentation,
+      selectedScenarioKey,
+      administratorInsuranceRequired:
+        activeOperation.administratorData.insuranceRequired,
+      bidType,
+      embeddedBidRate: simulatorInput.embeddedBidRate ?? 0,
+      cashBidRate: simulatorInput.cashBidRate ?? 0,
+    });
+  }, [
+    activeOperation,
+    bidType,
+    presentation,
+    selectedScenarioKey,
+    simulatorInput,
+  ]);
+  const maxContemplationMonth = simulatorInput?.termMonths ?? 1;
 
-      {activeSection === "opening" ? (
-        <PresentationHero
-          activeStrategy={activeStrategy}
-          clientContext={clientContext}
-        />
-      ) : null}
+  function handleInsuranceChange(nextInsuranceOption: InsuranceOption) {
+    if (
+      nextInsuranceOption === "without-insurance" &&
+      activeOperation?.administratorData.insuranceRequired
+    ) {
+      return;
+    }
 
-      {activeSection === "today" ? (
-        <PresentationSlide
-          eyebrow="Onde estamos hoje"
-          title="A posicao atual do cliente."
-          description="Uma leitura objetiva da base patrimonial antes das proximas decisoes."
-        >
-          <PresentationMetric
-            label="Patrimonio atual"
-            value={currencyFormatter.format(wealthJourney.currentWealth)}
-          />
-          <PresentationMetric
-            label="Renda passiva atual"
-            value={currencyFormatter.format(wealthJourney.currentPassiveIncome)}
-          />
-          <PresentationMetric
-            label="Carteira consolidada"
-            value={currencyFormatter.format(
-              portfolioConsolidation.patrimonioConsolidado,
-            )}
-          />
-          <PresentationMetric
-            label="EVOLV Score"
-            value={`${portfolioIntelligence.evolvScore}/100`}
-          />
-        </PresentationSlide>
-      ) : null}
+    setInsuranceOption(nextInsuranceOption);
+  }
 
-      {activeSection === "goal" ? (
-        <PresentationSlide
-          eyebrow="Para onde vamos"
-          title="A meta patrimonial como destino."
-          description="O plano conecta patrimonio, renda e marcos intermediarios em uma jornada unica."
-        >
-          <PresentationMetric
-            label="Meta patrimonial"
-            value={currencyFormatter.format(wealthJourney.targetWealth)}
-          />
-          <PresentationMetric
-            label="Meta de renda"
-            value={currencyFormatter.format(wealthJourney.targetPassiveIncome)}
-          />
-          <PresentationMetric
-            label="Proximo marco"
-            value={
-              wealthJourney.nextWealthMilestone
-                ? currencyFormatter.format(wealthJourney.nextWealthMilestone.value)
-                : "Meta atingida"
-            }
-          />
-          <PresentationMetric
-            label="Prazo"
-            value={`${wealthEvolution.wealth.termMonths} meses`}
-          />
-        </PresentationSlide>
-      ) : null}
+  function updateContemplationMonth(nextMonth: number) {
+    setContemplationMonth(
+      clampContemplationMonth(nextMonth, maxContemplationMonth),
+    );
+  }
 
-      {activeSection === "strategy" ? (
-        <PresentationSlide
-          eyebrow="Estrategia recomendada"
-          title={activeStrategy?.name ?? "Estrategia ainda nao cadastrada."}
-          description={
-            activeStrategy?.objective ??
-            "Cadastre uma estrategia para orientar as proximas operacoes patrimoniais."
-          }
-        >
-          <PresentationMetric
-            label="Tipo"
-            value={
-              activeStrategy
-                ? strategyTypeLabels[activeStrategy.type]
-                : "Nao definido"
-            }
-          />
-          <PresentationMetric
-            label="Descricao"
-            value={activeStrategy?.description || "Nao informada"}
-          />
-          <PresentationMetric
-            label="Observacoes"
-            value={activeStrategy?.notes || "Sem observacoes"}
-          />
-        </PresentationSlide>
-      ) : null}
-
-      {activeSection === "simulation" ? (
-        <SimulationPresentationSlide
-          operation={activeOperation}
-          presentation={activeOperationPresentation}
-        />
-      ) : null}
-
-      {activeSection === "operations" ? (
-        <PresentationSlide
-          eyebrow="Operacoes planejadas"
-          title="Portfolio de operacoes patrimoniais."
-          description="As operacoes deixam de ser calculadoras isoladas e passam a compor um plano."
-        >
-          <div className="grid gap-3 md:col-span-2 xl:col-span-4">
-            {operations.length > 0 ? (
-              operations.map((operation) => (
-                <OperationPresentationCard
-                  key={operation.id}
-                  operation={operation}
-                />
-              ))
-            ) : (
-              <PresentationEmpty text="Nenhuma operacao planejada." />
-            )}
-          </div>
-        </PresentationSlide>
-      ) : null}
-
-      {activeSection === "results" ? (
-        <PresentationSlide
-          eyebrow="Resultado esperado"
-          title="O que falta para a evolucao planejada."
-          description="Indicadores simples para orientar a conversa de proximos movimentos."
-        >
-          <PresentationMetric
-            label="Patrimonio faltante"
-            value={currencyFormatter.format(wealthJourney.missingWealth)}
-          />
-          <PresentationMetric
-            label="Cartas necessarias"
-            value={String(wealthJourney.requiredLetters)}
-          />
-          <PresentationMetric
-            label="Imoveis necessarios"
-            value={String(wealthJourney.requiredProperties)}
-          />
-          <PresentationMetric
-            label="Velocidade mensal"
-            value={currencyFormatter.format(journeySpeed)}
-          />
-          <PresentationMetric
-            label="Potencial de expansao"
-            value={
-              portfolioExpansionPotentialLabels[
-                portfolioIntelligence.potencialExpansao
-              ]
-            }
-          />
-        </PresentationSlide>
-      ) : null}
-
-      {activeSection === "next" ? (
-        <PresentationSlide
-          eyebrow="Proximos passos"
-          title="Movimentos recomendados para avancar."
-          description={`Proxima etapa do roadmap: ${
-            roadmap.nextStep?.nome ?? "Meta Patrimonial"
-          }.`}
-        >
-          <div className="grid gap-3 md:col-span-2 xl:col-span-4">
-            {recommendations.slice(0, 5).map((recommendation) => (
-              <article
-                className="rounded-md border bg-background/70 p-5"
-                key={recommendation.id}
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  {recommendation.priority}
-                </p>
-                <p className="mt-2 text-base leading-7 text-foreground">
-                  {recommendation.text}
-                </p>
-              </article>
-            ))}
-          </div>
-        </PresentationSlide>
-      ) : null}
-    </section>
-  );
-}
-
-function SimulationPresentationSlide({
-  operation,
-  presentation,
-}: {
-  operation: Operation | null;
-  presentation: SimulatorCommercialPresentation | null;
-}) {
-  if (!operation || !presentation) {
+  if (!activeOperation || !presentation || !simulatorInput) {
     return (
-      <PresentationSlide
-        eyebrow="Simulacao"
-        title="Nenhuma operacao ativa para apresentar."
-        description="Crie uma operacao no workspace de Simulacoes para exibir a leitura comercial ao cliente."
-      >
-        <div className="md:col-span-2 xl:col-span-4">
-          <PresentationEmpty text="A simulacao comercial aparecera aqui quando houver uma operacao cadastrada." />
-        </div>
-      </PresentationSlide>
+      <section className="executive-surface rounded-md p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Apresentacao ao cliente
+        </p>
+        <h2 className="mt-5 text-3xl font-semibold text-foreground">
+          Nenhuma operacao ativa para apresentacao.
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+          Crie ou selecione uma operacao na area de Simulacoes para iniciar a
+          reuniao consultiva.
+        </p>
+      </section>
     );
   }
 
   return (
-    <PresentationSlide
-      eyebrow="Simulacao"
-      title="Leitura comercial da operacao atual."
-      description="Resumo da simulacao em linguagem executiva, sem parametros tecnicos internos."
-      action={
-        <button
-          className="inline-flex h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-          onClick={() =>
-            generateSimulatorCommercialPdf({
-              presentation,
-              simulationName: operation.nome,
-              commercialData: operation.commercialData,
-              simulationDate: operation.updatedAt,
-            })
+    <section className="grid gap-6">
+      <MeetingHero operation={activeOperation} presentation={presentation} />
+
+      <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+        <CommercialControls
+          administratorName={
+            activeOperation.administratorData.selectedAdministratorName ||
+            activeOperation.administradora ||
+            "Personalizada"
           }
-          type="button"
-        >
-          Gerar PDF da Simulacao
-        </button>
-      }
-    >
-      <PresentationMetric
-        label="Administradora"
-        value={operation.administradora || "Nao definida"}
-      />
-      <PresentationMetric
-        label="Credito contratado"
-        value={currencyFormatter.format(presentation.contractedCredit)}
-      />
-      <PresentationMetric
-        label="Cenario selecionado"
-        value={presentation.selectedScenarioName}
-      />
-      <PresentationMetric
-        label="Opcao de seguro"
-        value={presentation.insuranceLabel}
-      />
-      <PresentationMetric label="Tipo de lance" value={presentation.bidLabel} />
-      <PresentationMetric
-        label="Mes de contemplacao"
-        value={`Mes ${presentation.contemplationMonth}`}
-      />
-      <PresentationMetric
-        label="Parcela antes"
-        value={currencyFormatter.format(
-          presentation.installmentBeforeContemplation,
-        )}
-      />
-      <PresentationMetric
-        label="Parcela pos"
-        value={currencyFormatter.format(
-          presentation.installmentAfterContemplation,
-        )}
-      />
-      <PresentationMetric
-        label="Credito liquido"
-        value={currencyFormatter.format(presentation.liquidCredit)}
-      />
-      <PresentationMetric
-        label="Venda estimada"
-        value={currencyFormatter.format(presentation.estimatedCardSaleValue)}
-      />
-      <PresentationMetric
-        label="Lucro estimado"
-        value={currencyFormatter.format(presentation.estimatedCardSaleProfit)}
-      />
-      <PresentationMetric
-        label="Percentual de ganho"
-        value={percentFormatter.format(presentation.estimatedCardSaleGainRate)}
-      />
-      <PresentationMetric
-        label="Multiplo de alavancagem"
-        value={`${multipleFormatter.format(presentation.leverageMultiple)}x`}
-      />
-    </PresentationSlide>
+          bidType={bidType}
+          contemplationMonth={presentation.contemplationMonth}
+          insuranceOption={insuranceOption}
+          insuranceRequired={activeOperation.administratorData.insuranceRequired}
+          maxContemplationMonth={maxContemplationMonth}
+          onBidTypeChange={setBidType}
+          onContemplationMonthChange={updateContemplationMonth}
+          onInsuranceOptionChange={handleInsuranceChange}
+          onScenarioChange={setSelectedScenarioKey}
+          selectedScenarioKey={selectedScenarioKey}
+        />
+
+        <section className="executive-surface rounded-md p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Operacao ativa
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold text-foreground">
+                Apresentacao consultiva
+              </h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                Os numeros abaixo reagem aos ajustes comerciais feitos durante a
+                conversa.
+              </p>
+            </div>
+            <Button
+              onClick={() =>
+                generateSimulatorCommercialPdf({
+                  presentation,
+                  simulationName: activeOperation.nome,
+                  commercialData: activeOperation.commercialData,
+                  simulationDate: activeOperation.updatedAt,
+                })
+              }
+              type="button"
+            >
+              Gerar PDF da Simulacao
+            </Button>
+          </div>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-2">
+            <CommercialMetric
+              label="Parcela antes da contemplacao"
+              value={currencyFormatter.format(
+                presentation.installmentBeforeContemplation,
+              )}
+            />
+            <CommercialMetric
+              label="Parcela pos-contemplacao"
+              value={currencyFormatter.format(
+                presentation.installmentAfterContemplation,
+              )}
+            />
+            <CommercialMetric
+              label="Credito liquido disponivel"
+              value={currencyFormatter.format(presentation.liquidCredit)}
+            />
+            <CommercialMetric
+              label="Valor estimado de venda"
+              value={currencyFormatter.format(
+                presentation.estimatedCardSaleValue,
+              )}
+            />
+            <CommercialMetric
+              label="Percentual de ganho"
+              value={percentFormatter.format(
+                presentation.estimatedCardSaleGainRate,
+              )}
+            />
+            <CommercialMetric
+              label="Mes de contemplacao"
+              value={`Mes ${presentation.contemplationMonth}`}
+            />
+          </div>
+        </section>
+      </section>
+
+      <ScenarioComparison comparisons={scenarioComparisons} />
+
+      {intelligenceSummary ? (
+        <OpportunitySection
+          executiveSummary={intelligenceSummary.executiveSummary}
+          insights={intelligenceSummary.insights}
+          opportunities={intelligenceSummary.opportunities}
+        />
+      ) : null}
+    </section>
   );
 }
 
-function PresentationHero({
-  activeStrategy,
-  clientContext,
+function MeetingHero({
+  operation,
+  presentation,
 }: {
-  activeStrategy: Strategy | null;
-  clientContext: ClientContext;
+  operation: Operation;
+  presentation: SimulatorCommercialPresentation;
 }) {
   return (
-    <section className="executive-hero min-h-[560px] rounded-md p-7 text-primary-foreground sm:p-10">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
-        EVOLV Intelligence
-      </p>
-      <h2 className="mt-8 max-w-4xl text-5xl font-semibold tracking-normal">
-        Planejamento Patrimonial
-      </h2>
-      <div className="mt-12 grid gap-4 md:grid-cols-3">
-        <PresentationHeroMetric
-          label="Cliente"
-          value={clientContext.nome || "Cliente nao informado"}
+    <section className="executive-hero rounded-md p-7 text-primary-foreground sm:p-9">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
+            EVOLV Intelligence
+          </p>
+          <h1 className="mt-4 text-4xl font-semibold tracking-normal sm:text-5xl">
+            Reuniao patrimonial
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-primary-foreground/70">
+            {operation.nome} · {presentation.selectedScenarioName} ·{" "}
+            {presentation.insuranceLabel}
+          </p>
+        </div>
+        <div className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 px-4 py-3 text-sm text-primary-foreground/74">
+          {presentation.bidLabel}
+        </div>
+      </div>
+
+      <div className="mt-10 grid gap-4 lg:grid-cols-4">
+        <HeroNumber
+          label="Credito contratado"
+          value={currencyFormatter.format(presentation.contractedCredit)}
         />
-        <PresentationHeroMetric
-          label="Perfil"
-          value={clientContext.perfil || "Perfil nao definido"}
+        <HeroNumber
+          label="Investimento ate contemplacao"
+          value={currencyFormatter.format(
+            presentation.totalInvestedUntilContemplation,
+          )}
         />
-        <PresentationHeroMetric
-          label="Estrategia ativa"
-          value={activeStrategy?.name ?? "Nao definida"}
+        <HeroNumber
+          label="Lucro estimado"
+          value={currencyFormatter.format(presentation.estimatedCardSaleProfit)}
+        />
+        <HeroNumber
+          label="Alavancagem"
+          value={`${multipleFormatter.format(presentation.leverageMultiple)}x`}
         />
       </div>
     </section>
   );
 }
 
-function PresentationSlide({
-  action,
-  children,
-  description,
-  eyebrow,
-  title,
+function CommercialControls({
+  administratorName,
+  bidType,
+  contemplationMonth,
+  insuranceOption,
+  insuranceRequired,
+  maxContemplationMonth,
+  onBidTypeChange,
+  onContemplationMonthChange,
+  onInsuranceOptionChange,
+  onScenarioChange,
+  selectedScenarioKey,
 }: {
-  action?: React.ReactNode;
-  children: React.ReactNode;
-  description: string;
-  eyebrow: string;
-  title: string;
+  administratorName: string;
+  bidType: BidType;
+  contemplationMonth: number;
+  insuranceOption: InsuranceOption;
+  insuranceRequired: boolean;
+  maxContemplationMonth: number;
+  onBidTypeChange: (bidType: BidType) => void;
+  onContemplationMonthChange: (month: number) => void;
+  onInsuranceOptionChange: (insuranceOption: InsuranceOption) => void;
+  onScenarioChange: (scenarioKey: SimulatorScenarioKey) => void;
+  selectedScenarioKey: SimulatorScenarioKey;
 }) {
   return (
-    <section className="executive-surface min-h-[560px] rounded-md p-7 text-card-foreground sm:p-10">
+    <section className="executive-surface rounded-md p-6">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {eyebrow}
+        Ajustes comerciais
       </p>
-      <h2 className="mt-5 max-w-4xl text-4xl font-semibold tracking-normal text-foreground">
-        {title}
+      <h2 className="mt-3 text-2xl font-semibold text-foreground">
+        Parametros da conversa
       </h2>
-      <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">
-        {description}
-      </p>
-      {action ? <div className="mt-6">{action}</div> : null}
-      <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {children}
+
+      <div className="mt-6 rounded-md border bg-background/70 p-4">
+        <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+          Administradora
+        </p>
+        <p className="mt-2 text-xl font-semibold text-foreground">
+          {administratorName}
+        </p>
+      </div>
+
+      <ControlGroup label="Cenario">
+        {scenarioOptions.map((scenario) => (
+          <MeetingToggle
+            active={selectedScenarioKey === scenario.key}
+            key={scenario.key}
+            label={scenario.label}
+            onClick={() => onScenarioChange(scenario.key)}
+          />
+        ))}
+      </ControlGroup>
+
+      <ControlGroup label="Seguro">
+        {insuranceOptions.map((option) => (
+          <MeetingToggle
+            active={insuranceOption === option.key}
+            disabled={
+              insuranceRequired && option.key === "without-insurance"
+            }
+            key={option.key}
+            label={option.label}
+            onClick={() => onInsuranceOptionChange(option.key)}
+          />
+        ))}
+      </ControlGroup>
+      {insuranceRequired ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Seguro obrigatorio nesta administradora.
+        </p>
+      ) : null}
+
+      <ControlGroup label="Tipo de lance">
+        {bidOptions.map((option) => (
+          <MeetingToggle
+            active={bidType === option.key}
+            key={option.key}
+            label={option.label}
+            onClick={() => onBidTypeChange(option.key)}
+          />
+        ))}
+      </ControlGroup>
+
+      <div className="mt-6 rounded-md border bg-background/70 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Mes de contemplacao
+            </p>
+            <p className="mt-2 text-3xl font-semibold text-foreground">
+              Mes {contemplationMonth}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              aria-label="Reduzir mes de contemplacao"
+              disabled={contemplationMonth <= 1}
+              onClick={() => onContemplationMonthChange(contemplationMonth - 1)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <Button
+              aria-label="Aumentar mes de contemplacao"
+              disabled={contemplationMonth >= maxContemplationMonth}
+              onClick={() => onContemplationMonthChange(contemplationMonth + 1)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-function PresentationMetric({ label, value }: { label: string; value: string }) {
+function ScenarioComparison({
+  comparisons,
+}: {
+  comparisons: Array<{
+    key: SimulatorScenarioKey;
+    label: string;
+    presentation: SimulatorCommercialPresentation;
+  }>;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Cenarios
+      </p>
+      <h2 className="mt-3 text-2xl font-semibold text-foreground">
+        Comparativo comercial
+      </h2>
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        {comparisons.map((comparison) => (
+          <article
+            className="rounded-md border bg-background/70 p-5"
+            key={comparison.key}
+          >
+            <p className="text-sm font-semibold text-foreground">
+              {comparison.label}
+            </p>
+            <div className="mt-5 grid gap-3">
+              <ComparisonLine
+                label="Parcela antes"
+                value={currencyFormatter.format(
+                  comparison.presentation.installmentBeforeContemplation,
+                )}
+              />
+              <ComparisonLine
+                label="Parcela pos"
+                value={currencyFormatter.format(
+                  comparison.presentation.installmentAfterContemplation,
+                )}
+              />
+              <ComparisonLine
+                label="Investimento"
+                value={currencyFormatter.format(
+                  comparison.presentation.totalInvestedUntilContemplation,
+                )}
+              />
+              <ComparisonLine
+                label="Lucro"
+                value={currencyFormatter.format(
+                  comparison.presentation.estimatedCardSaleProfit,
+                )}
+              />
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OpportunitySection({
+  executiveSummary,
+  insights,
+  opportunities,
+}: {
+  executiveSummary: string;
+  insights: string[];
+  opportunities: string[];
+}) {
+  return (
+    <section className="executive-surface rounded-md p-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Oportunidade patrimonial
+      </p>
+      <h2 className="mt-3 text-2xl font-semibold text-foreground">
+        Leitura EVOLV
+      </h2>
+      <p className="mt-4 max-w-4xl text-base leading-7 text-foreground">
+        {executiveSummary}
+      </p>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <InsightList title="Principais insights" items={insights} />
+        <InsightList title="Oportunidades" items={opportunities} />
+      </div>
+    </section>
+  );
+}
+
+function InsightList({ items, title }: { items: string[]; title: string }) {
   return (
     <article className="rounded-md border bg-background/70 p-5">
-      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-3 text-2xl font-semibold text-foreground">{value}</p>
+      <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {title}
+      </h3>
+      <div className="mt-4 grid gap-3">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <p
+              className="rounded-md bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground"
+              key={item}
+            >
+              {item}
+            </p>
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Nenhum destaque automatico para este criterio.
+          </p>
+        )}
+      </div>
     </article>
   );
 }
 
-function PresentationHeroMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function HeroNumber({ label, value }: { label: string; value: string }) {
   return (
     <article className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 p-5">
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-primary-foreground/62">
         {label}
       </p>
-      <p className="mt-3 text-2xl font-semibold text-primary-foreground">
+      <p className="mt-4 text-3xl font-semibold tracking-normal text-primary-foreground">
         {value}
       </p>
     </article>
   );
 }
 
-function OperationPresentationCard({ operation }: { operation: Operation }) {
+function CommercialMetric({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-md border bg-background/70 p-5">
-      <div className="grid gap-4 md:grid-cols-4">
-        <PresentationInline label="Nome" value={operation.nome} />
-        <PresentationInline
-          label="Administradora"
-          value={operation.administradora}
-        />
-        <PresentationInline
-          label="Credito"
-          value={currencyFormatter.format(operation.credito)}
-        />
-        <PresentationInline label="Status" value={operation.status} />
-      </div>
+    <article className="rounded-md border bg-background/70 p-4">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-3 text-xl font-semibold text-foreground">{value}</p>
     </article>
   );
 }
 
-function PresentationInline({ label, value }: { label: string; value: string }) {
+function ControlGroup({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
   return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 font-medium text-foreground">{value}</p>
+    <div className="mt-6">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">{children}</div>
     </div>
   );
 }
 
-function PresentationEmpty({ text }: { text: string }) {
+function MeetingToggle({
+  active,
+  disabled,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <div className="rounded-md border border-dashed bg-background/70 p-5 text-sm text-muted-foreground">
-      {text}
-    </div>
+    <button
+      className={cn(
+        "h-10 rounded-md border px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
   );
 }
 
-function buildOperationPresentation(operation: Operation) {
-  const simulatorInput = toSimulatorInput(operation.formState);
-  const calculation = calculateSimulatorScenarios(simulatorInput);
-
-  return buildSimulatorCommercialPresentation({
-    calculation,
-    input: simulatorInput,
-    selectedScenarioKey: operation.selectedScenarioKey,
-    insuranceOption: operation.insuranceOption,
-    bidType: operation.bidType,
-    contemplationMonth: operation.contemplationMonth,
-  });
+function ComparisonLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-t pt-3 first:border-t-0 first:pt-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm font-semibold text-foreground">{value}</span>
+    </div>
+  );
 }
 
 function toSimulatorInput(formState: SimulatorSavedFormState): SimulatorInput {
@@ -662,4 +695,8 @@ function parsePositiveNumber(value: string) {
   const normalized = Number(value.replace(",", "."));
 
   return Number.isFinite(normalized) && normalized > 0 ? normalized : 0;
+}
+
+function clampContemplationMonth(month: number, termMonths: number) {
+  return Math.min(Math.max(1, Math.trunc(month)), Math.max(1, termMonths));
 }
