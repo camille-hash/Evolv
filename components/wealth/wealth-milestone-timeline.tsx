@@ -44,7 +44,7 @@ function MilestoneTimeline({
   const normalizedSteps = compact ? getCompactSteps(steps) : steps;
 
   return (
-    <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+    <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-semibold">{title}</h3>
         <p className="text-sm text-muted-foreground">
@@ -78,16 +78,16 @@ function MilestoneItem({ step }: { step: WealthMilestoneStep }) {
   return (
     <article
       className={cn(
-        "relative rounded-md border bg-background p-4",
-        step.state === "completed" && "border-primary/30 bg-primary/[0.03]",
-        step.state === "next" && "border-primary bg-primary/[0.06]",
+        "relative rounded-md border bg-background/70 p-4",
+        step.state === "completed" && "border-primary/30 bg-primary/[0.035]",
+        step.state === "next" && "border-brand-gold bg-brand-gold/[0.12]",
       )}
     >
       <div
         className={cn(
           "mb-4 h-2 w-10 rounded-full bg-muted",
           step.state === "completed" && "bg-primary",
-          step.state === "next" && "bg-primary",
+          step.state === "next" && "bg-brand-gold",
         )}
       />
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">

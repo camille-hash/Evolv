@@ -13,6 +13,11 @@ import {
   loadSavedSimulations,
   type SimulatorSavedSimulation,
 } from "@/modules/simulator";
+import {
+  listStrategies,
+  strategyTypeLabels,
+  type Strategy,
+} from "@/modules/strategies";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -51,12 +56,14 @@ export function ExecutiveDashboard({
   const [savedSimulations, setSavedSimulations] = useState<
     SimulatorSavedSimulation[]
   >([]);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [wealthInput, setWealthInput] =
     useState<WealthEvolutionInput>(emptyWealthInput);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setSavedSimulations(loadSavedSimulations());
+      setStrategies(listStrategies());
       setWealthInput(loadWealthEvolutionInput());
     }, 0);
 
@@ -72,6 +79,7 @@ export function ExecutiveDashboard({
     [wealthEvolution, wealthInput],
   );
   const latestSimulation = savedSimulations[0];
+  const activeStrategy = strategies[0];
   const cappedWealthCompletion = Math.min(wealthJourney.completionRate, 1);
   const passiveIncomeCompletion =
     wealthEvolution.passiveIncome.completionRate;
@@ -83,21 +91,28 @@ export function ExecutiveDashboard({
 
   return (
     <section className="grid gap-6">
-      <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-8">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Dashboard executivo
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold text-foreground">
+      <section className="executive-hero overflow-hidden rounded-md p-6 text-primary-foreground sm:p-8">
+        <div className="flex flex-col gap-7 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex items-center gap-3">
+              <div className="brand-mark border-brand-gold/60 bg-primary-foreground/8">
+                EV
+              </div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary-foreground/70">
+                Inteligencia Patrimonial
+              </p>
+            </div>
+            <h1 className="mt-6 text-4xl font-semibold tracking-normal sm:text-5xl">
               EVOLV Intelligence
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Planejamento patrimonial e simulacoes estrategicas.
+            <p className="mt-5 max-w-2xl text-base leading-7 text-primary-foreground/78">
+              Planejamento patrimonial. Estrategias de crescimento. Evolucao de
+              patrimonio.
             </p>
           </div>
+
           <button
-            className="inline-flex h-10 w-fit items-center justify-center gap-2 rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+            className="inline-flex h-11 w-fit items-center justify-center gap-2 rounded-md border border-brand-gold/50 bg-brand-gold px-4 text-sm font-medium text-brand-ink transition hover:bg-brand-gold/90"
             onClick={onCreateSimulation}
             type="button"
           >
@@ -105,57 +120,46 @@ export function ExecutiveDashboard({
             Criar simulacao
           </button>
         </div>
-      </section>
 
-      <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-8">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Patrimonio projetado
-            </p>
-            <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3">
-              <div>
-                <p className="text-sm text-muted-foreground">Patrimonio atual</p>
-                <p className="mt-1 text-4xl font-semibold text-foreground">
-                  {currencyFormatter.format(wealthJourney.currentWealth)}
-                </p>
-              </div>
-              <div className="pb-1">
-                <p className="text-sm text-muted-foreground">Meta patrimonial</p>
-                <p className="mt-1 text-2xl font-semibold text-primary">
-                  {currencyFormatter.format(wealthJourney.targetWealth)}
-                </p>
-              </div>
-            </div>
+        <div className="mt-10 grid gap-3 md:grid-cols-3">
+          <HeroMetric
+            label="Patrimonio atual"
+            value={currencyFormatter.format(wealthJourney.currentWealth)}
+          />
+          <HeroMetric
+            label="Meta patrimonial"
+            value={currencyFormatter.format(wealthJourney.targetWealth)}
+          />
+          <HeroMetric
+            label="Progresso"
+            value={percentFormatter.format(wealthJourney.completionRate)}
+          />
+        </div>
+
+        <div className="mt-7">
+          <div className="mb-3 flex items-center justify-between gap-4 text-sm text-primary-foreground/82">
+            <span className="font-medium">
+              {percentFormatter.format(wealthJourney.completionRate)} concluido
+            </span>
+            <span>{percentFormatter.format(wealthJourney.remainingRate)} restante</span>
           </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[360px]">
-            <HeroMetric
-              label="Patrimonio faltante"
-              value={currencyFormatter.format(wealthJourney.missingWealth)}
-            />
-            <HeroMetric
-              label="Prazo da meta"
-              value={`${wealthEvolution.wealth.termMonths} meses`}
+          <div className="h-4 overflow-hidden rounded-full bg-primary-foreground/14">
+            <div
+              className="h-full rounded-full bg-brand-gold transition-all"
+              style={{ width: `${cappedWealthCompletion * 100}%` }}
             />
           </div>
         </div>
 
-        <div className="mt-7">
-          <div className="mb-3 flex items-center justify-between gap-4 text-sm">
-            <span className="font-medium text-foreground">
-              {percentFormatter.format(wealthJourney.completionRate)} concluido
-            </span>
-            <span className="text-muted-foreground">
-              {percentFormatter.format(wealthJourney.remainingRate)} restante
-            </span>
-          </div>
-          <div className="h-4 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${cappedWealthCompletion * 100}%` }}
-            />
-          </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <HeroMetric
+            label="Patrimonio faltante"
+            value={currencyFormatter.format(wealthJourney.missingWealth)}
+          />
+          <HeroMetric
+            label="Prazo da meta"
+            value={`${wealthEvolution.wealth.termMonths} meses`}
+          />
         </div>
       </section>
 
@@ -165,6 +169,26 @@ export function ExecutiveDashboard({
       />
 
       <section className="grid gap-4 xl:grid-cols-3">
+        <ExecutiveCard title="Estrategia Ativa">
+          {activeStrategy ? (
+            <div className="grid gap-4">
+              <DashboardDetail label="Nome" value={activeStrategy.name} />
+              <DashboardDetail
+                label="Tipo"
+                value={strategyTypeLabels[activeStrategy.type]}
+              />
+              <DashboardDetail
+                label="Objetivo"
+                value={activeStrategy.objective}
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma estrategia cadastrada.
+            </p>
+          )}
+        </ExecutiveCard>
+
         <ExecutiveCard title="Proximo marco patrimonial">
           <p className="text-sm text-muted-foreground">Marco</p>
           <p className="mt-2 text-3xl font-semibold text-primary">
@@ -228,7 +252,7 @@ export function ExecutiveDashboard({
         </ExecutiveCard>
       </section>
 
-      <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold">Ultima simulacao</h2>
@@ -289,11 +313,13 @@ function calculateRequiredJourneySpeed({
 
 function HeroMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border bg-background p-4">
-      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+    <div className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 p-4">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-primary-foreground/62">
         {label}
       </p>
-      <p className="mt-2 text-xl font-semibold text-foreground">{value}</p>
+      <p className="mt-2 text-xl font-semibold text-primary-foreground">
+        {value}
+      </p>
     </div>
   );
 }
@@ -306,7 +332,7 @@ function ExecutiveCard({
   title: string;
 }) {
   return (
-    <article className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+    <article className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
       <h2 className="text-base font-semibold">{title}</h2>
       <div className="mt-5">{children}</div>
     </article>

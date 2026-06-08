@@ -6,6 +6,7 @@ import {
   type PlatformSection,
 } from "@/components/layout/app-sidebar";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
+import { StrategiesPage } from "@/components/strategies/strategies-page";
 import {
   SimulatorPanel,
   type SimulatorPanelPage,
@@ -22,11 +23,15 @@ const simulatorPageBySection: Partial<Record<PlatformSection, SimulatorPanelPage
 const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> = {
   dashboard: {
     title: "EVOLV Intelligence",
-    subtitle: "Planejamento patrimonial e simulacoes estrategicas",
+    subtitle: "Planejamento patrimonial, estrategias de crescimento e evolucao de patrimonio",
   },
   simulations: {
     title: "Simulacoes estrategicas",
     subtitle: "Apresentacao consultiva para cenarios patrimoniais",
+  },
+  strategies: {
+    title: "Estrategias patrimoniais",
+    subtitle: "Planos de evolucao para diferentes objetivos patrimoniais",
   },
   wealth: {
     title: "Evolucao patrimonial",
@@ -41,7 +46,7 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
     subtitle: "Simulacoes salvas neste navegador",
   },
   settings: {
-    title: "Configuracoes",
+    title: "Governanca da Plataforma",
     subtitle: "Parametros tecnicos e administradoras",
   },
 };
@@ -53,7 +58,7 @@ export default function Home() {
   const pageTitle = pageTitles[activeSection];
 
   return (
-    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[260px_1fr]">
+    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[280px_1fr]">
       <AppSidebar
         activeSection={activeSection}
         onNavigate={setActiveSection}
@@ -64,7 +69,7 @@ export default function Home() {
           <p className="text-sm font-medium uppercase tracking-[0.08em] text-muted-foreground">
             EVOLV
           </p>
-          <h1 className="mt-3 text-3xl font-semibold text-foreground">
+          <h1 className="mt-3 text-3xl font-semibold tracking-normal text-foreground">
             {pageTitle.title}
           </h1>
           <p className="mt-3 text-base leading-7 text-muted-foreground">
@@ -77,6 +82,8 @@ export default function Home() {
             onCreateSimulation={() => setActiveSection("simulations")}
           />
         ) : null}
+
+        {activeSection === "strategies" ? <StrategiesPage /> : null}
 
         {currentSimulatorPage ? (
           <SimulatorPanel

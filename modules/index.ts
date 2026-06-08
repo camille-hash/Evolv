@@ -20,6 +20,11 @@ export const MODULES = [
     description: "Metas patrimoniais e evolucao de renda passiva.",
   },
   {
+    key: "strategies",
+    name: "Strategies",
+    description: "Planos patrimoniais e estrategias de evolucao.",
+  },
+  {
     key: "properties",
     name: "Properties",
     description: "Placeholder arquitetural.",

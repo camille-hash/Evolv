@@ -1,26 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #111827;
-  --card: #ffffff;
-  --card-foreground: #111827;
+  --background: #f4f1ea;
+  --foreground: #151a18;
+  --card: #fffcf7;
+  --card-foreground: #151a18;
   --popover: #ffffff;
-  --popover-foreground: #111827;
-  --primary: #0f766e;
+  --popover-foreground: #151a18;
+  --primary: #123f3a;
   --primary-foreground: #ffffff;
-  --secondary: #e5e7eb;
-  --secondary-foreground: #111827;
-  --muted: #eef2f7;
-  --muted-foreground: #64748b;
-  --accent: #e0f2fe;
-  --accent-foreground: #0f172a;
-  --destructive: #dc2626;
+  --secondary: #ded6c8;
+  --secondary-foreground: #151a18;
+  --muted: #ebe5da;
+  --muted-foreground: #6f766f;
+  --accent: #d7c08d;
+  --accent-foreground: #1f2a24;
+  --destructive: #a33b30;
   --destructive-foreground: #ffffff;
-  --border: #d7dee8;
-  --input: #d7dee8;
-  --ring: #0f766e;
-  --radius: 0.5rem;
+  --border: #d9d0c2;
+  --input: #d9d0c2;
+  --ring: #123f3a;
+  --brand-ink: #0d2421;
+  --brand-forest: #123f3a;
+  --brand-gold: #b99a55;
+  --brand-ivory: #fffcf7;
+  --brand-stone: #d9d0c2;
+  --shadow-executive: 0 18px 45px rgba(18, 63, 58, 0.08);
+  --shadow-soft: 0 10px 28px rgba(21, 26, 24, 0.06);
+  --radius: 0.625rem;
 }
 
 @theme inline {
@@ -43,6 +50,11 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-forest: var(--brand-forest);
+  --color-brand-gold: var(--brand-gold);
+  --color-brand-ivory: var(--brand-ivory);
+  --color-brand-stone: var(--brand-stone);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -56,5 +68,35 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  letter-spacing: 0;
+}
+
+.executive-surface {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+}
+
+.executive-hero {
+  background:
+    linear-gradient(135deg, rgba(18, 63, 58, 0.98), rgba(13, 36, 33, 0.96)),
+    var(--brand-forest);
+  border: 1px solid rgba(185, 154, 85, 0.28);
+  box-shadow: var(--shadow-executive);
+}
+
+.brand-mark {
+  align-items: center;
+  background: var(--brand-forest);
+  border: 1px solid rgba(185, 154, 85, 0.45);
+  border-radius: 0.5rem;
+  color: var(--primary-foreground);
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  height: 2.25rem;
+  justify-content: center;
+  letter-spacing: 0;
+  width: 2.25rem;
 }
