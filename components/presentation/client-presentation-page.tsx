@@ -324,7 +324,7 @@ function ContemplationHero({
       </div>
 
       <div className="mx-auto mt-10 max-w-5xl rounded-md border border-primary-foreground/14 bg-primary-foreground/8 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground/66">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary-foreground/50">
           Mes de contemplacao
         </p>
         <div className="mt-5 flex items-center justify-center gap-4">
@@ -342,7 +342,7 @@ function ContemplationHero({
             <p className="text-7xl font-semibold leading-none tracking-normal sm:text-8xl">
               {contemplationMonth}
             </p>
-            <p className="mt-2 text-sm font-medium uppercase tracking-[0.12em] text-primary-foreground/62">
+            <p className="mt-2 text-[10px] font-medium uppercase tracking-[0.16em] text-primary-foreground/48">
               meses
             </p>
           </div>
@@ -368,7 +368,7 @@ function ContemplationHero({
           type="range"
           value={contemplationMonth}
         />
-        <div className="mt-3 flex justify-between text-xs font-medium text-primary-foreground/56">
+        <div className="mt-3 flex justify-between text-[10px] font-medium text-primary-foreground/42">
           <span>Mes 1</span>
           <span>Mes {maxContemplationMonth}</span>
         </div>
@@ -382,8 +382,6 @@ function CommercialResultGrid({
 }: {
   presentation: SimulatorCommercialPresentation;
 }) {
-  const patrimonialLeverage = calculatePatrimonialLeverage(presentation);
-
   return (
     <section className="executive-surface rounded-md p-6">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -421,16 +419,12 @@ function CommercialResultGrid({
           value={currencyFormatter.format(presentation.estimatedCardSaleProfit)}
         />
         <CommercialMetric
-          label="Ganho percentual"
+          label="Alavancagem patrimonial percentual"
           value={percentFormatter.format(presentation.estimatedCardSaleGainRate)}
         />
         <CommercialMetric
-          label="Alavancagem venda da carta"
+          label="Alavancagem Patrimonial"
           value={`${multipleFormatter.format(presentation.leverageMultiple)}x`}
-        />
-        <CommercialMetric
-          label="Alavancagem patrimonial"
-          value={percentFormatter.format(patrimonialLeverage)}
         />
       </div>
     </section>
@@ -906,16 +900,4 @@ function parsePositiveNumber(value: string) {
 
 function clampContemplationMonth(month: number, termMonths: number) {
   return Math.min(Math.max(1, Math.trunc(month)), Math.max(1, termMonths));
-}
-
-function calculatePatrimonialLeverage(
-  presentation: SimulatorCommercialPresentation,
-) {
-  if (presentation.liquidCredit <= 0) {
-    return 0;
-  }
-
-  return (
-    presentation.totalInvestedUntilContemplation / presentation.liquidCredit
-  );
 }
