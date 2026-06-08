@@ -8,6 +8,7 @@ import {
   Landmark,
   ListChecks,
   Map,
+  Presentation,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { cn } from "@/lib/utils";
 export type PlatformSection =
   | "dashboard"
   | "client"
+  | "presentation"
   | "portfolio"
   | "simulations"
   | "strategies"
@@ -31,6 +33,7 @@ const navigationItems: Array<{
 }> = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3 },
   { key: "client", label: "Cliente", icon: UserRound },
+  { key: "presentation", label: "Apresentacao", icon: Presentation },
   { key: "portfolio", label: "Carteira", icon: BriefcaseBusiness },
   { key: "simulations", label: "Simulacoes", icon: Sparkles },
   { key: "strategies", label: "Estrategias", icon: ListChecks },

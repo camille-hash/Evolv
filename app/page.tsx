@@ -7,6 +7,7 @@ import {
 } from "@/components/layout/app-sidebar";
 import { ClientPage } from "@/components/client/client-page";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
+import { ClientPresentationPage } from "@/components/presentation/client-presentation-page";
 import { PortfolioPage } from "@/components/portfolio/portfolio-page";
 import { RoadmapPage } from "@/components/roadmap/roadmap-page";
 import { StrategiesPage } from "@/components/strategies/strategies-page";
@@ -35,6 +36,10 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   client: {
     title: "Cliente atual",
     subtitle: "Contexto comercial e patrimonial persistido neste navegador",
+  },
+  presentation: {
+    title: "Apresentacao ao cliente",
+    subtitle: "Narrativa visual para conversa consultiva",
   },
   portfolio: {
     title: "Carteira patrimonial",
@@ -115,6 +120,8 @@ export default function Home() {
         {activeSection === "client" ? (
           <ClientPage onClientContextChange={handleClientContextChange} />
         ) : null}
+
+        {activeSection === "presentation" ? <ClientPresentationPage /> : null}
 
         {activeSection === "portfolio" ? <PortfolioPage /> : null}
 
