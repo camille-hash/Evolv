@@ -44,8 +44,13 @@ import {
   type FollowUpEvent,
 } from "@/modules/followup";
 import {
+  buildCrmSalesDashboard,
+  loadCrmActivities,
   loadCrmLeads,
+  loadCrmMonthlyGoal,
+  saveCrmMonthlyGoal,
   summarizeCrmPipeline,
+  type CrmActivity,
   type CrmLead,
 } from "@/modules/crm";
 import { buildStrategicRoadmap } from "@/modules/roadmap";
@@ -112,6 +117,8 @@ export function ExecutiveDashboard({
   const [operations, setOperations] = useState<Operation[]>([]);
   const [followUpEvents, setFollowUpEvents] = useState<FollowUpEvent[]>([]);
   const [crmLeads, setCrmLeads] = useState<CrmLead[]>([]);
+  const [crmActivities, setCrmActivities] = useState<CrmActivity[]>([]);
+  const [crmMonthlyGoal, setCrmMonthlyGoal] = useState(0);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -123,6 +130,8 @@ export function ExecutiveDashboard({
       setOperations(loadOperations());
       setFollowUpEvents(loadFollowUpEvents());
       setCrmLeads(loadCrmLeads());
+      setCrmActivities(loadCrmActivities());
+      setCrmMonthlyGoal(loadCrmMonthlyGoal());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -192,6 +201,15 @@ export function ExecutiveDashboard({
     [followUpEvents],
   );
   const crmSummary = useMemo(() => summarizeCrmPipeline(crmLeads), [crmLeads]);
+  const crmDashboard = useMemo(
+    () =>
+      buildCrmSalesDashboard({
+        activities: crmActivities,
+        leads: crmLeads,
+        monthlyGoal: crmMonthlyGoal,
+      }),
+    [crmActivities, crmLeads, crmMonthlyGoal],
+  );
   const roadmap = useMemo(
     () =>
       buildStrategicRoadmap({
@@ -354,6 +372,173 @@ export function ExecutiveDashboard({
         intelligence={portfolioIntelligence}
         title="Saude Patrimonial"
       />
+
+      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              CRM Operacional
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-foreground">
+              Rotina comercial do dia
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Visao rapida de acoes, valor em negociacao, andamento do funil e
+              meta mensal.
+            </p>
+          </div>
+
+          <label className="grid gap-2 text-sm font-medium text-foreground xl:min-w-[260px]">
+            <span>Meta mensal de vendas</span>
+            <input
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+              min={0}
+              onChange={(event) =>
+                setCrmMonthlyGoal(
+                  saveCrmMonthlyGoal(Number(event.target.value)),
+                )
+              }
+              type="number"
+              value={crmMonthlyGoal}
+            />
+          </label>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <DashboardDetail
+            label="Meta mensal"
+            value={currencyFormatter.format(crmDashboard.monthlyGoal)}
+          />
+          <DashboardDetail
+            label="Valor em negociacao"
+            value={currencyFormatter.format(crmDashboard.activePotentialValue)}
+          />
+          <DashboardDetail
+            label="Diferenca para a meta"
+            value={currencyFormatter.format(crmDashboard.goalGap)}
+          />
+          <DashboardDetail
+            label="Percentual atingido"
+            value={percentFormatter.format(crmDashboard.goalCompletionRate)}
+          />
+        </div>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-3">
+          <div className="rounded-md border bg-background/70 p-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Resumo Operacional
+            </h3>
+            <div className="mt-4 grid gap-3">
+              <DashboardDetail
+                label="Leads ativos"
+                value={String(crmDashboard.activeLeadsCount)}
+              />
+              <DashboardDetail
+                label="Atividades pendentes"
+                value={String(crmDashboard.pendingActivitiesCount)}
+              />
+              <DashboardDetail
+                label="Acoes vencidas"
+                value={String(crmDashboard.overdueActionsCount)}
+              />
+              <DashboardDetail
+                label="Valor potencial ativo"
+                value={currencyFormatter.format(
+                  crmDashboard.activePotentialValue,
+                )}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-md border bg-background/70 p-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Leads por Pipeline
+            </h3>
+            <div className="mt-4 grid gap-3">
+              <DashboardDetail
+                label="Prospeccao"
+                value={String(crmDashboard.leadsByPipeline.prospecting)}
+              />
+              <DashboardDetail
+                label="Vendas"
+                value={String(crmDashboard.leadsByPipeline.sales)}
+              />
+              <DashboardDetail
+                label="Administrativo"
+                value={String(crmDashboard.leadsByPipeline.administrative)}
+              />
+              <DashboardDetail
+                label="Perdidos"
+                value={String(crmDashboard.leadsByPipeline.lost)}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-md border bg-background/70 p-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Temperatura dos Leads
+            </h3>
+            <div className="mt-4 grid gap-3">
+              <DashboardDetail
+                label="Frios"
+                value={String(crmDashboard.leadsByTemperature.fria)}
+              />
+              <DashboardDetail
+                label="Mornos"
+                value={String(crmDashboard.leadsByTemperature.morna)}
+              />
+              <DashboardDetail
+                label="Quentes"
+                value={String(crmDashboard.leadsByTemperature.quente)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-3">
+          <CrmListCard title="Origens dos Leads">
+            {crmDashboard.originRanking.map((item) => (
+              <DashboardDetail
+                key={item.origin}
+                label={item.origin}
+                value={String(item.count)}
+              />
+            ))}
+          </CrmListCard>
+
+          <CrmListCard title="Proximas Acoes">
+            {crmDashboard.nextActions.length ? (
+              crmDashboard.nextActions.slice(0, 5).map((action) => (
+                <DashboardDetail
+                  key={`${action.leadId}-${action.date}-${action.action}`}
+                  label={`${action.leadName} - ${action.action}`}
+                  value={formatDateOnly(action.date)}
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma proxima acao preenchida.
+              </p>
+            )}
+          </CrmListCard>
+
+          <CrmListCard title="Atencao">
+            {crmDashboard.overdueActions.length ? (
+              crmDashboard.overdueActions.slice(0, 5).map((action) => (
+                <DashboardDetail
+                  key={`${action.leadId}-${action.date}-${action.action}`}
+                  label={`${action.leadName} - ${action.action}`}
+                  value={formatDateOnly(action.date)}
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma acao vencida.
+              </p>
+            )}
+          </CrmListCard>
+        </div>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-3">
         <ExecutiveCard title="Carteira Consolidada">
@@ -646,6 +831,21 @@ function DashboardDetail({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CrmListCard({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <div className="rounded-md border bg-background/70 p-4">
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <div className="mt-4 grid gap-3">{children}</div>
+    </div>
+  );
+}
+
 function formatDaysRemaining(days: number) {
   if (days === 0) {
     return "Hoje";
@@ -656,4 +856,10 @@ function formatDaysRemaining(days: number) {
   }
 
   return `${Math.abs(days)} dias em atraso`;
+}
+
+function formatDateOnly(date: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+  }).format(new Date(`${date}T00:00:00`));
 }
