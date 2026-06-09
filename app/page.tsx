@@ -7,6 +7,7 @@ import {
 } from "@/components/layout/app-sidebar";
 import { DemoAccessGate } from "@/components/access/demo-access-gate";
 import { ClientPage } from "@/components/client/client-page";
+import { CrmPage } from "@/components/crm/crm-page";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
 import { ClientPresentationPage } from "@/components/presentation/client-presentation-page";
 import { FollowUpPage } from "@/components/followup/followup-page";
@@ -38,6 +39,10 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   client: {
     title: "Cliente atual",
     subtitle: "Contexto comercial e patrimonial persistido neste navegador",
+  },
+  crm: {
+    title: "CRM",
+    subtitle: "Funil comercial local para prospeccao, vendas e administracao",
   },
   presentation: {
     title: "Simulacao Comercial",
@@ -127,6 +132,8 @@ export default function Home() {
           {activeSection === "client" ? (
             <ClientPage onClientContextChange={handleClientContextChange} />
           ) : null}
+
+          {activeSection === "crm" ? <CrmPage /> : null}
 
           {activeSection === "presentation" ? <ClientPresentationPage /> : null}
 

@@ -43,6 +43,11 @@ import {
   summarizeFollowUpEvents,
   type FollowUpEvent,
 } from "@/modules/followup";
+import {
+  loadCrmLeads,
+  summarizeCrmPipeline,
+  type CrmLead,
+} from "@/modules/crm";
 import { buildStrategicRoadmap } from "@/modules/roadmap";
 import { generateEvolvMasterReport } from "@/modules/reports";
 
@@ -106,6 +111,7 @@ export function ExecutiveDashboard({
     useState<PortfolioSnapshot>(emptyPortfolioSnapshot);
   const [operations, setOperations] = useState<Operation[]>([]);
   const [followUpEvents, setFollowUpEvents] = useState<FollowUpEvent[]>([]);
+  const [crmLeads, setCrmLeads] = useState<CrmLead[]>([]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -116,6 +122,7 @@ export function ExecutiveDashboard({
       setPortfolioSnapshot(loadPortfolioSnapshot());
       setOperations(loadOperations());
       setFollowUpEvents(loadFollowUpEvents());
+      setCrmLeads(loadCrmLeads());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -184,6 +191,7 @@ export function ExecutiveDashboard({
     () => summarizeFollowUpEvents(followUpEvents),
     [followUpEvents],
   );
+  const crmSummary = useMemo(() => summarizeCrmPipeline(crmLeads), [crmLeads]);
   const roadmap = useMemo(
     () =>
       buildStrategicRoadmap({
@@ -427,6 +435,25 @@ export function ExecutiveDashboard({
                   : formatDaysRemaining(followUpSummary.daysUntilNextEvent)
               }
             />
+          </div>
+        </ExecutiveCard>
+
+        <ExecutiveCard title="Funil Comercial">
+          <div className="grid gap-4">
+            <DashboardDetail
+              label="Total de leads"
+              value={String(crmSummary.totalLeads)}
+            />
+            <DashboardDetail
+              label="Prospeccao"
+              value={String(crmSummary.prospecting)}
+            />
+            <DashboardDetail label="Vendas" value={String(crmSummary.sales)} />
+            <DashboardDetail
+              label="Administrativo"
+              value={String(crmSummary.administrative)}
+            />
+            <DashboardDetail label="Perdidos" value={String(crmSummary.lost)} />
           </div>
         </ExecutiveCard>
 

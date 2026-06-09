@@ -6,6 +6,7 @@ import {
   Brain,
   CalendarClock,
   FolderClock,
+  Handshake,
   Landmark,
   Layers3,
   ListChecks,
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 export type PlatformSection =
   | "dashboard"
+  | "crm"
   | "client"
   | "presentation"
   | "multiCotas"
@@ -34,6 +36,7 @@ const navigationItems: Array<{
   icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
 }> = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3 },
+  { key: "crm", label: "CRM", icon: Handshake },
   { key: "client", label: "Cliente", icon: UserRound },
   { key: "presentation", label: "Simulacao Comercial", icon: Presentation },
   { key: "multiCotas", label: "Multi-Cotas", icon: Layers3 },

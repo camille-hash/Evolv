@@ -10,6 +10,11 @@ export const MODULES = [
     description: "Estrutura preparada para simulacoes, cenarios e comparacoes.",
   },
   {
+    key: "crm",
+    name: "CRM",
+    description: "Funil comercial local para leads e pipeline Bruno.",
+  },
+  {
     key: "reports",
     name: "Reports",
     description: "Placeholder para futura geracao de PDF.",
