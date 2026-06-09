@@ -35,6 +35,11 @@ export const MODULES = [
     description: "Gestao local de multiplas operacoes patrimoniais por cliente.",
   },
   {
+    key: "multi-cotas",
+    name: "Multi-Cotas",
+    description: "Simulacao independente de multiplas cartas com contemplacoes escalonadas.",
+  },
+  {
     key: "roadmap",
     name: "Roadmap",
     description: "Linha estrategica entre cliente, operacoes e metas patrimoniais.",

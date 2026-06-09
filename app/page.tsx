@@ -10,6 +10,7 @@ import { ClientPage } from "@/components/client/client-page";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
 import { ClientPresentationPage } from "@/components/presentation/client-presentation-page";
 import { FollowUpPage } from "@/components/followup/followup-page";
+import { MultiCotasPage } from "@/components/multi-cotas/multi-cotas-page";
 import { PortfolioPage } from "@/components/portfolio/portfolio-page";
 import { RoadmapPage } from "@/components/roadmap/roadmap-page";
 import { StrategiesPage } from "@/components/strategies/strategies-page";
@@ -41,6 +42,10 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   presentation: {
     title: "Simulacao Comercial",
     subtitle: "Ambiente principal para apresentacao consultiva e operacao ao vivo",
+  },
+  multiCotas: {
+    title: "Multi-Cotas",
+    subtitle: "Simulacao de multiplas cartas com contemplacoes escalonadas",
   },
   portfolio: {
     title: "Carteira patrimonial",
@@ -124,6 +129,8 @@ export default function Home() {
           ) : null}
 
           {activeSection === "presentation" ? <ClientPresentationPage /> : null}
+
+          {activeSection === "multiCotas" ? <MultiCotasPage /> : null}
 
           {activeSection === "portfolio" ? <PortfolioPage /> : null}
 

@@ -7,6 +7,7 @@ import {
   CalendarClock,
   FolderClock,
   Landmark,
+  Layers3,
   ListChecks,
   Map,
   Presentation,
@@ -18,6 +19,7 @@ export type PlatformSection =
   | "dashboard"
   | "client"
   | "presentation"
+  | "multiCotas"
   | "portfolio"
   | "strategies"
   | "wealth"
@@ -34,6 +36,7 @@ const navigationItems: Array<{
   { key: "dashboard", label: "Dashboard", icon: BarChart3 },
   { key: "client", label: "Cliente", icon: UserRound },
   { key: "presentation", label: "Simulacao Comercial", icon: Presentation },
+  { key: "multiCotas", label: "Multi-Cotas", icon: Layers3 },
   { key: "portfolio", label: "Carteira", icon: BriefcaseBusiness },
   { key: "strategies", label: "Estrategias", icon: ListChecks },
   { key: "wealth", label: "Patrimonio", icon: Landmark },
