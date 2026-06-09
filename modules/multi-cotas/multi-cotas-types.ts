@@ -3,6 +3,7 @@ export type MultiCotasCardInput = {
   position: number;
   originalValue: number;
   contemplationMonth: number;
+  withdrawalMonth: number;
 };
 
 export type MultiCotasInput = {

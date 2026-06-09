@@ -21,7 +21,10 @@ export function MultiCotasPage() {
   const [input, setInput] = useState<MultiCotasInput>(() =>
     loadMultiCotasInput(),
   );
-  const [technicalOpen, setTechnicalOpen] = useState(false);
+  const [technicalOpen, setTechnicalOpen] = useState(true);
+  const [simulationStatus, setSimulationStatus] = useState(
+    "Simulacao atualizada",
+  );
   const result = useMemo(() => calculateMultiCotas(input), [input]);
   const averageCardValue =
     result.summary.cardCount > 0
@@ -47,6 +50,7 @@ export function MultiCotasPage() {
     );
 
     setInput(nextInput);
+    setSimulationStatus("Alteracoes aplicadas em tempo real");
   }
 
   function updateCard(
@@ -63,6 +67,20 @@ export function MultiCotasPage() {
           : card,
       ),
     });
+  }
+
+  function applyWithdrawalMonthToAllCards() {
+    updateInput({
+      cards: input.cards.map((card) => ({
+        ...card,
+        withdrawalMonth: input.consolidationMonth,
+      })),
+    });
+  }
+
+  function handleConfirmSimulation() {
+    setInput(saveMultiCotasInput(normalizeMultiCotasInput(input)));
+    setSimulationStatus("Simulacao atualizada");
   }
 
   return (
@@ -82,13 +100,44 @@ export function MultiCotasPage() {
           </div>
           <div className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 px-5 py-4">
             <p className="text-xs font-medium uppercase tracking-[0.1em] text-primary-foreground/58">
-              Mes de uso
+              Cartas simuladas
             </p>
             <p className="mt-2 text-3xl font-semibold">
-              {input.consolidationMonth}
+              {result.summary.cardCount}
             </p>
           </div>
         </div>
+      </section>
+
+      <section className="executive-surface rounded-md p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Dados Tecnicos
+            </p>
+            <h2 className="mt-3 text-2xl font-semibold text-foreground">
+              Parametros da estrategia
+            </h2>
+          </div>
+          <Button
+            onClick={() => setTechnicalOpen((current) => !current)}
+            type="button"
+            variant="secondary"
+          >
+            Dados Tecnicos
+          </Button>
+        </div>
+
+        {technicalOpen ? (
+          <TechnicalSettings
+            input={input}
+            onApplyWithdrawalMonthToAllCards={applyWithdrawalMonthToAllCards}
+            onCardChange={updateCard}
+            onConfirmSimulation={handleConfirmSimulation}
+            onInputChange={updateInput}
+            simulationStatus={simulationStatus}
+          />
+        ) : null}
       </section>
 
       <section className="executive-surface rounded-md p-6">
@@ -109,10 +158,6 @@ export function MultiCotasPage() {
             value={currencyFormatter.format(
               result.summary.totalOriginalContracted,
             )}
-          />
-          <ResultCard
-            label="Mes de consolidacao"
-            value={`Mes ${input.consolidationMonth}`}
           />
           <ResultCard
             label="Total atualizado pelo INCC"
@@ -138,21 +183,20 @@ export function MultiCotasPage() {
             Nesta estrategia, o cliente distribui a aquisicao patrimonial em{" "}
             {result.summary.cardCount} cartas. Conforme as contemplacoes ocorrem
             ao longo do tempo, os creditos sao atualizados pelo INCC e podem
-            permanecer valorizando ate o mes {input.consolidationMonth},
-            escolhido como mes de consolidacao.
+            permanecer valorizando ate o mes de saque definido para cada carta.
           </p>
         </section>
 
         <section className="executive-surface rounded-md p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Mes de consolidacao
+            Mes de saque
           </p>
-          <p className="mt-3 text-5xl font-semibold text-primary">
-            {input.consolidationMonth}
+          <p className="mt-3 text-3xl font-semibold text-primary">
+            Individual por carta
           </p>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            Ate este mes, as cartas contempladas podem permanecer valorizando na
-            administradora.
+            Cada carta pode permanecer valorizando na administradora ate o mes
+            de saque do credito definido nos dados tecnicos.
           </p>
         </section>
       </section>
@@ -171,7 +215,10 @@ export function MultiCotasPage() {
                 Carta {card.position}
               </p>
               <p className="mt-3 text-2xl font-semibold text-foreground">
-                Mes {card.contemplationMonth}
+                Contemplacao: mes {card.contemplationMonth}
+              </p>
+              <p className="mt-2 text-sm font-medium text-foreground">
+                Saque: mes {card.withdrawalMonth}
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {currencyFormatter.format(card.updatedCredit)}
@@ -199,39 +246,22 @@ export function MultiCotasPage() {
       </section>
 
       <section className="executive-surface rounded-md p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Detalhe operacional por carta
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold text-foreground">
-              Memoria de apoio da estrategia
-            </h2>
-          </div>
-          <Button
-            onClick={() => setTechnicalOpen((current) => !current)}
-            type="button"
-            variant="secondary"
-          >
-            Dados Tecnicos
-          </Button>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Tabela de Apoio
+          </p>
+          <h2 className="mt-3 text-2xl font-semibold text-foreground">
+            Memoria operacional por carta
+          </h2>
         </div>
-
-        {technicalOpen ? (
-          <TechnicalSettings
-            input={input}
-            onCardChange={updateCard}
-            onInputChange={updateInput}
-          />
-        ) : null}
-
         <div className="mt-6 overflow-x-auto rounded-md border bg-background/60">
-          <table className="w-full min-w-[920px] border-collapse text-sm">
+          <table className="w-full min-w-[1040px] border-collapse text-sm">
             <thead>
               <tr className="border-b text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
                 <th className="py-3 pr-4 font-medium">Carta</th>
                 <th className="py-3 pr-4 font-medium">Valor original</th>
                 <th className="py-3 pr-4 font-medium">Mes contemplacao</th>
+                <th className="py-3 pr-4 font-medium">Mes saque</th>
                 <th className="py-3 pr-4 font-medium">Reajustes INCC</th>
                 <th className="py-3 pr-4 font-medium">Credito atualizado</th>
                 <th className="py-3 pr-4 font-medium">Meses parada</th>
@@ -248,6 +278,7 @@ export function MultiCotasPage() {
                     {currencyFormatter.format(card.originalValue)}
                   </td>
                   <td className="py-4 pr-4">Mes {card.contemplationMonth}</td>
+                  <td className="py-4 pr-4">Mes {card.withdrawalMonth}</td>
                   <td className="py-4 pr-4">{card.inccAdjustmentCount}</td>
                   <td className="py-4 pr-4 font-medium text-foreground">
                     {currencyFormatter.format(card.updatedCredit)}
@@ -268,15 +299,21 @@ export function MultiCotasPage() {
 
 function TechnicalSettings({
   input,
+  onApplyWithdrawalMonthToAllCards,
   onCardChange,
+  onConfirmSimulation,
   onInputChange,
+  simulationStatus,
 }: {
   input: MultiCotasInput;
+  onApplyWithdrawalMonthToAllCards: () => void;
   onCardChange: (
     cardId: string,
     partialCard: Partial<MultiCotasInput["cards"][number]>,
   ) => void;
+  onConfirmSimulation: () => void;
   onInputChange: (input: Partial<MultiCotasInput>) => void;
+  simulationStatus: string;
 }) {
   return (
     <div className="mt-6 rounded-md border bg-background/70 p-5">
@@ -314,19 +351,29 @@ function TechnicalSettings({
           value={input.monthlyIdleAppreciationPercent}
         />
         <NumberField
-          label="Mes de uso/consolidacao"
+          label="Aplicar mes de saque para todas as cartas"
           min={1}
           onChange={(consolidationMonth) =>
             onInputChange({ consolidationMonth })
           }
           value={input.consolidationMonth}
         />
+        <div className="flex items-end">
+          <Button
+            className="w-full"
+            onClick={onApplyWithdrawalMonthToAllCards}
+            type="button"
+            variant="secondary"
+          >
+            Aplicar a todas
+          </Button>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-3">
         {input.cards.map((card) => (
           <div
-            className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[1fr_1fr_1fr]"
+            className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[1fr_1fr_1fr_1fr]"
             key={card.id}
           >
             <div>
@@ -352,8 +399,25 @@ function TechnicalSettings({
               }
               value={card.contemplationMonth}
             />
+            <NumberField
+              label="Mes de saque do credito"
+              min={1}
+              onChange={(withdrawalMonth) =>
+                onCardChange(card.id, { withdrawalMonth })
+              }
+              value={card.withdrawalMonth}
+            />
           </div>
         ))}
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-medium text-muted-foreground">
+          {simulationStatus}
+        </p>
+        <Button onClick={onConfirmSimulation} type="button">
+          Confirmar simulacao
+        </Button>
       </div>
     </div>
   );
