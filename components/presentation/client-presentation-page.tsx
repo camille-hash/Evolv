@@ -3,7 +3,12 @@
 import { Minus, Plus } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { buildIntelligenceSummary } from "@/modules/intelligence";
-import { loadOperations, type Operation } from "@/modules/operations";
+import {
+  loadOperations,
+  saveOperation,
+  type Operation,
+  type OperationDraft,
+} from "@/modules/operations";
 import { generateSimulatorCommercialPdf } from "@/modules/reports";
 import {
   buildSimulatorCommercialPresentation,
@@ -62,6 +67,9 @@ const multipleFormatter = new Intl.NumberFormat("pt-BR", {
 
 export function ClientPresentationPage() {
   const [operations, setOperations] = useState<Operation[]>([]);
+  const [formState, setFormState] = useState<SimulatorSavedFormState | null>(
+    null,
+  );
   const [selectedScenarioKey, setSelectedScenarioKey] =
     useState<SimulatorScenarioKey>("full");
   const [insuranceOption, setInsuranceOption] =
@@ -79,8 +87,12 @@ export function ClientPresentationPage() {
       setOperations(loadedOperations);
 
       if (loadedActiveOperation) {
-        const simulatorInput = toSimulatorInput(loadedActiveOperation.formState);
+        const operationFormState = normalizePresentationFormState(
+          loadedActiveOperation.formState,
+        );
+        const simulatorInput = toSimulatorInput(operationFormState);
 
+        setFormState(operationFormState);
         setSelectedScenarioKey(loadedActiveOperation.selectedScenarioKey);
         setInsuranceOption(
           loadedActiveOperation.administratorData.insuranceRequired
@@ -102,15 +114,15 @@ export function ClientPresentationPage() {
 
   const activeOperation = resolveActiveOperation(operations);
   const simulatorInput = useMemo(
-    () => (activeOperation ? toSimulatorInput(activeOperation.formState) : null),
-    [activeOperation],
+    () => (activeOperation && formState ? toSimulatorInput(formState) : null),
+    [activeOperation, formState],
   );
   const calculation = useMemo(
     () => (simulatorInput ? calculateSimulatorScenarios(simulatorInput) : null),
     [simulatorInput],
   );
   const presentation = useMemo(() => {
-    if (!activeOperation || !calculation || !simulatorInput) {
+    if (!activeOperation || !calculation || !simulatorInput || !formState) {
       return null;
     }
 
@@ -127,6 +139,7 @@ export function ClientPresentationPage() {
     bidType,
     calculation,
     contemplationMonth,
+    formState,
     insuranceOption,
     selectedScenarioKey,
     simulatorInput,
@@ -181,26 +194,30 @@ export function ClientPresentationPage() {
     }
 
     setInsuranceOption(nextInsuranceOption);
+    persistActiveOperation({ insuranceOption: nextInsuranceOption });
   }
 
   function updateContemplationMonth(nextMonth: number) {
-    setContemplationMonth(
-      clampContemplationMonth(nextMonth, maxContemplationMonth),
+    const nextContemplationMonth = clampContemplationMonth(
+      nextMonth,
+      maxContemplationMonth,
     );
+
+    setContemplationMonth(nextContemplationMonth);
+    persistActiveOperation({ contemplationMonth: nextContemplationMonth });
   }
 
-  if (!activeOperation || !presentation || !simulatorInput) {
+  if (!activeOperation || !presentation || !simulatorInput || !formState) {
     return (
       <section className="executive-surface rounded-md p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Apresentacao ao cliente
+          Simulacao Comercial
         </p>
         <h2 className="mt-5 text-3xl font-semibold text-foreground">
-          Nenhuma operacao ativa para apresentacao.
+          Nenhuma operacao ativa para simular.
         </h2>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Crie ou selecione uma operacao na area de Simulacoes para iniciar a
-          reuniao consultiva.
+          Crie uma operacao para iniciar a simulacao comercial consultiva.
         </p>
       </section>
     );
@@ -222,7 +239,7 @@ export function ClientPresentationPage() {
         comparisons={scenarioComparisons}
         isOpen={scenariosOpen}
         onOpenChange={setScenariosOpen}
-        onScenarioChange={setSelectedScenarioKey}
+        onScenarioChange={handleScenarioChange}
         selectedScenarioKey={selectedScenarioKey}
       />
 
@@ -231,7 +248,7 @@ export function ClientPresentationPage() {
           bidType={bidType}
           insuranceOption={insuranceOption}
           insuranceRequired={activeOperation.administratorData.insuranceRequired}
-          onBidTypeChange={setBidType}
+          onBidTypeChange={handleBidTypeChange}
           onInsuranceOptionChange={handleInsuranceChange}
         />
 
@@ -242,7 +259,7 @@ export function ClientPresentationPage() {
                 Operacao ativa
               </p>
               <h2 className="mt-3 text-2xl font-semibold text-foreground">
-                Apresentacao ao vivo
+                Simulacao comercial ao vivo
               </h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
                 Ajuste os pontos comerciais da conversa e acompanhe a resposta
@@ -266,15 +283,16 @@ export function ClientPresentationPage() {
 
           <TechnicalDetails
             bidType={bidType}
+            formState={formState}
             insuranceOption={insuranceOption}
             isOpen={technicalDetailsOpen}
-            onBidTypeChange={setBidType}
+            onBidTypeChange={handleBidTypeChange}
+            onFormStateChange={handleFormStateChange}
             onInsuranceOptionChange={handleInsuranceChange}
             onOpenChange={setTechnicalDetailsOpen}
-            onScenarioChange={setSelectedScenarioKey}
+            onScenarioChange={handleScenarioChange}
             operation={activeOperation}
             selectedScenarioKey={selectedScenarioKey}
-            simulatorInput={simulatorInput}
           />
         </section>
       </section>
@@ -288,6 +306,79 @@ export function ClientPresentationPage() {
       ) : null}
     </section>
   );
+
+  function handleScenarioChange(nextScenarioKey: SimulatorScenarioKey) {
+    setSelectedScenarioKey(nextScenarioKey);
+    persistActiveOperation({ selectedScenarioKey: nextScenarioKey });
+  }
+
+  function handleBidTypeChange(nextBidType: BidType) {
+    setBidType(nextBidType);
+    persistActiveOperation({ bidType: nextBidType });
+  }
+
+  function handleFormStateChange(partialFormState: Partial<SimulatorSavedFormState>) {
+    if (!formState) {
+      return;
+    }
+
+    const nextFormState = {
+      ...formState,
+      ...partialFormState,
+    };
+
+    setFormState(nextFormState);
+    persistActiveOperation({ formState: nextFormState });
+  }
+
+  function persistActiveOperation(
+    overrides: Partial<OperationDraft> & {
+      formState?: SimulatorSavedFormState;
+      selectedScenarioKey?: SimulatorScenarioKey;
+      insuranceOption?: InsuranceOption;
+      bidType?: BidType;
+      contemplationMonth?: number;
+    },
+  ) {
+    if (!activeOperation || !calculation || !simulatorInput || !formState) {
+      return;
+    }
+
+    const nextFormState = overrides.formState ?? formState;
+    const nextSimulatorInput = toSimulatorInput(nextFormState);
+    const nextCalculation = calculateSimulatorScenarios(nextSimulatorInput);
+    const nextScenarioKey =
+      overrides.selectedScenarioKey ?? selectedScenarioKey;
+    const nextInsuranceOption =
+      overrides.insuranceOption ?? insuranceOption;
+    const nextBidType = overrides.bidType ?? bidType;
+    const nextContemplationMonth =
+      overrides.contemplationMonth ?? contemplationMonth;
+    const nextPresentation = buildSimulatorCommercialPresentation({
+      calculation: nextCalculation,
+      input: nextSimulatorInput,
+      selectedScenarioKey: nextScenarioKey,
+      insuranceOption: nextInsuranceOption,
+      bidType: nextBidType,
+      contemplationMonth: nextContemplationMonth,
+    });
+    const draft: OperationDraft = {
+      id: activeOperation.id,
+      nome: activeOperation.nome,
+      formState: nextFormState,
+      commercialData: activeOperation.commercialData,
+      administratorData: activeOperation.administratorData,
+      selectedScenarioKey: nextScenarioKey,
+      insuranceOption: nextInsuranceOption,
+      contemplationMonth: nextPresentation.contemplationMonth,
+      bidType: nextBidType,
+      status: activeOperation.status,
+      tipoOperacao: activeOperation.tipoOperacao,
+      createdAt: activeOperation.createdAt,
+    };
+
+    setOperations(saveOperation({ draft, presentation: nextPresentation }));
+  }
 }
 
 function ContemplationHero({
@@ -311,7 +402,7 @@ function ContemplationHero({
             EVOLV Intelligence
           </p>
           <h1 className="mt-4 text-3xl font-semibold tracking-normal sm:text-4xl">
-            Apresentacao ao vivo
+            Simulacao Comercial
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-primary-foreground/70">
             {operation.nome} - {presentation.selectedScenarioName} -{" "}
@@ -324,7 +415,7 @@ function ContemplationHero({
       </div>
 
       <div className="mx-auto mt-10 max-w-5xl rounded-md border border-primary-foreground/14 bg-primary-foreground/8 p-6 sm:p-8">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary-foreground/50">
+        <p className="text-[8px] font-semibold uppercase tracking-[0.22em] text-primary-foreground/42">
           Mes de contemplacao
         </p>
         <div className="mt-5 flex items-center justify-center gap-4">
@@ -342,7 +433,7 @@ function ContemplationHero({
             <p className="text-7xl font-semibold leading-none tracking-normal sm:text-8xl">
               {contemplationMonth}
             </p>
-            <p className="mt-2 text-[10px] font-medium uppercase tracking-[0.16em] text-primary-foreground/48">
+            <p className="mt-2 text-[8px] font-medium uppercase tracking-[0.18em] text-primary-foreground/40">
               meses
             </p>
           </div>
@@ -368,7 +459,7 @@ function ContemplationHero({
           type="range"
           value={contemplationMonth}
         />
-        <div className="mt-3 flex justify-between text-[10px] font-medium text-primary-foreground/42">
+        <div className="mt-3 flex justify-between text-[8px] font-medium text-primary-foreground/34">
           <span>Mes 1</span>
           <span>Mes {maxContemplationMonth}</span>
         </div>
@@ -391,6 +482,10 @@ function CommercialResultGrid({
         <CommercialMetric
           label="Credito contratado"
           value={currencyFormatter.format(presentation.contractedCredit)}
+        />
+        <CommercialMetric
+          label="Credito atualizado"
+          value={currencyFormatter.format(presentation.updatedCredit)}
         />
         <CommercialMetric
           label="Parcela antes"
@@ -555,26 +650,28 @@ function MeetingControls({
 
 function TechnicalDetails({
   bidType,
+  formState,
   insuranceOption,
   isOpen,
   onBidTypeChange,
+  onFormStateChange,
   onInsuranceOptionChange,
   onOpenChange,
   onScenarioChange,
   operation,
   selectedScenarioKey,
-  simulatorInput,
 }: {
   bidType: BidType;
+  formState: SimulatorSavedFormState;
   insuranceOption: InsuranceOption;
   isOpen: boolean;
   onBidTypeChange: (bidType: BidType) => void;
+  onFormStateChange: (formState: Partial<SimulatorSavedFormState>) => void;
   onInsuranceOptionChange: (insuranceOption: InsuranceOption) => void;
   onOpenChange: (isOpen: boolean) => void;
   onScenarioChange: (scenarioKey: SimulatorScenarioKey) => void;
   operation: Operation;
   selectedScenarioKey: SimulatorScenarioKey;
-  simulatorInput: SimulatorInput;
 }) {
   return (
     <div className="mt-6 border-t pt-5">
@@ -592,9 +689,10 @@ function TechnicalDetails({
             Apoio operacional do consultor
           </p>
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <TechnicalMetric
+            <TechnicalInput
               label="Credito"
-              value={currencyFormatter.format(simulatorInput.credit)}
+              value={formState.credit}
+              onChange={(credit) => onFormStateChange({ credit })}
             />
             <TechnicalMetric
               label="Administradora"
@@ -604,37 +702,57 @@ function TechnicalDetails({
                 "Personalizada"
               }
             />
-            <TechnicalMetric
+            <TechnicalInput
               label="Taxa administrativa"
-              value={`${operation.formState.administrativeFeePercent}%`}
+              value={formState.administrativeFeePercent}
+              onChange={(administrativeFeePercent) =>
+                onFormStateChange({ administrativeFeePercent })
+              }
             />
-            <TechnicalMetric
+            <TechnicalInput
               label="Fundo de reserva"
-              value={`${operation.formState.reserveFundPercent}%`}
+              value={formState.reserveFundPercent}
+              onChange={(reserveFundPercent) =>
+                onFormStateChange({ reserveFundPercent })
+              }
             />
-            <TechnicalMetric
+            <TechnicalInput
               label="Prazo"
-              value={`${simulatorInput.termMonths} meses`}
+              value={formState.termMonths}
+              onChange={(termMonths) => onFormStateChange({ termMonths })}
             />
-            <TechnicalMetric
+            <TechnicalInput
               label="Seguro"
-              value={`${operation.formState.monthlyInsurancePercent}% ao mes`}
+              value={formState.monthlyInsurancePercent}
+              onChange={(monthlyInsurancePercent) =>
+                onFormStateChange({ monthlyInsurancePercent })
+              }
             />
-            <TechnicalMetric
+            <TechnicalInput
               label="INCC"
-              value={`${operation.formState.inccPercent}%`}
+              value={formState.inccPercent}
+              onChange={(inccPercent) => onFormStateChange({ inccPercent })}
             />
-            <TechnicalMetric
+            <TechnicalInput
               label="Venda da carta"
-              value={`${operation.formState.cardSalePercent}%`}
+              value={formState.cardSalePercent}
+              onChange={(cardSalePercent) =>
+                onFormStateChange({ cardSalePercent })
+              }
             />
-            <TechnicalMetric
+            <TechnicalInput
               label="Lance embutido"
-              value={`${operation.formState.embeddedBidPercent}%`}
+              value={formState.embeddedBidPercent}
+              onChange={(embeddedBidPercent) =>
+                onFormStateChange({ embeddedBidPercent })
+              }
             />
-            <TechnicalMetric
+            <TechnicalInput
               label="Lance em dinheiro"
-              value={`${operation.formState.cashBidPercent}%`}
+              value={formState.cashBidPercent}
+              onChange={(cashBidPercent) =>
+                onFormStateChange({ cashBidPercent })
+              }
             />
           </div>
 
@@ -813,6 +931,29 @@ function TechnicalMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function TechnicalInput({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-2 rounded-md border bg-card p-4">
+      <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </span>
+      <input
+        className="h-10 rounded-md border bg-background px-3 text-sm font-semibold text-foreground outline-none transition focus:border-primary"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
+}
+
 function ControlGroup({
   children,
   label,
@@ -889,6 +1030,15 @@ function toSimulatorInput(formState: SimulatorSavedFormState): SimulatorInput {
     cardSaleRate: parsePositiveNumber(formState.cardSalePercent) / 100,
     embeddedBidRate: parsePositiveNumber(formState.embeddedBidPercent) / 100,
     cashBidRate: parsePositiveNumber(formState.cashBidPercent) / 100,
+  };
+}
+
+function normalizePresentationFormState(
+  formState: SimulatorSavedFormState,
+): SimulatorSavedFormState {
+  return {
+    ...formState,
+    cardSalePercent: formState.cardSalePercent.trim() || "20",
   };
 }
 

@@ -17,7 +17,6 @@ import {
   SimulatorPanel,
   type SimulatorPanelPage,
 } from "@/components/simulator/simulator-panel";
-import { SimulationWorkspace } from "@/components/simulator/simulation-workspace";
 import {
   emptyClientContext,
   loadClientContext,
@@ -40,16 +39,12 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
     subtitle: "Contexto comercial e patrimonial persistido neste navegador",
   },
   presentation: {
-    title: "Apresentacao ao cliente",
-    subtitle: "Narrativa visual para conversa consultiva",
+    title: "Simulacao Comercial",
+    subtitle: "Ambiente principal para apresentacao consultiva e operacao ao vivo",
   },
   portfolio: {
     title: "Carteira patrimonial",
     subtitle: "Imoveis, cartas e consolidacao da posicao atual",
-  },
-  simulations: {
-    title: "Simulacoes estrategicas",
-    subtitle: "Apresentacao consultiva para cenarios patrimoniais",
   },
   strategies: {
     title: "Estrategias patrimoniais",
@@ -120,7 +115,7 @@ export default function Home() {
           {activeSection === "dashboard" ? (
             <ExecutiveDashboard
               clientContext={clientContext}
-              onCreateSimulation={() => setActiveSection("simulations")}
+              onCreateSimulation={() => setActiveSection("presentation")}
             />
           ) : null}
 
@@ -138,16 +133,10 @@ export default function Home() {
 
           {activeSection === "followup" ? <FollowUpPage /> : null}
 
-          {activeSection === "simulations" ? (
-            <SimulationWorkspace
-              onOpenSimulation={() => setActiveSection("simulations")}
-            />
-          ) : null}
-
           {currentSimulatorPage ? (
             <SimulatorPanel
               activePage={currentSimulatorPage}
-              onOpenSimulation={() => setActiveSection("simulations")}
+              onOpenSimulation={() => setActiveSection("presentation")}
             />
           ) : null}
         </main>

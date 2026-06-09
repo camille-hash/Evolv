@@ -124,7 +124,7 @@ const initialFormState: SimulatorFormState = {
     4,
   ),
   inccPercent: "",
-  cardSalePercent: "100",
+  cardSalePercent: "20",
   embeddedBidPercent: "25",
   cashBidPercent: "25",
 };
