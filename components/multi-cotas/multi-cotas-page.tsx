@@ -23,6 +23,12 @@ export function MultiCotasPage() {
   );
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const result = useMemo(() => calculateMultiCotas(input), [input]);
+  const averageCardValue =
+    result.summary.cardCount > 0
+      ? result.summary.totalOriginalContracted / result.summary.cardCount
+      : 0;
+  const totalEstimatedGain =
+    result.summary.totalInccGain + result.summary.totalIdleAppreciationGain;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -85,19 +91,97 @@ export function MultiCotasPage() {
         </div>
       </section>
 
+      <section className="executive-surface rounded-md p-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Resumo da Estrategia Multi-Cotas
+        </p>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <ResultCard
+            label="Quantidade de cartas"
+            value={String(result.summary.cardCount)}
+          />
+          <ResultCard
+            label="Valor medio das cartas"
+            value={currencyFormatter.format(averageCardValue)}
+          />
+          <ResultCard
+            label="Total contratado"
+            value={currencyFormatter.format(
+              result.summary.totalOriginalContracted,
+            )}
+          />
+          <ResultCard
+            label="Mes de consolidacao"
+            value={`Mes ${input.consolidationMonth}`}
+          />
+          <ResultCard
+            label="Total atualizado pelo INCC"
+            value={currencyFormatter.format(result.summary.totalUpdatedCredit)}
+          />
+          <ResultCard
+            label="Total futuro estimado"
+            value={currencyFormatter.format(result.summary.totalFutureValue)}
+          />
+          <ResultCard
+            label="Ganho estimado total"
+            value={currencyFormatter.format(totalEstimatedGain)}
+          />
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1fr_0.72fr]">
+        <section className="executive-surface rounded-md p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Narrativa comercial
+          </p>
+          <p className="mt-4 max-w-4xl text-lg leading-8 text-foreground">
+            Nesta estrategia, o cliente distribui a aquisicao patrimonial em{" "}
+            {result.summary.cardCount} cartas. Conforme as contemplacoes ocorrem
+            ao longo do tempo, os creditos sao atualizados pelo INCC e podem
+            permanecer valorizando ate o mes {input.consolidationMonth},
+            escolhido como mes de consolidacao.
+          </p>
+        </section>
+
+        <section className="executive-surface rounded-md p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Mes de consolidacao
+          </p>
+          <p className="mt-3 text-5xl font-semibold text-primary">
+            {input.consolidationMonth}
+          </p>
+          <p className="mt-4 text-sm leading-6 text-muted-foreground">
+            Ate este mes, as cartas contempladas podem permanecer valorizando na
+            administradora.
+          </p>
+        </section>
+      </section>
+
+      <section className="executive-surface rounded-md p-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Linha do Tempo Multi-Cotas
+        </p>
+        <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
+          {result.cards.map((card) => (
+            <article
+              className="min-w-44 rounded-md border bg-background/70 p-4"
+              key={card.id}
+            >
+              <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                Carta {card.position}
+              </p>
+              <p className="mt-3 text-2xl font-semibold text-foreground">
+                Mes {card.contemplationMonth}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {currencyFormatter.format(card.updatedCredit)}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <ResultCard
-          label="Total contratado"
-          value={currencyFormatter.format(result.summary.totalOriginalContracted)}
-        />
-        <ResultCard
-          label="Total atualizado"
-          value={currencyFormatter.format(result.summary.totalUpdatedCredit)}
-        />
-        <ResultCard
-          label="Total futuro"
-          value={currencyFormatter.format(result.summary.totalFutureValue)}
-        />
         <ResultCard
           label="Ganho por INCC"
           value={currencyFormatter.format(result.summary.totalInccGain)}
@@ -109,8 +193,8 @@ export function MultiCotasPage() {
           )}
         />
         <ResultCard
-          label="Quantidade de cartas"
-          value={String(result.summary.cardCount)}
+          label="Ganho total estimado"
+          value={currencyFormatter.format(totalEstimatedGain)}
         />
       </section>
 
@@ -118,10 +202,10 @@ export function MultiCotasPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Detalhe por carta
+              Detalhe operacional por carta
             </p>
             <h2 className="mt-3 text-2xl font-semibold text-foreground">
-              Contemplacoes escalonadas
+              Memoria de apoio da estrategia
             </h2>
           </div>
           <Button
@@ -141,7 +225,7 @@ export function MultiCotasPage() {
           />
         ) : null}
 
-        <div className="mt-6 overflow-x-auto">
+        <div className="mt-6 overflow-x-auto rounded-md border bg-background/60">
           <table className="w-full min-w-[920px] border-collapse text-sm">
             <thead>
               <tr className="border-b text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
