@@ -13,8 +13,10 @@ import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
 import { Button } from "@/components/ui/button";
 import {
   addCrmStageToPipeline,
+  buildCrmAdvancedSearchOptions,
   crmTemperatureLabels,
   emptyCrmLeadInput,
+  filterCrmLeadsAdvanced,
   getDefaultStageForPipeline,
   isStageInPipeline,
   loadCrmLeads,
@@ -26,11 +28,13 @@ import {
   resetCrmPipelineConfig,
   resolveCrmLeadMovement,
   saveCrmLead,
+  summarizeCrmAdvancedSearch,
   toCrmPipelineDefinitions,
   updateCrmPipelineName,
   updateCrmStageName,
   updateCrmLeadStage,
   type CrmConfigurablePipeline,
+  type CrmAdvancedSearchFilters,
   type CrmLead,
   type CrmLeadInput,
   type CrmPipeline,
@@ -124,6 +128,15 @@ export function CrmPage() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [baseSearch, setBaseSearch] = useState("");
   const [newStageNames, setNewStageNames] = useState<Record<string, string>>({});
+  const [advancedFilters, setAdvancedFilters] =
+    useState<CrmAdvancedSearchFilters>({
+      consultor: "all",
+      freeText: "",
+      origem: "all",
+      pipeline: "all",
+      status: "all",
+      temperatura: "all",
+    });
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [dragTarget, setDragTarget] = useState<{
     pipeline: CrmPipeline;
@@ -154,10 +167,25 @@ export function CrmPage() {
   const selectedLead = selectedLeadId
     ? leads.find((lead) => lead.id === selectedLeadId)
     : undefined;
-  const myDayGroups = useMemo(() => buildMyDayGroups(leads), [leads]);
+  const filteredLeads = useMemo(
+    () => filterCrmLeadsAdvanced(leads, advancedFilters),
+    [advancedFilters, leads],
+  );
+  const searchOptions = useMemo(
+    () => buildCrmAdvancedSearchOptions(leads),
+    [leads],
+  );
+  const searchSummary = useMemo(
+    () => summarizeCrmAdvancedSearch(filteredLeads),
+    [filteredLeads],
+  );
+  const myDayGroups = useMemo(
+    () => buildMyDayGroups(filteredLeads),
+    [filteredLeads],
+  );
   const filteredBaseLeads = useMemo(
-    () => filterBaseLeads(leads, baseSearch),
-    [baseSearch, leads],
+    () => filterBaseLeads(filteredLeads, baseSearch),
+    [baseSearch, filteredLeads],
   );
 
   if (selectedLead) {
@@ -199,6 +227,7 @@ export function CrmPage() {
       status: lead.status,
       proximaAcao: lead.proximaAcao,
       dataProximaAcao: lead.dataProximaAcao,
+      pais: lead.pais ?? "",
     });
   }
 
@@ -313,9 +342,16 @@ export function CrmPage() {
               label="Quentes"
               value={myDayGroups.hot.length}
             />
-            <CrmSummaryMetric label="Base" value={leads.length} />
+            <CrmSummaryMetric label="Base filtrada" value={filteredLeads.length} />
           </div>
         </div>
+
+        <AdvancedSearchPanel
+          filters={advancedFilters}
+          onChange={setAdvancedFilters}
+          options={searchOptions}
+          summary={searchSummary}
+        />
 
         <nav className="mt-6 flex gap-2 overflow-x-auto pb-1">
           {crmTabs.map((tab) => (
@@ -350,12 +386,12 @@ export function CrmPage() {
         <OperationalKanban
           columns={buildOperationalColumns({
             group: "prospecting",
-            leads,
+            leads: filteredLeads,
             pipelineDefinitions: kanbanPipelineDefinitions,
           })}
           dragTarget={dragTarget}
           group="prospecting"
-          leads={leads}
+          leads={filteredLeads}
           onDragEnd={handleLeadDragEnd}
           onDragOver={handleStageDragOver}
           onDragStart={handleLeadDragStart}
@@ -368,12 +404,12 @@ export function CrmPage() {
         <OperationalKanban
           columns={buildOperationalColumns({
             group: "sales",
-            leads,
+            leads: filteredLeads,
             pipelineDefinitions: kanbanPipelineDefinitions,
           })}
           dragTarget={dragTarget}
           group="sales"
-          leads={leads}
+          leads={filteredLeads}
           onDragEnd={handleLeadDragEnd}
           onDragOver={handleStageDragOver}
           onDragStart={handleLeadDragStart}
@@ -386,12 +422,12 @@ export function CrmPage() {
         <OperationalKanban
           columns={buildOperationalColumns({
             group: "administrative",
-            leads,
+            leads: filteredLeads,
             pipelineDefinitions: kanbanPipelineDefinitions,
           })}
           dragTarget={dragTarget}
           group="administrative"
-          leads={leads}
+          leads={filteredLeads}
           onDragEnd={handleLeadDragEnd}
           onDragOver={handleStageDragOver}
           onDragStart={handleLeadDragStart}
@@ -402,7 +438,7 @@ export function CrmPage() {
 
       {activeTab === "lost" ? (
         <LostLeadsPanel
-          leads={leads.filter((lead) => isLeadInGroup(lead, "lost"))}
+          leads={filteredLeads.filter((lead) => isLeadInGroup(lead, "lost"))}
           onEdit={handleEditLead}
         />
       ) : null}
@@ -438,6 +474,183 @@ export function CrmPage() {
         </section>
       ) : null}
     </section>
+  );
+}
+
+function AdvancedSearchPanel({
+  filters,
+  onChange,
+  options,
+  summary,
+}: {
+  filters: CrmAdvancedSearchFilters;
+  onChange: React.Dispatch<React.SetStateAction<CrmAdvancedSearchFilters>>;
+  options: ReturnType<typeof buildCrmAdvancedSearchOptions>;
+  summary: ReturnType<typeof summarizeCrmAdvancedSearch>;
+}) {
+  function clearFilters() {
+    onChange({
+      consultor: "all",
+      freeText: "",
+      origem: "all",
+      pipeline: "all",
+      status: "all",
+      temperatura: "all",
+    });
+  }
+
+  return (
+    <section className="mt-6 rounded-md border bg-background/72 p-4">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h3 className="font-semibold text-foreground">Busca Avancada</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Filtra todas as abas operacionais do CRM.
+          </p>
+        </div>
+        <Button onClick={clearFilters} type="button" variant="secondary">
+          Limpar filtros
+        </Button>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <label className="grid gap-2 text-sm font-medium xl:col-span-2">
+          <span>Busca livre</span>
+          <input
+            className={fieldInputClass}
+            onChange={(event) =>
+              onChange((currentFilters) => ({
+                ...currentFilters,
+                freeText: event.target.value,
+              }))
+            }
+            placeholder="Nome, telefone, e-mail, pais, observacao..."
+            value={filters.freeText}
+          />
+        </label>
+
+        <AdvancedSelect
+          label="Status"
+          onChange={(value) =>
+            onChange((currentFilters) => ({
+              ...currentFilters,
+              status: value as CrmAdvancedSearchFilters["status"],
+            }))
+          }
+          options={[
+            ["all", "Todos"],
+            ["ativa", "Ativa"],
+            ["ganha", "Ganha"],
+            ["perdida", "Perdida"],
+          ]}
+          value={filters.status}
+        />
+
+        <AdvancedSelect
+          label="Pipeline"
+          onChange={(value) =>
+            onChange((currentFilters) => ({
+              ...currentFilters,
+              pipeline: value,
+            }))
+          }
+          options={[
+            ["all", "Todos"],
+            ...options.pipelines.map((pipeline) => [pipeline, pipeline] as const),
+          ]}
+          value={filters.pipeline}
+        />
+
+        <AdvancedSelect
+          label="Responsavel"
+          onChange={(value) =>
+            onChange((currentFilters) => ({
+              ...currentFilters,
+              consultor: value,
+            }))
+          }
+          options={[
+            ["all", "Todos"],
+            ...options.consultores.map(
+              (consultor) => [consultor, consultor] as const,
+            ),
+          ]}
+          value={filters.consultor}
+        />
+
+        <AdvancedSelect
+          label="Temperatura"
+          onChange={(value) =>
+            onChange((currentFilters) => ({
+              ...currentFilters,
+              temperatura: value as CrmAdvancedSearchFilters["temperatura"],
+            }))
+          }
+          options={[
+            ["all", "Todas"],
+            ["fria", "Fria"],
+            ["morna", "Morna"],
+            ["quente", "Quente"],
+          ]}
+          value={filters.temperatura}
+        />
+
+        <AdvancedSelect
+          label="Origem"
+          onChange={(value) =>
+            onChange((currentFilters) => ({
+              ...currentFilters,
+              origem: value,
+            }))
+          }
+          options={[
+            ["all", "Todas"],
+            ...options.origens.map((origem) => [origem, origem] as const),
+          ]}
+          value={filters.origem}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
+        <CrmSummaryMetric label="Total encontrado" value={summary.total} />
+        <CrmSummaryMetric label="Ativas" value={summary.active} />
+        <CrmSummaryMetric label="Ganhas" value={summary.gained} />
+        <CrmSummaryMetric label="Perdidas" value={summary.lost} />
+        <CrmSummaryMetric
+          label="Valor P&S filtrado"
+          value={currencyFormatter.format(summary.totalPotential)}
+        />
+      </div>
+    </section>
+  );
+}
+
+function AdvancedSelect({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: ReadonlyArray<readonly [string, string]>;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-medium">
+      <span>{label}</span>
+      <select
+        className={fieldInputClass}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -999,6 +1212,7 @@ function BasePanel({
               <th className="px-3 py-3">Nome</th>
               <th className="px-3 py-3">Telefone</th>
               <th className="px-3 py-3">E-mail</th>
+              <th className="px-3 py-3">Pais</th>
               <th className="px-3 py-3">Responsavel</th>
               <th className="px-3 py-3">Pipeline</th>
               <th className="px-3 py-3">Etapa</th>
@@ -1022,6 +1236,9 @@ function BasePanel({
                 </td>
                 <td className="px-3 py-3 text-muted-foreground">
                   {lead.email || "-"}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.pais || "-"}
                 </td>
                 <td className="px-3 py-3 text-muted-foreground">
                   {lead.consultor || "-"}
@@ -1128,6 +1345,18 @@ function LeadForm({
               }
               type="email"
               value={draft.email}
+            />
+          </Field>
+          <Field label="Pais">
+            <input
+              className={fieldInputClass}
+              onChange={(event) =>
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  pais: event.target.value,
+                }))
+              }
+              value={draft.pais ?? ""}
             />
           </Field>
           <Field label="Responsavel">
@@ -1441,7 +1670,15 @@ function filterBaseLeads(leads: CrmLead[], search: string) {
   }
 
   return leads.filter((lead) =>
-    [lead.nome, lead.telefone, lead.email, lead.consultor, lead.pipeline, lead.etapa]
+    [
+      lead.nome,
+      lead.telefone,
+      lead.email,
+      lead.pais ?? "",
+      lead.consultor,
+      lead.pipeline,
+      lead.etapa,
+    ]
       .map(normalizeKey)
       .some((value) => value.includes(normalizedSearch)),
   );

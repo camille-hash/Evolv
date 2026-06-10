@@ -71,6 +71,7 @@ export const emptyCrmLeadInput: CrmLeadInput = {
   nome: "",
   telefone: "",
   email: "",
+  pais: "",
   origem: "",
   consultor: "",
   valorPretendido: 0,
@@ -97,6 +98,23 @@ export const crmOpportunityStatusLabels: Record<CrmOpportunityStatus, string> =
     ganha: "Ganha",
     perdida: "Perdida",
   };
+
+export type CrmAdvancedSearchFilters = {
+  freeText: string;
+  status: CrmOpportunityStatus | "all";
+  pipeline: CrmPipeline | "all";
+  consultor: string;
+  temperatura: CrmTemperature | "all";
+  origem: string;
+};
+
+export type CrmAdvancedSearchSummary = {
+  total: number;
+  active: number;
+  gained: number;
+  lost: number;
+  totalPotential: number;
+};
 
 // Future CRM path: Lead -> Cliente -> Simulacao Comercial -> Multi-Cotas -> Acompanhamento.
 // This sprint intentionally keeps that path manual, without automations or integrations.
@@ -233,6 +251,73 @@ export function summarizeCrmPipeline(leads: CrmLead[]): CrmPipelineSummary {
   );
 }
 
+export function filterCrmLeadsAdvanced(
+  leads: CrmLead[],
+  filters: CrmAdvancedSearchFilters,
+) {
+  const normalizedSearch = normalizeSearchText(filters.freeText);
+  const normalizedPhoneSearch = normalizePhone(filters.freeText);
+
+  return leads.filter((lead) => {
+    const matchesFreeText =
+      !normalizedSearch ||
+      getCrmLeadSearchFields(lead).some((value) =>
+        normalizeSearchText(value).includes(normalizedSearch),
+      ) ||
+      (Boolean(normalizedPhoneSearch) &&
+        normalizePhone(lead.telefone).includes(normalizedPhoneSearch));
+    const matchesStatus =
+      filters.status === "all" || lead.status === filters.status;
+    const matchesPipeline =
+      filters.pipeline === "all" || lead.pipeline === filters.pipeline;
+    const matchesConsultor =
+      filters.consultor === "all" || lead.consultor === filters.consultor;
+    const matchesTemperature =
+      filters.temperatura === "all" ||
+      lead.temperatura === filters.temperatura;
+    const matchesOrigin =
+      filters.origem === "all" || lead.origem === filters.origem;
+
+    return (
+      matchesFreeText &&
+      matchesStatus &&
+      matchesPipeline &&
+      matchesConsultor &&
+      matchesTemperature &&
+      matchesOrigin
+    );
+  });
+}
+
+export function summarizeCrmAdvancedSearch(
+  leads: CrmLead[],
+): CrmAdvancedSearchSummary {
+  return leads.reduce<CrmAdvancedSearchSummary>(
+    (summary, lead) => ({
+      active: summary.active + (lead.status === "ativa" ? 1 : 0),
+      gained: summary.gained + (lead.status === "ganha" ? 1 : 0),
+      lost: summary.lost + (lead.status === "perdida" ? 1 : 0),
+      total: summary.total + 1,
+      totalPotential: summary.totalPotential + lead.valorPretendido,
+    }),
+    {
+      active: 0,
+      gained: 0,
+      lost: 0,
+      total: 0,
+      totalPotential: 0,
+    },
+  );
+}
+
+export function buildCrmAdvancedSearchOptions(leads: CrmLead[]) {
+  return {
+    consultores: uniqueFilledValues(leads.map((lead) => lead.consultor)),
+    origens: uniqueFilledValues(leads.map((lead) => lead.origem)),
+    pipelines: uniqueFilledValues(leads.map((lead) => lead.pipeline)),
+  };
+}
+
 export function normalizeCrmLead(value: unknown): CrmLead | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -265,6 +350,7 @@ export function normalizeCrmLead(value: unknown): CrmLead | null {
     telefone:
       typeof candidate.telefone === "string" ? candidate.telefone : "",
     email: typeof candidate.email === "string" ? candidate.email : "",
+    pais: typeof candidate.pais === "string" ? candidate.pais : "",
     origem: typeof candidate.origem === "string" ? candidate.origem : "",
     consultor:
       typeof candidate.consultor === "string" ? candidate.consultor : "",
@@ -345,6 +431,7 @@ function normalizeLeadInput(input: CrmLeadInput): CrmLeadInput {
     nome: input.nome.trim(),
     telefone: input.telefone.trim(),
     email: input.email.trim(),
+    pais: input.pais?.trim() ?? "",
     origem: input.origem.trim(),
     consultor: input.consultor.trim(),
     valorPretendido: Number.isFinite(input.valorPretendido)
@@ -383,4 +470,41 @@ function normalizeOpportunityStatus(status: unknown): CrmOpportunityStatus {
   return status === "ativa" || status === "ganha" || status === "perdida"
     ? status
     : "ativa";
+}
+
+function getCrmLeadSearchFields(lead: CrmLead) {
+  return [
+    lead.nome,
+    lead.telefone,
+    lead.email,
+    lead.pais ?? "",
+    lead.status,
+    lead.pipeline,
+    lead.etapa,
+    lead.consultor,
+    lead.origem,
+    lead.temperatura,
+    lead.produtoInteresse,
+    lead.observacoes,
+    lead.tituloOportunidade ?? "",
+    lead.tags.join(" "),
+  ];
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D+/g, "");
+}
+
+function uniqueFilledValues(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort(
+    (left, right) => left.localeCompare(right, "pt-BR"),
+  );
 }

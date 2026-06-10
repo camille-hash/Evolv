@@ -38,6 +38,7 @@ export type CrmLead = {
   nome: string;
   telefone: string;
   email: string;
+  pais?: string;
   origem: string;
   consultor: string;
   valorPretendido: number;
