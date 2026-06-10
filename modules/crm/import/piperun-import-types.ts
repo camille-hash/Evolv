@@ -21,6 +21,19 @@ export type PiperunRawRow = {
   telefonePessoa: string;
 };
 
+export type PiperunContactRow = {
+  nomeCompleto: string;
+  consultorEmail: string;
+  email: string;
+  telefone: string;
+  tags: string;
+  csResponsavel: string;
+  nomeFantasiaEmpresa: string;
+  hash?: string;
+};
+
+export type PiperunPhoneMatchSource = "hash" | "email" | "name" | "none";
+
 export type PiperunImportWarning =
   | "missing-phone"
   | "repeated-email"
@@ -47,6 +60,7 @@ export type PiperunMappedLeadPreview = {
   nome: string;
   email: string;
   telefone: string;
+  phoneMatchSource: PiperunPhoneMatchSource;
   warnings: PiperunImportWarning[];
   validForImport: boolean;
 };
@@ -59,6 +73,9 @@ export type PiperunImportSummary = {
   ignoredMissingPhone: number;
   repeatedEmailRows: number;
   emptyValueRows: number;
+  phoneRows: number;
+  statusCrmCounts: Record<string, number>;
+  consultantCounts: Record<string, number>;
   statusCounts: Record<string, number>;
   pipelineCounts: Record<string, number>;
   stageCounts: Record<string, number>;
@@ -70,4 +87,3 @@ export type PiperunImportPreview = {
   rows: PiperunMappedLeadPreview[];
   previewRows: PiperunMappedLeadPreview[];
 };
-

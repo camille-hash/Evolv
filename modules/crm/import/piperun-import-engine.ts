@@ -1,10 +1,13 @@
 import type {
+  PiperunContactRow,
   PiperunImportPreview,
   PiperunImportSummary,
   PiperunImportWarning,
   PiperunMappedLeadPreview,
+  PiperunPhoneMatchSource,
   PiperunRawRow,
 } from "./piperun-import-types";
+import { piperunContactRows } from "./piperun-contact-source";
 import {
   piperunImportRows,
   piperunImportSource,
@@ -23,17 +26,21 @@ const importWarnings: PiperunImportWarning[] = [
 export function buildPiperunImportPreview({
   existingExternalIds = [],
   previewLimit = 50,
+  contacts = piperunContactRows,
   rows = piperunImportRows,
 }: {
+  contacts?: PiperunContactRow[];
   existingExternalIds?: string[];
   previewLimit?: number;
   rows?: PiperunRawRow[];
 } = {}): PiperunImportPreview {
   const repeatedEmails = findRepeatedEmails(rows);
   const existingExternalIdSet = new Set(existingExternalIds);
+  const phoneIndex = buildPhoneIndex(contacts);
   const mappedRows = rows.map((row) =>
     mapPiperunRow({
       existingExternalIds: existingExternalIdSet,
+      phoneIndex,
       repeatedEmails,
       row,
     }),
@@ -48,19 +55,22 @@ export function buildPiperunImportPreview({
 
 export function mapPiperunRow({
   existingExternalIds,
+  phoneIndex,
   repeatedEmails,
   row,
 }: {
   existingExternalIds?: Set<string>;
+  phoneIndex?: PiperunPhoneIndex;
   repeatedEmails?: Set<string>;
   row: PiperunRawRow;
 }): PiperunMappedLeadPreview {
   const statusOriginal = row.status || row.situacao;
   const status = normalizePiperunStatus(statusOriginal);
   const email = row.emailPessoa.trim();
+  const phoneMatch = resolvePhoneMatch(row, phoneIndex);
   const warnings: PiperunImportWarning[] = [];
 
-  if (!row.telefonePessoa.trim()) {
+  if (!phoneMatch.telefone) {
     warnings.push("missing-phone");
   }
 
@@ -104,7 +114,8 @@ export function mapPiperunRow({
     tags: parseTags(row.tags),
     nome: row.nomePessoa || row.titulo,
     email,
-    telefone: row.telefonePessoa.trim(),
+    telefone: phoneMatch.telefone,
+    phoneMatchSource: phoneMatch.source,
     warnings,
     validForImport: isValidForImport(warnings),
   };
@@ -126,6 +137,9 @@ export function summarizePiperunImport(
     ).length,
     emptyValueRows: rows.filter((row) => row.warnings.includes("empty-value"))
       .length,
+    phoneRows: rows.filter((row) => row.telefone).length,
+    statusCrmCounts: countBy(rows, (row) => row.status),
+    consultantCounts: countBy(rows, (row) => row.consultor || "Sem responsavel"),
     statusCounts: countBy(rows, (row) => row.statusOriginal || "Sem status"),
     pipelineCounts: countBy(rows, (row) => row.pipeline || "Sem pipeline"),
     stageCounts: countBy(rows, (row) => row.etapa || "Sem etapa"),
@@ -135,6 +149,36 @@ export function summarizePiperunImport(
         rows.filter((row) => row.warnings.includes(warning)).length,
       ]),
     ) as Record<PiperunImportWarning, number>,
+  };
+}
+
+export function toCrmLeadFromPiperunPreview(
+  row: PiperunMappedLeadPreview,
+) {
+  const now = new Date().toISOString();
+
+  return {
+    id: crypto.randomUUID(),
+    externalId: row.externalId,
+    closedAt: row.closedAt || undefined,
+    tituloOportunidade: row.tituloOportunidade || undefined,
+    nome: row.nome,
+    telefone: row.telefone,
+    email: row.email,
+    origem: row.origem,
+    consultor: row.consultor,
+    valorPretendido: row.valorPotencial,
+    observacoes: row.observacoes,
+    pipeline: row.pipeline,
+    etapa: row.etapa,
+    tags: row.tags,
+    produtoInteresse: "",
+    temperatura: "morna",
+    status: row.status,
+    proximaAcao: "",
+    dataProximaAcao: "",
+    createdAt: row.createdAt || now,
+    updatedAt: now,
   };
 }
 
@@ -187,6 +231,66 @@ function isValidForImport(warnings: PiperunImportWarning[]) {
   );
 }
 
+type PiperunPhoneIndex = {
+  byHash: Map<string, string>;
+  byEmail: Map<string, string>;
+  byName: Map<string, string>;
+};
+
+function buildPhoneIndex(contacts: PiperunContactRow[]): PiperunPhoneIndex {
+  const byHash = new Map<string, string>();
+  const byEmail = new Map<string, string>();
+  const byName = new Map<string, string>();
+
+  contacts.forEach((contact) => {
+    const phone = normalizePhone(contact.telefone);
+
+    if (!phone) {
+      return;
+    }
+
+    if (contact.hash) {
+      setFirst(byHash, contact.hash, phone);
+    }
+
+    setFirst(byEmail, normalizeEmail(contact.email), phone);
+    setFirst(byName, normalizeName(contact.nomeCompleto), phone);
+  });
+
+  return { byEmail, byHash, byName };
+}
+
+function resolvePhoneMatch(
+  row: PiperunRawRow,
+  phoneIndex?: PiperunPhoneIndex,
+): { source: PiperunPhoneMatchSource; telefone: string } {
+  const ownPhone = normalizePhone(row.telefonePessoa);
+
+  if (ownPhone) {
+    return { source: "hash", telefone: ownPhone };
+  }
+
+  const hashPhone = phoneIndex?.byHash.get(row.hash);
+
+  if (hashPhone) {
+    return { source: "hash", telefone: hashPhone };
+  }
+
+  const emailPhone = phoneIndex?.byEmail.get(normalizeEmail(row.emailPessoa));
+
+  if (emailPhone) {
+    return { source: "email", telefone: emailPhone };
+  }
+
+  const namePhone = phoneIndex?.byName.get(normalizeName(row.nomePessoa));
+
+  if (namePhone) {
+    return { source: "name", telefone: namePhone };
+  }
+
+  return { source: "none", telefone: "" };
+}
+
 function findRepeatedEmails(rows: PiperunRawRow[]) {
   const emailCounts = rows.reduce<Record<string, number>>((counts, row) => {
     const email = normalizeEmail(row.emailPessoa);
@@ -226,6 +330,14 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+function normalizeName(value: string) {
+  return normalizeText(value).replace(/\s+/g, " ");
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D+/g, "");
+}
+
 function normalizeText(value: string) {
   return value
     .trim()
@@ -245,3 +357,8 @@ function countBy<T>(values: T[], getKey: (value: T) => string) {
   }, {});
 }
 
+function setFirst(map: Map<string, string>, key: string, value: string) {
+  if (key && !map.has(key)) {
+    map.set(key, value);
+  }
+}

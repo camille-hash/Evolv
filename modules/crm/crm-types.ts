@@ -1,30 +1,6 @@
-export type CrmPipeline =
-  | "prospecting"
-  | "sales"
-  | "administrative"
-  | "lost";
+export type CrmPipeline = string;
 
-export type CrmStage =
-  | "novos"
-  | "abertura"
-  | "conexao"
-  | "qualificados"
-  | "no-show"
-  | "agendamento"
-  | "primeira-reuniao"
-  | "segunda-reuniao"
-  | "contorno-objecoes"
-  | "green-flag"
-  | "documentacao"
-  | "emissao-contrato"
-  | "etapa-pagamento"
-  | "aguardando-assinatura"
-  | "aprovacao-administradora"
-  | "tentativas-contato"
-  | "apresentou-nao-comprou"
-  | "cliente-nao-compareceu"
-  | "nao-esta-no-momento"
-  | "fechou-concorrente";
+export type CrmStage = string;
 
 export type CrmStageDefinition = {
   key: CrmStage;
@@ -56,6 +32,9 @@ export type CrmOpportunityStatus = "ativa" | "ganha" | "perdida";
 
 export type CrmLead = {
   id: string;
+  externalId?: string;
+  closedAt?: string;
+  tituloOportunidade?: string;
   nome: string;
   telefone: string;
   email: string;
@@ -83,6 +62,7 @@ export type CrmPipelineSummary = {
   sales: number;
   administrative: number;
   lost: number;
+  [pipeline: string]: number;
 };
 
 export type CrmNote = {

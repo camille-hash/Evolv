@@ -253,6 +253,14 @@ export function normalizeCrmLead(value: unknown): CrmLead | null {
       typeof candidate.id === "string" && candidate.id.trim()
         ? candidate.id
         : crypto.randomUUID(),
+    externalId:
+      typeof candidate.externalId === "string" ? candidate.externalId : undefined,
+    closedAt:
+      typeof candidate.closedAt === "string" ? candidate.closedAt : undefined,
+    tituloOportunidade:
+      typeof candidate.tituloOportunidade === "string"
+        ? candidate.tituloOportunidade
+        : undefined,
     nome: typeof candidate.nome === "string" ? candidate.nome : "",
     telefone:
       typeof candidate.telefone === "string" ? candidate.telefone : "",
@@ -314,8 +322,8 @@ function getPipelineDefinition(
 }
 
 function normalizePipeline(pipeline: unknown): CrmPipeline {
-  return crmPipelines.some((item) => item.key === pipeline)
-    ? (pipeline as CrmPipeline)
+  return typeof pipeline === "string" && pipeline.trim()
+    ? pipeline.trim()
     : "prospecting";
 }
 
@@ -324,9 +332,11 @@ function normalizeStageForPipeline(
   stage: unknown,
   pipelineDefinitions = crmPipelines,
 ): CrmStage {
-  return isStageInPipeline(pipeline, stage as CrmStage, pipelineDefinitions)
-    ? (stage as CrmStage)
-    : getDefaultStageForPipeline(pipeline, pipelineDefinitions);
+  if (typeof stage === "string" && stage.trim()) {
+    return stage.trim();
+  }
+
+  return getDefaultStageForPipeline(pipeline, pipelineDefinitions);
 }
 
 function normalizeLeadInput(input: CrmLeadInput): CrmLeadInput {
