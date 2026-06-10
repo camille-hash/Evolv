@@ -12,6 +12,78 @@ export const defaultAdminUser: User = {
   updatedAt: "2026-06-10T00:00:00.000Z",
 };
 
+const defaultUserCreatedAt = "2026-06-10T00:00:00.000Z";
+
+export const defaultAccessUsers: User[] = [
+  defaultAdminUser,
+  {
+    id: "default-admin-bruno-access",
+    nome: "Bruno",
+    usuario: "bruno",
+    senha: "123456",
+    role: "admin",
+    ativo: true,
+    mustChangePassword: true,
+    createdAt: defaultUserCreatedAt,
+    updatedAt: defaultUserCreatedAt,
+  },
+  {
+    id: "default-sdr-1",
+    nome: "SDR 1",
+    usuario: "sdr1",
+    senha: "123456",
+    role: "sdr",
+    ativo: true,
+    mustChangePassword: true,
+    createdAt: defaultUserCreatedAt,
+    updatedAt: defaultUserCreatedAt,
+  },
+  {
+    id: "default-sdr-2",
+    nome: "SDR 2",
+    usuario: "sdr2",
+    senha: "123456",
+    role: "sdr",
+    ativo: true,
+    mustChangePassword: true,
+    createdAt: defaultUserCreatedAt,
+    updatedAt: defaultUserCreatedAt,
+  },
+  {
+    id: "default-sdr-3",
+    nome: "SDR 3",
+    usuario: "sdr3",
+    senha: "123456",
+    role: "sdr",
+    ativo: true,
+    mustChangePassword: true,
+    createdAt: defaultUserCreatedAt,
+    updatedAt: defaultUserCreatedAt,
+  },
+  {
+    id: "default-sdr-4",
+    nome: "SDR 4",
+    usuario: "sdr4",
+    senha: "123456",
+    role: "sdr",
+    ativo: true,
+    mustChangePassword: true,
+    createdAt: defaultUserCreatedAt,
+    updatedAt: defaultUserCreatedAt,
+  },
+  {
+    id: "default-sdr-5",
+    nome: "SDR 5",
+    usuario: "sdr5",
+    senha: "123456",
+    role: "sdr",
+    ativo: true,
+    mustChangePassword: true,
+    createdAt: defaultUserCreatedAt,
+    updatedAt: defaultUserCreatedAt,
+  },
+];
+
 export const roleLabels: Record<UserRole, string> = {
   admin: "Administrador",
   sdr: "SDR",
@@ -171,9 +243,7 @@ export function normalizeUser(value: unknown): User | null {
     mustChangePassword:
       typeof candidate.mustChangePassword === "boolean"
         ? candidate.mustChangePassword
-        : normalizeRole(candidate.role) === "admin" &&
-          candidate.usuario === "admin" &&
-          candidate.senha === "123456",
+        : isDefaultAdmin && candidate.senha === "123456",
     createdAt,
     updatedAt:
       typeof candidate.updatedAt === "string" ? candidate.updatedAt : createdAt,

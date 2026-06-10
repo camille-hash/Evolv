@@ -137,6 +137,11 @@ export function AccessSettingsPage() {
           </p>
         ) : null}
 
+        <p className="mt-4 rounded-md border bg-background/60 px-3 py-2 text-sm text-muted-foreground">
+          Usuários padrão são criados apenas no primeiro acesso deste navegador.
+          Senhas devem ser alteradas no primeiro login.
+        </p>
+
         <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
           <Field label="Nome">
             <input

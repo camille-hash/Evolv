@@ -98,8 +98,9 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
         </form>
 
         <p className="mt-5 rounded-md border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
-          Acesso local provisório. O administrador padrao e Bruno, usuario
-          admin. Altere a senha inicial imediatamente apos entrar.
+          Acesso local provisorio. Usuarios iniciais: Camille (admin), Bruno
+          (bruno) e SDRs (sdr1 a sdr5). Altere a senha inicial imediatamente
+          apos entrar.
         </p>
       </section>
     </main>
@@ -222,8 +223,8 @@ export function DefaultPasswordAlert({ user }: { user: User }) {
 
   return (
     <div className="mb-6 rounded-md border border-brand-gold/40 bg-card px-4 py-3 text-sm text-muted-foreground">
-      Senha padrao de administrador ativa. Recomenda-se alterar imediatamente
-      para uso interno da equipe.
+      Senha temporaria ativa. Recomenda-se alterar imediatamente para uso
+      interno da equipe.
     </div>
   );
 }

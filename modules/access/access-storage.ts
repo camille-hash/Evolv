@@ -3,7 +3,7 @@ import {
   canDeleteUser,
   canChangeUserRole,
   createUser,
-  defaultAdminUser,
+  defaultAccessUsers,
   isMasterAdmin,
   normalizeUser,
   updateUser,
@@ -21,8 +21,8 @@ export function loadUsers(): User[] {
   const users = readStoredUsers();
 
   if (!users.length) {
-    saveUsers([defaultAdminUser]);
-    return [defaultAdminUser];
+    saveUsers(defaultAccessUsers);
+    return defaultAccessUsers;
   }
 
   return users;
@@ -55,7 +55,9 @@ export function loadCurrentUser(): User | null {
     return null;
   }
 
-  const currentUserId = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
+  window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+
+  const currentUserId = window.sessionStorage.getItem(CURRENT_USER_STORAGE_KEY);
 
   if (!currentUserId) {
     loadUsers();
@@ -70,7 +72,8 @@ export function saveCurrentUser(user: User) {
     return;
   }
 
-  window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, user.id);
+  window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+  window.sessionStorage.setItem(CURRENT_USER_STORAGE_KEY, user.id);
 }
 
 export function changeUserPassword(userId: string, senha: string): User | null {
@@ -108,6 +111,7 @@ export function clearCurrentUser() {
     return;
   }
 
+  window.sessionStorage.removeItem(CURRENT_USER_STORAGE_KEY);
   window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
 }
 
