@@ -19,8 +19,8 @@ import {
   filterCrmLeadsAdvanced,
   getDefaultStageForPipeline,
   isStageInPipeline,
-  loadCrmLeads,
   loadCrmPipelineConfig,
+  listCrmLeadsFromRepository,
   mergeLeadPipelinesIntoDefinitions,
   moveCrmStage,
   recordCrmStageChange,
@@ -144,12 +144,21 @@ export function CrmPage() {
   } | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const timeoutId = window.setTimeout(() => {
-      setLeads(loadCrmLeads());
+      void listCrmLeadsFromRepository().then((repositoryLeads) => {
+        if (isMounted) {
+          setLeads(repositoryLeads);
+        }
+      });
       setPipelineConfig(loadCrmPipelineConfig());
     }, 0);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeoutId);
+    };
   }, []);
 
   const configuredPipelineDefinitions = useMemo(
