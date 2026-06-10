@@ -105,16 +105,22 @@ export function AccessSettingsPage() {
   }
 
   function handleExportLocalBackup() {
-    const backup = downloadEvolvLocalBackup();
+    try {
+      const backup = downloadEvolvLocalBackup();
 
-    setMessage(
-      `Backup local gerado com ${backup.summary.existingKeys} chaves encontradas.`,
-    );
+      setMessage(
+        `Backup local gerado com ${backup.summary.existingKeys} chaves encontradas.`,
+      );
+    } catch {
+      setMessage(
+        "Nao foi possivel gerar o download. Verifique se o navegador bloqueou arquivos baixados.",
+      );
+    }
   }
 
   return (
-    <section className="grid gap-6">
-      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+    <section className="grid min-w-0 gap-6 overflow-hidden">
+      <section className="executive-surface min-w-0 rounded-md p-5 text-card-foreground sm:p-6">
         <div className="flex flex-col gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Acesso
@@ -128,7 +134,7 @@ export function AccessSettingsPage() {
         </div>
       </section>
 
-      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+      <section className="executive-surface min-w-0 rounded-md p-5 text-card-foreground sm:p-6">
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" aria-hidden />
           <div>
@@ -151,7 +157,10 @@ export function AccessSettingsPage() {
           Senhas devem ser alteradas no primeiro login.
         </p>
 
-        <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+        <form
+          className="mt-5 grid min-w-0 gap-4 md:grid-cols-2"
+          onSubmit={handleSubmit}
+        >
           <Field label="Nome">
             <input
               className={fieldInputClass}
@@ -238,15 +247,15 @@ export function AccessSettingsPage() {
         </form>
       </section>
 
-      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+      <section className="executive-surface min-w-0 rounded-md p-5 text-card-foreground sm:p-6">
         <h3 className="font-semibold">Usuários cadastrados</h3>
         <div className="mt-5 grid gap-3">
           {users.map((user) => (
             <article
-              className="grid gap-4 rounded-md border bg-background/70 p-4 lg:grid-cols-[1fr_auto]"
+              className="grid min-w-0 gap-4 rounded-md border bg-background/70 p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
               key={user.id}
             >
-              <div>
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h4 className="font-semibold text-foreground">{user.nome}</h4>
                   <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
@@ -266,13 +275,13 @@ export function AccessSettingsPage() {
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <p className="mt-2 break-words text-sm text-muted-foreground">
                   Usuário: {user.usuario}
                 </p>
               </div>
 
               {!isMasterAdmin(user) ? (
-                <div className="grid gap-2 sm:min-w-[360px]">
+                <div className="grid min-w-0 gap-2">
                   <div className="flex flex-wrap gap-2">
                     <Button
                       onClick={() => handleEdit(user)}
@@ -322,9 +331,9 @@ export function AccessSettingsPage() {
         </div>
       </section>
 
-      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+      <section className="executive-surface min-w-0 rounded-md p-5 text-card-foreground sm:p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
+          <div className="min-w-0">
             <h3 className="font-semibold">Backup local</h3>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
               Exporta uma copia JSON das chaves locais do EVOLV neste navegador,
@@ -332,6 +341,7 @@ export function AccessSettingsPage() {
             </p>
           </div>
           <Button
+            className="w-full sm:w-auto"
             onClick={handleExportLocalBackup}
             type="button"
             variant="secondary"
@@ -341,7 +351,9 @@ export function AccessSettingsPage() {
         </div>
       </section>
 
-      <PiperunImportPage />
+      <div className="min-w-0 overflow-x-auto">
+        <PiperunImportPage />
+      </div>
     </section>
   );
 }

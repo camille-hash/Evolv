@@ -69,6 +69,10 @@ export function createEvolvLocalBackupPayload(): EvolvLocalBackupPayload {
 }
 
 export function downloadEvolvLocalBackup(): EvolvLocalBackupPayload {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    throw new Error("A exportacao precisa ser iniciada no navegador.");
+  }
+
   const payload = createEvolvLocalBackupPayload();
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
@@ -78,8 +82,12 @@ export function downloadEvolvLocalBackup(): EvolvLocalBackupPayload {
 
   anchor.href = url;
   anchor.download = buildBackupFileName(payload.generatedAt);
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 
   return payload;
 }
