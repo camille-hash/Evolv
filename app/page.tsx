@@ -5,7 +5,11 @@ import {
   AppSidebar,
   type PlatformSection,
 } from "@/components/layout/app-sidebar";
-import { DemoAccessGate } from "@/components/access/demo-access-gate";
+import { AccessSettingsPage } from "@/components/access/access-settings-page";
+import {
+  DefaultPasswordAlert,
+  LoginPage,
+} from "@/components/access/login-page";
 import { ClientPage } from "@/components/client/client-page";
 import { CrmPage } from "@/components/crm/crm-page";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
@@ -24,6 +28,13 @@ import {
   loadClientContext,
   type ClientContext,
 } from "@/modules/client-context";
+import {
+  canAccessSection,
+  clearCurrentUser,
+  loadCurrentUser,
+  type AccessSection,
+  type User,
+} from "@/modules/access";
 
 const simulatorPageBySection: Partial<Record<PlatformSection, SimulatorPanelPage>> = {
   wealth: "journey",
@@ -80,6 +91,10 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
     title: "Historico",
     subtitle: "Simulacoes salvas neste navegador",
   },
+  settings: {
+    title: "Configuracoes",
+    subtitle: "Acesso local, usuarios da equipe e perfis operacionais",
+  },
 };
 
 export default function Home() {
@@ -87,74 +102,113 @@ export default function Home() {
     useState<PlatformSection>("dashboard");
   const [clientContext, setClientContext] =
     useState<ClientContext>(emptyClientContext);
-  const currentSimulatorPage = simulatorPageBySection[activeSection];
-  const pageTitle = pageTitles[activeSection];
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [accessReady, setAccessReady] = useState(false);
+  const visibleActiveSection =
+    currentUser &&
+    canAccessSection(currentUser.role, activeSection as AccessSection)
+      ? activeSection
+      : "dashboard";
+  const currentSimulatorPage = simulatorPageBySection[visibleActiveSection];
+  const pageTitle = pageTitles[visibleActiveSection];
   const handleClientContextChange = useCallback((context: ClientContext) => {
     setClientContext(context);
   }, []);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
+      const storedUser = loadCurrentUser();
+      setCurrentUser(storedUser);
       setClientContext(loadClientContext());
+      setAccessReady(true);
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, []);
 
+  function handleLogout() {
+    clearCurrentUser();
+    setCurrentUser(null);
+    setActiveSection("dashboard");
+  }
+
+  function handleNavigate(section: PlatformSection) {
+    if (
+      currentUser &&
+      canAccessSection(currentUser.role, section as AccessSection)
+    ) {
+      setActiveSection(section);
+    }
+  }
+
+  if (!accessReady) {
+    return null;
+  }
+
+  if (!currentUser) {
+    return <LoginPage onLogin={setCurrentUser} />;
+  }
+
   return (
-    <DemoAccessGate>
-      <div className="grid min-h-screen grid-cols-1 md:grid-cols-[280px_1fr]">
-        <AppSidebar
-          activeSection={activeSection}
-          onNavigate={setActiveSection}
-        />
+    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[280px_1fr]">
+      <AppSidebar
+        activeSection={visibleActiveSection}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onNavigate={handleNavigate}
+      />
 
-        <main className="min-w-0 p-5 sm:p-7 lg:p-8">
-          <section className="mb-7 max-w-4xl">
-            <p className="text-sm font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              EVOLV
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-normal text-foreground">
-              {pageTitle.title}
-            </h1>
-            <p className="mt-3 text-base leading-7 text-muted-foreground">
-              {pageTitle.subtitle}
-            </p>
-          </section>
+      <main className="min-w-0 p-5 sm:p-7 lg:p-8">
+        <DefaultPasswordAlert user={currentUser} />
 
-          {activeSection === "dashboard" ? (
-            <ExecutiveDashboard
-              clientContext={clientContext}
-              onCreateSimulation={() => setActiveSection("presentation")}
-            />
-          ) : null}
+        <section className="mb-7 max-w-4xl">
+          <p className="text-sm font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            EVOLV
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-normal text-foreground">
+            {pageTitle.title}
+          </h1>
+          <p className="mt-3 text-base leading-7 text-muted-foreground">
+            {pageTitle.subtitle}
+          </p>
+        </section>
 
-          {activeSection === "client" ? (
-            <ClientPage onClientContextChange={handleClientContextChange} />
-          ) : null}
+        {visibleActiveSection === "dashboard" ? (
+          <ExecutiveDashboard
+            clientContext={clientContext}
+            onCreateSimulation={() => handleNavigate("presentation")}
+          />
+        ) : null}
 
-          {activeSection === "crm" ? <CrmPage /> : null}
+        {visibleActiveSection === "client" ? (
+          <ClientPage onClientContextChange={handleClientContextChange} />
+        ) : null}
 
-          {activeSection === "presentation" ? <ClientPresentationPage /> : null}
+        {visibleActiveSection === "crm" ? <CrmPage /> : null}
 
-          {activeSection === "multiCotas" ? <MultiCotasPage /> : null}
+        {visibleActiveSection === "presentation" ? (
+          <ClientPresentationPage />
+        ) : null}
 
-          {activeSection === "portfolio" ? <PortfolioPage /> : null}
+        {visibleActiveSection === "multiCotas" ? <MultiCotasPage /> : null}
 
-          {activeSection === "strategies" ? <StrategiesPage /> : null}
+        {visibleActiveSection === "portfolio" ? <PortfolioPage /> : null}
 
-          {activeSection === "roadmap" ? <RoadmapPage /> : null}
+        {visibleActiveSection === "strategies" ? <StrategiesPage /> : null}
 
-          {activeSection === "followup" ? <FollowUpPage /> : null}
+        {visibleActiveSection === "roadmap" ? <RoadmapPage /> : null}
 
-          {currentSimulatorPage ? (
-            <SimulatorPanel
-              activePage={currentSimulatorPage}
-              onOpenSimulation={() => setActiveSection("presentation")}
-            />
-          ) : null}
-        </main>
-      </div>
-    </DemoAccessGate>
+        {visibleActiveSection === "followup" ? <FollowUpPage /> : null}
+
+        {visibleActiveSection === "settings" ? <AccessSettingsPage /> : null}
+
+        {currentSimulatorPage ? (
+          <SimulatorPanel
+            activePage={currentSimulatorPage}
+            onOpenSimulation={() => handleNavigate("presentation")}
+          />
+        ) : null}
+      </main>
+    </div>
   );
 }
