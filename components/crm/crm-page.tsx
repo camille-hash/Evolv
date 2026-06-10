@@ -7,21 +7,16 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
+import { AccessSettingsPage } from "@/components/access/access-settings-page";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
 import { Button } from "@/components/ui/button";
 import {
-  crmOpportunityStatusLabels,
-  crmTemperatureLabels,
   addCrmStageToPipeline,
-  buildCrmPipelineLabels,
-  buildCrmStageLabels,
-  deleteCrmLead,
+  crmTemperatureLabels,
   emptyCrmLeadInput,
   getDefaultStageForPipeline,
   isStageInPipeline,
-  isLeadUsingMissingPipelineOrStage,
-  loadCrmActivities,
   loadCrmLeads,
   loadCrmPipelineConfig,
   mergeLeadPipelinesIntoDefinitions,
@@ -31,56 +26,104 @@ import {
   resetCrmPipelineConfig,
   resolveCrmLeadMovement,
   saveCrmLead,
-  summarizeCrmPipeline,
   toCrmPipelineDefinitions,
   updateCrmPipelineName,
   updateCrmStageName,
   updateCrmLeadStage,
-  type CrmActivity,
   type CrmConfigurablePipeline,
   type CrmLead,
   type CrmLeadInput,
-  type CrmOpportunityStatus,
   type CrmPipeline,
   type CrmStage,
   type CrmTemperature,
 } from "@/modules/crm";
 import { cn } from "@/lib/utils";
 
+type CrmOperationalTab =
+  | "my-day"
+  | "prospecting"
+  | "sales"
+  | "administrative"
+  | "lost"
+  | "base"
+  | "settings";
+
+type OperationalGroup = "prospecting" | "sales" | "administrative" | "lost";
+
+type OperationalColumn = {
+  label: string;
+  pipeline: CrmPipeline;
+  stage: CrmStage;
+};
+
+const crmTabs: Array<{ key: CrmOperationalTab; label: string; quiet?: boolean }> = [
+  { key: "my-day", label: "Meu Dia" },
+  { key: "prospecting", label: "Prospeccao" },
+  { key: "sales", label: "Vendas" },
+  { key: "administrative", label: "Administrativo" },
+  { key: "base", label: "Base" },
+  { key: "settings", label: "Configuracoes" },
+  { key: "lost", label: "Perdidos", quiet: true },
+];
+
+const groupStages: Record<
+  OperationalGroup,
+  Array<{ label: string; candidates: string[] }>
+> = {
+  prospecting: [
+    { label: "Novos", candidates: ["novos"] },
+    { label: "Abertura", candidates: ["abertura"] },
+    { label: "Conexao", candidates: ["conexao", "conexão"] },
+    { label: "Qualificados", candidates: ["qualificados"] },
+    { label: "Agendamento", candidates: ["agendamento"] },
+    { label: "No Show", candidates: ["no show", "no-show"] },
+  ],
+  sales: [
+    { label: "1a reuniao", candidates: ["1a reuniao", "1ª reunião", "primeira-reuniao"] },
+    { label: "2a reuniao", candidates: ["2a reuniao", "2ª reunião", "segunda-reuniao"] },
+    { label: "Contorno de objecoes", candidates: ["contorno de objecoes", "contorno-objecoes"] },
+    { label: "Green Flag", candidates: ["green flag", "green-flag"] },
+    { label: "Documentacao", candidates: ["documentacao", "documentação"] },
+  ],
+  administrative: [
+    { label: "Subir contrato", candidates: ["subir contrato", "emissao do contrato", "emissao-contrato"] },
+    { label: "Enviar boleto", candidates: ["enviar boleto", "etapa de pagamento", "etapa-pagamento"] },
+    { label: "Aguardando assinatura", candidates: ["aguardando assinatura", "aguardando-assinatura"] },
+    { label: "Aprovacao da administradora", candidates: ["aprovacao da administradora", "aprovação da administradora", "aprovacao-administradora"] },
+  ],
+  lost: [],
+};
+
+const groupPipelineCandidates: Record<OperationalGroup, string[]> = {
+  prospecting: ["prospeccao", "prospecção", "prospecting"],
+  sales: ["vendas", "sales"],
+  administrative: ["administrativo", "administrative"],
+  lost: ["perdidos", "lost"],
+};
+
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
   style: "currency",
 });
 
-const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+const dateOnlyFormatter = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
-  timeStyle: "short",
 });
 
 const fieldInputClass =
   "w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15";
 
 export function CrmPage() {
+  const [activeTab, setActiveTab] = useState<CrmOperationalTab>("my-day");
   const [leads, setLeads] = useState<CrmLead[]>([]);
-  const [activities, setActivities] = useState<CrmActivity[]>([]);
   const [pipelineConfig, setPipelineConfig] = useState<
     CrmConfigurablePipeline[]
   >([]);
   const [draft, setDraft] = useState<CrmLeadInput>(emptyCrmLeadInput);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  const [tagInput, setTagInput] = useState("");
+  const [baseSearch, setBaseSearch] = useState("");
   const [newStageNames, setNewStageNames] = useState<Record<string, string>>({});
-  const [filters, setFilters] = useState({
-    search: "",
-    pipeline: "all" as CrmPipeline | "all",
-    stage: "all" as CrmStage | "all",
-    origem: "all",
-    temperature: "all" as CrmTemperature | "all",
-    status: "all" as CrmOpportunityStatus | "all",
-    consultor: "all",
-    produtoInteresse: "all",
-  });
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [dragTarget, setDragTarget] = useState<{
     pipeline: CrmPipeline;
@@ -90,27 +133,12 @@ export function CrmPage() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setLeads(loadCrmLeads());
-      setActivities(loadCrmActivities());
       setPipelineConfig(loadCrmPipelineConfig());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  const filteredLeads = useMemo(
-    () => filterCrmLeads(leads, filters),
-    [filters, leads],
-  );
-  const summary = useMemo(
-    () => summarizeCrmPipeline(filteredLeads),
-    [filteredLeads],
-  );
-  const totalFilteredPotential = useMemo(
-    () =>
-      filteredLeads.reduce((total, lead) => total + lead.valorPretendido, 0),
-    [filteredLeads],
-  );
-  const filterOptions = useMemo(() => buildFilterOptions(leads), [leads]);
   const configuredPipelineDefinitions = useMemo(
     () => toCrmPipelineDefinitions(pipelineConfig),
     [pipelineConfig],
@@ -123,17 +151,14 @@ export function CrmPage() {
       }),
     [configuredPipelineDefinitions, leads],
   );
-  const pipelineLabels = useMemo(
-    () => buildCrmPipelineLabels(kanbanPipelineDefinitions),
-    [kanbanPipelineDefinitions],
-  );
-  const stageLabels = useMemo(
-    () => buildCrmStageLabels(kanbanPipelineDefinitions),
-    [kanbanPipelineDefinitions],
-  );
   const selectedLead = selectedLeadId
     ? leads.find((lead) => lead.id === selectedLeadId)
     : undefined;
+  const myDayGroups = useMemo(() => buildMyDayGroups(leads), [leads]);
+  const filteredBaseLeads = useMemo(
+    () => filterBaseLeads(leads, baseSearch),
+    [baseSearch, leads],
+  );
 
   if (selectedLead) {
     return (
@@ -141,10 +166,9 @@ export function CrmPage() {
         lead={selectedLead}
         onBack={() => {
           setSelectedLeadId(null);
-          setActivities(loadCrmActivities());
         }}
-        pipelineLabel={pipelineLabels[selectedLead.pipeline]}
-        stageLabel={stageLabels[selectedLead.etapa]}
+        pipelineLabel={selectedLead.pipeline}
+        stageLabel={selectedLead.etapa}
       />
     );
   }
@@ -153,11 +177,11 @@ export function CrmPage() {
     event.preventDefault();
     setLeads(saveCrmLead(draft, editingLeadId ?? undefined));
     setDraft(emptyCrmLeadInput);
-    setTagInput("");
     setEditingLeadId(null);
   }
 
   function handleEditLead(lead: CrmLead) {
+    setActiveTab("settings");
     setEditingLeadId(lead.id);
     setDraft({
       nome: lead.nome,
@@ -176,25 +200,11 @@ export function CrmPage() {
       proximaAcao: lead.proximaAcao,
       dataProximaAcao: lead.dataProximaAcao,
     });
-    setTagInput(lead.tags.join(", "));
   }
 
   function handleCancelEdit() {
     setEditingLeadId(null);
     setDraft(emptyCrmLeadInput);
-    setTagInput("");
-  }
-
-  function handleDeleteLead(leadId: string) {
-    setLeads(deleteCrmLead(leadId));
-
-    if (editingLeadId === leadId) {
-      handleCancelEdit();
-    }
-
-    if (selectedLeadId === leadId) {
-      setSelectedLeadId(null);
-    }
   }
 
   function handlePipelineChange(pipeline: CrmPipeline) {
@@ -290,114 +300,873 @@ export function CrmPage() {
               Pipeline Bruno
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-foreground">
-              CRM Comercial
+              CRM Operacional
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Controle local de leads, etapas comerciais e fluxo operacional
-              antes da conversao em cliente, simulacao e acompanhamento.
+              Prioridades do dia, funis por area e consulta rapida da base sem
+              excesso de informacao visual.
             </p>
           </div>
-          <div className="grid gap-2 text-sm sm:grid-cols-5 lg:min-w-[540px]">
-            <CrmSummaryMetric label="Filtrados" value={summary.totalLeads} />
-            <CrmSummaryMetric label="Prospeccao" value={summary.prospecting} />
-            <CrmSummaryMetric label="Vendas" value={summary.sales} />
+          <div className="grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[420px]">
+            <CrmSummaryMetric label="Meu dia" value={myDayGroups.total} />
             <CrmSummaryMetric
-              label="Administrativo"
-              value={summary.administrative}
+              label="Quentes"
+              value={myDayGroups.hot.length}
             />
-            <CrmSummaryMetric label="Perdidos" value={summary.lost} />
+            <CrmSummaryMetric label="Base" value={leads.length} />
           </div>
         </div>
+
+        <nav className="mt-6 flex gap-2 overflow-x-auto pb-1">
+          {crmTabs.map((tab) => (
+            <button
+              className={cn(
+                "h-10 shrink-0 rounded-md border px-4 text-sm font-medium transition",
+                activeTab === tab.key
+                  ? "border-primary/20 bg-primary text-primary-foreground"
+                  : tab.quiet
+                    ? "border-transparent text-muted-foreground hover:border-border hover:bg-background/80"
+                    : "border-border bg-background/70 text-foreground hover:border-primary/25",
+              )}
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </section>
 
-      <section className="executive-surface rounded-md p-5 sm:p-6">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Filtros operacionais</h2>
-          <p className="text-sm text-muted-foreground">
-            Busca simples e leitura rapida do funil comercial.
+      {activeTab === "my-day" ? (
+        <MyDayPanel
+          groups={myDayGroups}
+          onEdit={handleEditLead}
+          onOpen={setSelectedLeadId}
+        />
+      ) : null}
+
+      {activeTab === "prospecting" ? (
+        <OperationalKanban
+          columns={buildOperationalColumns({
+            group: "prospecting",
+            leads,
+            pipelineDefinitions: kanbanPipelineDefinitions,
+          })}
+          dragTarget={dragTarget}
+          group="prospecting"
+          leads={leads}
+          onDragEnd={handleLeadDragEnd}
+          onDragOver={handleStageDragOver}
+          onDragStart={handleLeadDragStart}
+          onDrop={handleStageDrop}
+          onEdit={handleEditLead}
+        />
+      ) : null}
+
+      {activeTab === "sales" ? (
+        <OperationalKanban
+          columns={buildOperationalColumns({
+            group: "sales",
+            leads,
+            pipelineDefinitions: kanbanPipelineDefinitions,
+          })}
+          dragTarget={dragTarget}
+          group="sales"
+          leads={leads}
+          onDragEnd={handleLeadDragEnd}
+          onDragOver={handleStageDragOver}
+          onDragStart={handleLeadDragStart}
+          onDrop={handleStageDrop}
+          onEdit={handleEditLead}
+        />
+      ) : null}
+
+      {activeTab === "administrative" ? (
+        <OperationalKanban
+          columns={buildOperationalColumns({
+            group: "administrative",
+            leads,
+            pipelineDefinitions: kanbanPipelineDefinitions,
+          })}
+          dragTarget={dragTarget}
+          group="administrative"
+          leads={leads}
+          onDragEnd={handleLeadDragEnd}
+          onDragOver={handleStageDragOver}
+          onDragStart={handleLeadDragStart}
+          onDrop={handleStageDrop}
+          onEdit={handleEditLead}
+        />
+      ) : null}
+
+      {activeTab === "lost" ? (
+        <LostLeadsPanel
+          leads={leads.filter((lead) => isLeadInGroup(lead, "lost"))}
+          onEdit={handleEditLead}
+        />
+      ) : null}
+
+      {activeTab === "base" ? (
+        <BasePanel
+          baseSearch={baseSearch}
+          leads={filteredBaseLeads}
+          onEdit={handleEditLead}
+          onOpen={setSelectedLeadId}
+          onSearch={setBaseSearch}
+        />
+      ) : null}
+
+      {activeTab === "settings" ? (
+        <section className="grid gap-6">
+          <LeadForm
+            draft={draft}
+            editingLeadId={editingLeadId}
+            kanbanPipelineDefinitions={kanbanPipelineDefinitions}
+            onCancel={handleCancelEdit}
+            onChange={setDraft}
+            onPipelineChange={handlePipelineChange}
+            onSubmit={handleSubmit}
+          />
+          <PipelineSettingsPanel
+            newStageNames={newStageNames}
+            onNewStageNamesChange={setNewStageNames}
+            onPipelineConfigChange={setPipelineConfig}
+            pipelineConfig={pipelineConfig}
+          />
+          <AccessSettingsPage />
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
+function PipelineSettingsPanel({
+  newStageNames,
+  onNewStageNamesChange,
+  onPipelineConfigChange,
+  pipelineConfig,
+}: {
+  newStageNames: Record<string, string>;
+  onNewStageNamesChange: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  onPipelineConfigChange: React.Dispatch<
+    React.SetStateAction<CrmConfigurablePipeline[]>
+  >;
+  pipelineConfig: CrmConfigurablePipeline[];
+}) {
+  return (
+    <section className="executive-surface rounded-md p-5 sm:p-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Configuracao
+          </p>
+          <h2 className="mt-2 text-base font-semibold">
+            Configuracao dos Funis
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Ajuste nomes e etapas sem alterar codigo. Leads importados com
+            funil ou etapa do PipeRun continuam preservados.
           </p>
         </div>
+        <Button
+          onClick={() => onPipelineConfigChange(resetCrmPipelineConfig())}
+          type="button"
+          variant="secondary"
+        >
+          Restaurar padrao Patrion
+        </Button>
+      </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Field label="Busca">
+      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+        {pipelineConfig.map((pipeline) => (
+          <article
+            className="rounded-md border bg-background/70 p-4"
+            key={pipeline.id}
+          >
+            <Field label="Nome do pipeline">
+              <input
+                className={fieldInputClass}
+                onBlur={(event) =>
+                  onPipelineConfigChange(
+                    updateCrmPipelineName(pipeline.id, event.target.value),
+                  )
+                }
+                onChange={(event) =>
+                  onPipelineConfigChange((currentConfig) =>
+                    currentConfig.map((item) =>
+                      item.id === pipeline.id
+                        ? { ...item, nome: event.target.value }
+                        : item,
+                    ),
+                  )
+                }
+                value={pipeline.nome}
+              />
+            </Field>
+
+            <div className="mt-4 grid gap-3">
+              {pipeline.etapas
+                .sort((left, right) => left.ordem - right.ordem)
+                .map((stage, index) => (
+                  <div
+                    className="grid gap-2 rounded-md border bg-card p-3"
+                    key={stage.id}
+                  >
+                    <Field label={`Etapa ${index + 1}`}>
+                      <input
+                        className={fieldInputClass}
+                        onBlur={(event) =>
+                          onPipelineConfigChange(
+                            updateCrmStageName(
+                              pipeline.id,
+                              stage.id,
+                              event.target.value,
+                            ),
+                          )
+                        }
+                        onChange={(event) =>
+                          onPipelineConfigChange((currentConfig) =>
+                            currentConfig.map((item) =>
+                              item.id === pipeline.id
+                                ? {
+                                    ...item,
+                                    etapas: item.etapas.map((stageItem) =>
+                                      stageItem.id === stage.id
+                                        ? {
+                                            ...stageItem,
+                                            nome: event.target.value,
+                                          }
+                                        : stageItem,
+                                    ),
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        value={stage.nome}
+                      />
+                    </Field>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        disabled={index === 0}
+                        onClick={() =>
+                          onPipelineConfigChange(
+                            moveCrmStage(pipeline.id, stage.id, "up"),
+                          )
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Subir
+                      </Button>
+                      <Button
+                        disabled={index === pipeline.etapas.length - 1}
+                        onClick={() =>
+                          onPipelineConfigChange(
+                            moveCrmStage(pipeline.id, stage.id, "down"),
+                          )
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Descer
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          onPipelineConfigChange(
+                            removeCrmStage(pipeline.id, stage.id),
+                          )
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input
+                className={fieldInputClass}
+                onChange={(event) =>
+                  onNewStageNamesChange((currentNames) => ({
+                    ...currentNames,
+                    [pipeline.id]: event.target.value,
+                  }))
+                }
+                placeholder="Nova etapa"
+                value={newStageNames[pipeline.id] ?? ""}
+              />
+              <Button
+                onClick={() => {
+                  onPipelineConfigChange(
+                    addCrmStageToPipeline(
+                      pipeline.id,
+                      newStageNames[pipeline.id] ?? "",
+                    ),
+                  );
+                  onNewStageNamesChange((currentNames) => ({
+                    ...currentNames,
+                    [pipeline.id]: "",
+                  }));
+                }}
+                type="button"
+              >
+                Adicionar etapa
+              </Button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MyDayPanel({
+  groups,
+  onEdit,
+  onOpen,
+}: {
+  groups: ReturnType<typeof buildMyDayGroups>;
+  onEdit: (lead: CrmLead) => void;
+  onOpen: (leadId: string) => void;
+}) {
+  return (
+    <section className="grid gap-6 xl:grid-cols-3">
+      <PriorityBlock
+        leads={groups.hot}
+        onEdit={onEdit}
+        onOpen={onOpen}
+        title="Quentes"
+      />
+      <PriorityBlock
+        leads={groups.dueToday}
+        onEdit={onEdit}
+        onOpen={onOpen}
+        title="Vencer hoje"
+      />
+      <PriorityBlock
+        leads={groups.awaitingAction}
+        onEdit={onEdit}
+        onOpen={onOpen}
+        title="Aguardando acao"
+      />
+    </section>
+  );
+}
+
+function PriorityBlock({
+  leads,
+  onEdit,
+  onOpen,
+  title,
+}: {
+  leads: CrmLead[];
+  onEdit: (lead: CrmLead) => void;
+  onOpen: (leadId: string) => void;
+  title: string;
+}) {
+  return (
+    <article className="executive-surface rounded-md p-5 text-card-foreground">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-semibold">{title}</h3>
+        <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs text-muted-foreground">
+          {leads.length}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2">
+        {leads.length ? (
+          leads.slice(0, 12).map((lead) => (
+            <DailyLeadCard
+              key={lead.id}
+              lead={lead}
+              onEdit={onEdit}
+              onOpen={onOpen}
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            Nada urgente aqui.
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function OperationalKanban({
+  columns,
+  dragTarget,
+  group,
+  leads,
+  onDragEnd,
+  onDragOver,
+  onDragStart,
+  onDrop,
+  onEdit,
+}: {
+  columns: OperationalColumn[];
+  dragTarget: { pipeline: CrmPipeline; stage: CrmStage } | null;
+  group: OperationalGroup;
+  leads: CrmLead[];
+  onDragEnd: () => void;
+  onDragOver: (
+    event: DragEvent<HTMLElement>,
+    pipeline: CrmPipeline,
+    stage: CrmStage,
+  ) => void;
+  onDragStart: (leadId: string) => void;
+  onDrop: (
+    event: DragEvent<HTMLElement>,
+    pipeline: CrmPipeline,
+    stage: CrmStage,
+  ) => void;
+  onEdit: (lead: CrmLead) => void;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-5 sm:p-6">
+      <div className="grid gap-4 overflow-x-auto pb-2 xl:grid-cols-3 2xl:grid-cols-6">
+        {columns.map((column) => {
+          const stageLeads = leads.filter(
+            (lead) =>
+              isLeadInGroup(lead, group) &&
+              normalizeKey(lead.etapa) === normalizeKey(column.stage),
+          );
+          const isActiveDropTarget =
+            dragTarget?.pipeline === column.pipeline &&
+            dragTarget.stage === column.stage;
+
+          return (
+            <section
+              className={cn(
+                "min-w-[235px] rounded-md border bg-background/72 p-3 transition",
+                isActiveDropTarget
+                  ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
+                  : "border-border",
+              )}
+              key={`${column.pipeline}-${column.stage}`}
+              onDragOver={(event) =>
+                onDragOver(event, column.pipeline, column.stage)
+              }
+              onDrop={(event) => onDrop(event, column.pipeline, column.stage)}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground">
+                  {column.label}
+                </h3>
+                <span className="rounded-full border bg-card px-2 py-0.5 text-xs text-muted-foreground">
+                  {stageLeads.length}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {stageLeads.length ? (
+                  stageLeads.map((lead) => (
+                    <CompactLeadCard
+                      key={lead.id}
+                      lead={lead}
+                      mode={group === "administrative" ? "admin" : "sales"}
+                      onDragEnd={onDragEnd}
+                      onDragStart={onDragStart}
+                      onEdit={onEdit}
+                    />
+                  ))
+                ) : (
+                  <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                    Sem oportunidades.
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CompactLeadCard({
+  lead,
+  mode,
+  onDragEnd,
+  onDragStart,
+  onEdit,
+}: {
+  lead: CrmLead;
+  mode: "sales" | "admin";
+  onDragEnd: () => void;
+  onDragStart: (leadId: string) => void;
+  onEdit: (lead: CrmLead) => void;
+}) {
+  return (
+    <article
+      className="cursor-grab rounded-md border bg-card p-3 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
+      draggable
+      onDragEnd={onDragEnd}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", lead.id);
+        onDragStart(lead.id);
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="truncate text-sm font-semibold text-foreground">
+            {lead.nome}
+          </h4>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {lead.telefone || "Sem telefone"}
+          </p>
+        </div>
+        <TemperatureBadge temperature={lead.temperatura} />
+      </div>
+      <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
+        <LeadLine
+          label={mode === "admin" ? "Responsavel" : "Valor"}
+          value={
+            mode === "admin"
+              ? lead.consultor || "-"
+              : currencyFormatter.format(lead.valorPretendido)
+          }
+        />
+        {mode === "sales" ? (
+          <LeadLine label="Proxima" value={lead.proximaAcao || "-"} />
+        ) : null}
+      </div>
+      <Button
+        className="mt-3 w-full"
+        onClick={() => onEdit(lead)}
+        size="sm"
+        type="button"
+        variant="secondary"
+      >
+        <Pencil className="h-3.5 w-3.5" aria-hidden />
+        Editar
+      </Button>
+    </article>
+  );
+}
+
+function DailyLeadCard({
+  lead,
+  onEdit,
+  onOpen,
+}: {
+  lead: CrmLead;
+  onEdit: (lead: CrmLead) => void;
+  onOpen: (leadId: string) => void;
+}) {
+  return (
+    <article className="rounded-md border bg-card p-3">
+      <button
+        className="block w-full text-left"
+        onClick={() => onOpen(lead.id)}
+        type="button"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h4 className="truncate text-sm font-semibold">{lead.nome}</h4>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {lead.telefone || "Sem telefone"}
+            </p>
+          </div>
+          <TemperatureBadge temperature={lead.temperatura} />
+        </div>
+        <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
+          <LeadLine
+            label="Valor P&S"
+            value={currencyFormatter.format(lead.valorPretendido)}
+          />
+          <LeadLine label="Proxima" value={lead.proximaAcao || "-"} />
+          <LeadLine label="Responsavel" value={lead.consultor || "-"} />
+        </div>
+      </button>
+      <Button
+        className="mt-3 w-full"
+        onClick={() => onEdit(lead)}
+        size="sm"
+        type="button"
+        variant="secondary"
+      >
+        Editar
+      </Button>
+    </article>
+  );
+}
+
+function LostLeadsPanel({
+  leads,
+  onEdit,
+}: {
+  leads: CrmLead[];
+  onEdit: (lead: CrmLead) => void;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-5 sm:p-6">
+      <div className="flex flex-col gap-1">
+        <h3 className="font-semibold">Perdidos</h3>
+        <p className="text-sm text-muted-foreground">
+          Lista de recuperacao, treinamento e reativacao de base.
+        </p>
+      </div>
+      <div className="mt-5 overflow-x-auto">
+        <table className="min-w-[820px] text-left text-sm">
+          <thead className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+            <tr className="border-b">
+              <th className="px-3 py-3">Nome</th>
+              <th className="px-3 py-3">Telefone</th>
+              <th className="px-3 py-3">Motivo</th>
+              <th className="px-3 py-3">Responsavel</th>
+              <th className="px-3 py-3">Data da perda</th>
+              <th className="px-3 py-3">Acao</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leads.map((lead) => (
+              <tr className="border-b last:border-b-0" key={lead.id}>
+                <td className="px-3 py-3 font-medium">{lead.nome}</td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.telefone || "-"}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.etapa}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.consultor || "-"}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {formatDate(lead.updatedAt)}
+                </td>
+                <td className="px-3 py-3">
+                  <Button
+                    onClick={() => onEdit(lead)}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    Editar
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function BasePanel({
+  baseSearch,
+  leads,
+  onEdit,
+  onOpen,
+  onSearch,
+}: {
+  baseSearch: string;
+  leads: CrmLead[];
+  onEdit: (lead: CrmLead) => void;
+  onOpen: (leadId: string) => void;
+  onSearch: (value: string) => void;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-5 sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h3 className="font-semibold">Base geral</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Consulta rapida de todos os leads.
+          </p>
+        </div>
+        <input
+          className={cn(fieldInputClass, "lg:max-w-md")}
+          onChange={(event) => onSearch(event.target.value)}
+          placeholder="Buscar por nome, telefone ou e-mail"
+          value={baseSearch}
+        />
+      </div>
+      <div className="mt-5 overflow-x-auto">
+        <table className="min-w-[900px] text-left text-sm">
+          <thead className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+            <tr className="border-b">
+              <th className="px-3 py-3">Nome</th>
+              <th className="px-3 py-3">Telefone</th>
+              <th className="px-3 py-3">E-mail</th>
+              <th className="px-3 py-3">Responsavel</th>
+              <th className="px-3 py-3">Pipeline</th>
+              <th className="px-3 py-3">Etapa</th>
+              <th className="px-3 py-3">Acao</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leads.map((lead) => (
+              <tr className="border-b last:border-b-0" key={lead.id}>
+                <td className="px-3 py-3">
+                  <button
+                    className="font-medium text-foreground hover:text-primary"
+                    onClick={() => onOpen(lead.id)}
+                    type="button"
+                  >
+                    {lead.nome}
+                  </button>
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.telefone || "-"}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.email || "-"}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.consultor || "-"}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.pipeline}
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">
+                  {lead.etapa}
+                </td>
+                <td className="px-3 py-3">
+                  <Button
+                    onClick={() => onEdit(lead)}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    Editar
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function LeadForm({
+  draft,
+  editingLeadId,
+  kanbanPipelineDefinitions,
+  onCancel,
+  onChange,
+  onPipelineChange,
+  onSubmit,
+}: {
+  draft: CrmLeadInput;
+  editingLeadId: string | null;
+  kanbanPipelineDefinitions: Array<{
+    key: CrmPipeline;
+    label: string;
+    stages: Array<{ key: CrmStage; label: string }>;
+  }>;
+  onCancel: () => void;
+  onChange: React.Dispatch<React.SetStateAction<CrmLeadInput>>;
+  onPipelineChange: (pipeline: CrmPipeline) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold">
+            {editingLeadId ? "Editar lead" : "Criar lead"}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Detalhes completos ficam concentrados aqui para manter a operacao
+            diaria compacta.
+          </p>
+        </div>
+        {editingLeadId ? (
+          <Button onClick={onCancel} type="button" variant="ghost">
+            Cancelar
+          </Button>
+        ) : null}
+      </div>
+      <form className="mt-5 grid gap-4" onSubmit={onSubmit}>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Field label="Nome">
             <input
               className={fieldInputClass}
               onChange={(event) =>
-                setFilters((currentFilters) => ({
-                  ...currentFilters,
-                  search: event.target.value,
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  nome: event.target.value,
                 }))
               }
-              placeholder="Nome, telefone ou e-mail"
-              value={filters.search}
+              required
+              value={draft.nome}
             />
           </Field>
-
-          <Field label="Pipeline">
-            <select
+          <Field label="Telefone">
+            <input
               className={fieldInputClass}
               onChange={(event) =>
-                setFilters((currentFilters) => ({
-                  ...currentFilters,
-                  pipeline: event.target.value as CrmPipeline | "all",
-                  stage: "all",
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  telefone: event.target.value,
                 }))
               }
-              value={filters.pipeline}
-            >
-              <option value="all">Todos</option>
-              {kanbanPipelineDefinitions.map((pipeline) => (
-                <option key={pipeline.key} value={pipeline.key}>
-                  {pipeline.label}
-                </option>
-              ))}
-            </select>
+              value={draft.telefone}
+            />
           </Field>
-
-          <Field label="Etapa">
-            <select
+          <Field label="E-mail">
+            <input
               className={fieldInputClass}
               onChange={(event) =>
-                setFilters((currentFilters) => ({
-                  ...currentFilters,
-                  stage: event.target.value as CrmStage | "all",
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  email: event.target.value,
                 }))
               }
-              value={filters.stage}
-            >
-              <option value="all">Todas</option>
-              {getFilterStages(filters.pipeline, kanbanPipelineDefinitions).map((stage) => (
-                <option key={stage.key} value={stage.key}>
-                  {stage.label}
-                </option>
-              ))}
-            </select>
+              type="email"
+              value={draft.email}
+            />
           </Field>
-
-          <FilterSelect
-            label="Origem"
-            onChange={(value) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                origem: value,
-              }))
-            }
-            options={filterOptions.origens}
-            value={filters.origem}
-          />
-
+          <Field label="Responsavel">
+            <input
+              className={fieldInputClass}
+              onChange={(event) =>
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  consultor: event.target.value,
+                }))
+              }
+              value={draft.consultor}
+            />
+          </Field>
+          <Field label="Valor P&S">
+            <input
+              className={fieldInputClass}
+              min={0}
+              onChange={(event) =>
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  valorPretendido: Number(event.target.value),
+                }))
+              }
+              type="number"
+              value={draft.valorPretendido}
+            />
+          </Field>
           <Field label="Temperatura">
             <select
               className={fieldInputClass}
               onChange={(event) =>
-                setFilters((currentFilters) => ({
-                  ...currentFilters,
-                  temperature: event.target.value as CrmTemperature | "all",
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  temperatura: event.target.value as CrmTemperature,
                 }))
               }
-              value={filters.temperature}
+              value={draft.temperatura}
             >
-              <option value="all">Todas</option>
               {Object.entries(crmTemperatureLabels).map(([key, label]) => (
                 <option key={key} value={key}>
                   {label}
@@ -405,601 +1174,98 @@ export function CrmPage() {
               ))}
             </select>
           </Field>
-
-          <Field label="Situacao da oportunidade">
+          <Field label="Pipeline">
             <select
               className={fieldInputClass}
               onChange={(event) =>
-                setFilters((currentFilters) => ({
-                  ...currentFilters,
-                  status: event.target.value as CrmOpportunityStatus | "all",
-                }))
+                onPipelineChange(event.target.value as CrmPipeline)
               }
-              value={filters.status}
+              value={draft.pipeline}
             >
-              <option value="all">Todas</option>
-              {Object.entries(crmOpportunityStatusLabels).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
+              {kanbanPipelineDefinitions.map((pipeline) => (
+                <option key={pipeline.key} value={pipeline.key}>
+                  {pipeline.label}
                 </option>
               ))}
             </select>
           </Field>
-
-          <FilterSelect
-            label="Responsavel"
-            onChange={(value) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                consultor: value,
-              }))
-            }
-            options={filterOptions.consultores}
-            value={filters.consultor}
-          />
-
-          <FilterSelect
-            label="Produto de interesse"
-            onChange={(value) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                produtoInteresse: value,
-              }))
-            }
-            options={filterOptions.produtos}
-            value={filters.produtoInteresse}
-          />
-        </div>
-
-        <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-6">
-          <CrmSummaryMetric label="Leads filtrados" value={summary.totalLeads} />
-          <CrmSummaryMetric label="Prospeccao" value={summary.prospecting} />
-          <CrmSummaryMetric label="Vendas" value={summary.sales} />
-          <CrmSummaryMetric
-            label="Administrativo"
-            value={summary.administrative}
-          />
-          <CrmSummaryMetric label="Perdidos" value={summary.lost} />
-          <CrmSummaryMetric
-            label="Potencial filtrado"
-            value={currencyFormatter.format(totalFilteredPotential)}
-          />
-        </div>
-      </section>
-
-      <section className="executive-surface rounded-md p-5 sm:p-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Configuracao
-            </p>
-            <h2 className="mt-2 text-base font-semibold">
-              Configuracao dos Funis
-            </h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Ajuste nomes e etapas sem alterar codigo. Leads com funil ou
-              etapa antiga continuam preservados e aparecem sinalizados.
-            </p>
-          </div>
-          <Button
-            onClick={() => setPipelineConfig(resetCrmPipelineConfig())}
-            type="button"
-            variant="secondary"
-          >
-            Restaurar padrao Patrion
-          </Button>
-        </div>
-
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
-          {pipelineConfig.map((pipeline) => (
-            <article
-              className="rounded-md border bg-background/70 p-4"
-              key={pipeline.id}
+          <Field label="Etapa">
+            <select
+              className={fieldInputClass}
+              onChange={(event) =>
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  etapa: event.target.value as CrmStage,
+                }))
+              }
+              value={draft.etapa}
             >
-              <Field label="Nome do pipeline">
-                <input
-                  className={fieldInputClass}
-                  onBlur={(event) =>
-                    setPipelineConfig(
-                      updateCrmPipelineName(pipeline.id, event.target.value),
-                    )
-                  }
-                  onChange={(event) =>
-                    setPipelineConfig((currentConfig) =>
-                      currentConfig.map((item) =>
-                        item.id === pipeline.id
-                          ? { ...item, nome: event.target.value }
-                          : item,
-                      ),
-                    )
-                  }
-                  value={pipeline.nome}
-                />
-              </Field>
-
-              <div className="mt-4 grid gap-3">
-                {pipeline.etapas
-                  .sort((left, right) => left.ordem - right.ordem)
-                  .map((stage, index) => (
-                    <div
-                      className="grid gap-2 rounded-md border bg-card p-3"
-                      key={stage.id}
-                    >
-                      <Field label={`Etapa ${index + 1}`}>
-                        <input
-                          className={fieldInputClass}
-                          onBlur={(event) =>
-                            setPipelineConfig(
-                              updateCrmStageName(
-                                pipeline.id,
-                                stage.id,
-                                event.target.value,
-                              ),
-                            )
-                          }
-                          onChange={(event) =>
-                            setPipelineConfig((currentConfig) =>
-                              currentConfig.map((item) =>
-                                item.id === pipeline.id
-                                  ? {
-                                      ...item,
-                                      etapas: item.etapas.map((stageItem) =>
-                                        stageItem.id === stage.id
-                                          ? {
-                                              ...stageItem,
-                                              nome: event.target.value,
-                                            }
-                                          : stageItem,
-                                      ),
-                                    }
-                                  : item,
-                              ),
-                            )
-                          }
-                          value={stage.nome}
-                        />
-                      </Field>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          disabled={index === 0}
-                          onClick={() =>
-                            setPipelineConfig(
-                              moveCrmStage(pipeline.id, stage.id, "up"),
-                            )
-                          }
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          Subir
-                        </Button>
-                        <Button
-                          disabled={index === pipeline.etapas.length - 1}
-                          onClick={() =>
-                            setPipelineConfig(
-                              moveCrmStage(pipeline.id, stage.id, "down"),
-                            )
-                          }
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          Descer
-                        </Button>
-                        <Button
-                          onClick={() =>
-                            setPipelineConfig(
-                              removeCrmStage(pipeline.id, stage.id),
-                            )
-                          }
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          Remover
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <input
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    setNewStageNames((currentNames) => ({
-                      ...currentNames,
-                      [pipeline.id]: event.target.value,
-                    }))
-                  }
-                  placeholder="Nova etapa"
-                  value={newStageNames[pipeline.id] ?? ""}
-                />
-                <Button
-                  onClick={() => {
-                    setPipelineConfig(
-                      addCrmStageToPipeline(
-                        pipeline.id,
-                        newStageNames[pipeline.id] ?? "",
-                      ),
-                    );
-                    setNewStageNames((currentNames) => ({
-                      ...currentNames,
-                      [pipeline.id]: "",
-                    }));
-                  }}
-                  type="button"
-                >
-                  Adicionar etapa
-                </Button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="executive-surface rounded-md p-5 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-base font-semibold">
-              {editingLeadId ? "Editar lead" : "Criar lead"}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Cadastro simples para substituir o funil operacional atual.
-            </p>
-          </div>
-          {editingLeadId ? (
-            <Button onClick={handleCancelEdit} type="button" variant="ghost">
-              Cancelar edicao
-            </Button>
-          ) : null}
-        </div>
-
-        <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Field label="Nome">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    nome: event.target.value,
-                  }))
-                }
-                placeholder="Nome do lead"
-                required
-                value={draft.nome}
-              />
-            </Field>
-
-            <Field label="Telefone">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    telefone: event.target.value,
-                  }))
-                }
-                placeholder="(00) 00000-0000"
-                value={draft.telefone}
-              />
-            </Field>
-
-            <Field label="E-mail">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    email: event.target.value,
-                  }))
-                }
-                placeholder="cliente@email.com"
-                type="email"
-                value={draft.email}
-              />
-            </Field>
-
-            <Field label="Origem">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    origem: event.target.value,
-                  }))
-                }
-                placeholder="Indicacao, trafego, evento..."
-                value={draft.origem}
-              />
-            </Field>
-
-            <Field label="Consultor">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    consultor: event.target.value,
-                  }))
-                }
-                placeholder="Responsavel"
-                value={draft.consultor}
-              />
-            </Field>
-
-            <Field label="Valor pretendido">
-              <input
-                className={fieldInputClass}
-                min={0}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    valorPretendido: Number(event.target.value),
-                  }))
-                }
-                type="number"
-                value={draft.valorPretendido}
-              />
-            </Field>
-
-            <Field label="Produto de interesse">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    produtoInteresse: event.target.value,
-                  }))
-                }
-                placeholder="P&S, consorcio, multi-cotas..."
-                value={draft.produtoInteresse}
-              />
-            </Field>
-
-            <Field label="Temperatura">
-              <select
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    temperatura: event.target.value as CrmTemperature,
-                  }))
-                }
-                value={draft.temperatura}
-              >
-                {Object.entries(crmTemperatureLabels).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Situacao da oportunidade">
-              <select
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    status: event.target.value as CrmOpportunityStatus,
-                  }))
-                }
-                value={draft.status}
-              >
-                {Object.entries(crmOpportunityStatusLabels).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Proxima acao">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    proximaAcao: event.target.value,
-                  }))
-                }
-                placeholder="Ligar, enviar proposta..."
-                value={draft.proximaAcao}
-              />
-            </Field>
-
-            <Field label="Data da proxima acao">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    dataProximaAcao: event.target.value,
-                  }))
-                }
-                type="date"
-                value={draft.dataProximaAcao}
-              />
-            </Field>
-
-            <Field label="Pipeline">
-              <select
-                className={fieldInputClass}
-                onChange={(event) =>
-                  handlePipelineChange(event.target.value as CrmPipeline)
-                }
-                value={draft.pipeline}
-              >
-                {kanbanPipelineDefinitions.map((pipeline) => (
-                  <option key={pipeline.key} value={pipeline.key}>
-                    {pipeline.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Etapa">
-              <select
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    etapa: event.target.value as CrmStage,
-                  }))
-                }
-                value={draft.etapa}
-              >
-                {getFilterStages(draft.pipeline, kanbanPipelineDefinitions).map((stage) => (
+              {getFilterStages(draft.pipeline, kanbanPipelineDefinitions).map(
+                (stage) => (
                   <option key={stage.key} value={stage.key}>
                     {stage.label}
                   </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          <Field label="Tags">
+                ),
+              )}
+            </select>
+          </Field>
+          <Field label="Origem">
             <input
               className={fieldInputClass}
-              onChange={(event) => {
-                setTagInput(event.target.value);
-                setDraft((currentDraft) => ({
-                  ...currentDraft,
-                  tags: parseTags(event.target.value),
-                }));
-              }}
-              placeholder="investidor, retorno, indicacao"
-              value={tagInput}
-            />
-          </Field>
-
-          <Field label="Observacoes">
-            <textarea
-              className={cn(fieldInputClass, "min-h-24 resize-y")}
               onChange={(event) =>
-                setDraft((currentDraft) => ({
+                onChange((currentDraft) => ({
                   ...currentDraft,
-                  observacoes: event.target.value,
+                  origem: event.target.value,
                 }))
               }
-              placeholder="Contexto comercial, objecoes e combinados."
-              value={draft.observacoes}
+              value={draft.origem}
             />
           </Field>
-
-          <div className="flex flex-wrap gap-3">
-            <Button type="submit">
-              <Plus className="h-4 w-4" aria-hidden />
-              {editingLeadId ? "Salvar lead" : "Criar lead"}
-            </Button>
-            {editingLeadId ? (
-              <Button onClick={handleCancelEdit} type="button" variant="ghost">
-                Cancelar
-              </Button>
-            ) : null}
-          </div>
-        </form>
-      </section>
-
-      <section className="grid gap-6">
-        {kanbanPipelineDefinitions.map((pipeline) => (
-          <article className="executive-surface rounded-md p-5 sm:p-6" key={pipeline.key}>
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Pipeline
-                </p>
-                <h2 className="mt-2 text-xl font-semibold text-foreground">
-                  {pipeline.label}
-                </h2>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {
-                  filteredLeads.filter((lead) => lead.pipeline === pipeline.key)
-                    .length
-                }{" "}
-                leads filtrados
-              </p>
-            </div>
-
-            <div className="mt-5 grid gap-4 overflow-x-auto pb-2 xl:grid-cols-3 2xl:grid-cols-6">
-              {pipeline.stages.map((stage) => {
-                const stageLeads = filteredLeads.filter(
-                  (lead) => lead.pipeline === pipeline.key && lead.etapa === stage.key,
-                );
-                const isActiveDropTarget =
-                  dragTarget?.pipeline === pipeline.key &&
-                  dragTarget.stage === stage.key;
-
-                return (
-                  <section
-                    className={cn(
-                      "min-w-[260px] rounded-md border bg-background/72 p-3 transition",
-                      isActiveDropTarget
-                        ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
-                        : "border-border",
-                    )}
-                    key={stage.key}
-                    onDragOver={(event) =>
-                      handleStageDragOver(event, pipeline.key, stage.key)
-                    }
-                    onDrop={(event) =>
-                      handleStageDrop(event, pipeline.key, stage.key)
-                    }
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold text-foreground">
-                        {stage.label}
-                      </h3>
-                      <span className="rounded-full border bg-card px-2 py-0.5 text-xs text-muted-foreground">
-                        {stageLeads.length}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 grid gap-3">
-                      {stageLeads.length ? (
-                        stageLeads.map((lead) => (
-                          <LeadCard
-                            key={lead.id}
-                            lead={lead}
-                            nextActivity={getNextPendingActivity(
-                              lead.id,
-                              activities,
-                            )}
-                            hasMissingPipelineOrStage={isLeadUsingMissingPipelineOrStage(
-                              {
-                                lead,
-                                pipelineDefinitions:
-                                  configuredPipelineDefinitions,
-                              },
-                            )}
-                            pipelineDefinitions={kanbanPipelineDefinitions}
-                            pipelineLabels={pipelineLabels}
-                            stageLabels={stageLabels}
-                            onDelete={handleDeleteLead}
-                            onDragEnd={handleLeadDragEnd}
-                            onDragStart={handleLeadDragStart}
-                            onEdit={handleEditLead}
-                            isDragging={draggedLeadId === lead.id}
-                            onOpen={setSelectedLeadId}
-                            onMove={handleMoveLead}
-                          />
-                        ))
-                      ) : (
-                        <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                          Nenhum lead nesta etapa.
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          </article>
-        ))}
-      </section>
+          <Field label="Proxima acao">
+            <input
+              className={fieldInputClass}
+              onChange={(event) =>
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  proximaAcao: event.target.value,
+                }))
+              }
+              value={draft.proximaAcao}
+            />
+          </Field>
+          <Field label="Data da proxima acao">
+            <input
+              className={fieldInputClass}
+              onChange={(event) =>
+                onChange((currentDraft) => ({
+                  ...currentDraft,
+                  dataProximaAcao: event.target.value,
+                }))
+              }
+              type="date"
+              value={draft.dataProximaAcao}
+            />
+          </Field>
+        </div>
+        <Field label="Observacoes">
+          <textarea
+            className={cn(fieldInputClass, "min-h-24 resize-y")}
+            onChange={(event) =>
+              onChange((currentDraft) => ({
+                ...currentDraft,
+                observacoes: event.target.value,
+              }))
+            }
+            value={draft.observacoes}
+          />
+        </Field>
+        <div>
+          <Button type="submit">
+            <Plus className="h-4 w-4" aria-hidden />
+            {editingLeadId ? "Salvar lead" : "Criar lead"}
+          </Button>
+        </div>
+      </form>
     </section>
   );
 }
@@ -1034,330 +1300,151 @@ function Field({
   );
 }
 
-function LeadCard({
-  lead,
-  hasMissingPipelineOrStage,
-  isDragging,
-  nextActivity,
+function TemperatureBadge({ temperature }: { temperature: CrmTemperature }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 text-xs font-medium",
+        temperature === "quente"
+          ? "border-primary/30 bg-primary/5 text-primary"
+          : temperature === "fria"
+            ? "text-muted-foreground"
+            : "border-brand-gold/40 text-brand-ink",
+      )}
+    >
+      {crmTemperatureLabels[temperature]}
+    </span>
+  );
+}
+
+function LeadLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span>{label}</span>
+      <span className="truncate text-right font-medium text-foreground">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function buildMyDayGroups(leads: CrmLead[]) {
+  const activeLeads = leads.filter((lead) => lead.status === "ativa");
+  const hot = activeLeads.filter((lead) => lead.temperatura === "quente");
+  const dueToday = activeLeads.filter((lead) =>
+    isTodayOrPast(lead.dataProximaAcao),
+  );
+  const awaitingAction = activeLeads.filter(
+    (lead) => !lead.proximaAcao && !lead.dataProximaAcao,
+  );
+
+  return {
+    awaitingAction,
+    dueToday,
+    hot,
+    total: new Set([...hot, ...dueToday, ...awaitingAction].map((lead) => lead.id)).size,
+  };
+}
+
+function buildOperationalColumns({
+  group,
+  leads,
   pipelineDefinitions,
-  pipelineLabels,
-  stageLabels,
-  onDelete,
-  onDragEnd,
-  onDragStart,
-  onEdit,
-  onOpen,
-  onMove,
 }: {
-  lead: CrmLead;
-  hasMissingPipelineOrStage: boolean;
-  isDragging: boolean;
-  nextActivity?: CrmActivity;
+  group: OperationalGroup;
+  leads: CrmLead[];
   pipelineDefinitions: Array<{
     key: CrmPipeline;
     label: string;
     stages: Array<{ key: CrmStage; label: string }>;
   }>;
-  pipelineLabels: Record<string, string>;
-  stageLabels: Record<string, string>;
-  onDelete: (leadId: string) => void;
-  onDragEnd: () => void;
-  onDragStart: (leadId: string) => void;
-  onEdit: (lead: CrmLead) => void;
-  onOpen: (leadId: string) => void;
-  onMove: (lead: CrmLead, pipeline: CrmPipeline, etapa?: CrmStage) => void;
-}) {
-  const nextActionOverdue = isLeadNextActionOverdue(lead);
-
-  return (
-    <article
-      className={cn(
-        "cursor-grab rounded-md border bg-card p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md active:cursor-grabbing",
-        isDragging && "border-primary/40 opacity-65 ring-2 ring-primary/15",
-      )}
-      draggable
-      onClick={() => onOpen(lead.id)}
-      onDragEnd={onDragEnd}
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", lead.id);
-        onDragStart(lead.id);
-      }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h4 className="font-semibold text-foreground">{lead.nome}</h4>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {lead.telefone || "Telefone nao informado"}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {lead.email || "E-mail nao informado"}
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <span
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-xs font-medium",
-              lead.pipeline === "lost"
-                ? "border-destructive/20 text-destructive"
-                : "text-muted-foreground",
-            )}
-          >
-            {pipelineLabels[lead.pipeline] ?? lead.pipeline}
-          </span>
-          <span
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-xs font-medium",
-              lead.temperatura === "quente"
-                ? "border-primary/30 bg-primary/5 text-primary"
-                : lead.temperatura === "fria"
-                  ? "text-muted-foreground"
-                  : "border-brand-gold/40 text-brand-ink",
-            )}
-          >
-            {crmTemperatureLabels[lead.temperatura]}
-          </span>
-          <span
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-xs font-semibold uppercase",
-              lead.status === "ganha"
-                ? "border-primary/25 bg-primary/5 text-primary"
-                : lead.status === "perdida"
-                  ? "border-destructive/20 text-destructive"
-                  : "text-muted-foreground",
-            )}
-          >
-            {crmOpportunityStatusLabels[lead.status]}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-2 text-sm">
-        <LeadDetail label="Origem" value={lead.origem || "-"} />
-        <LeadDetail label="Responsavel" value={lead.consultor || "-"} />
-        <LeadDetail
-          label="Produto"
-          value={lead.produtoInteresse || "-"}
-        />
-        <LeadDetail
-          label="Valor P&S"
-          value={currencyFormatter.format(lead.valorPretendido)}
-        />
-        <LeadDetail
-          label="Criado"
-          value={dateFormatter.format(new Date(lead.createdAt))}
-        />
-        <LeadDetail
-          label="Atualizado"
-          value={dateFormatter.format(new Date(lead.updatedAt))}
-        />
-      </div>
-
-      {lead.proximaAcao || lead.dataProximaAcao || nextActivity ? (
-        <div
-          className={cn(
-            "mt-4 rounded-md border bg-background/70 p-3 text-xs",
-            nextActionOverdue
-              ? "border-destructive/25 text-destructive"
-              : "text-muted-foreground",
-          )}
-        >
-          <p className="font-medium text-foreground">Proxima acao</p>
-          <p className="mt-1">
-            {lead.proximaAcao ||
-              nextActivity?.titulo ||
-              "Atividade pendente registrada"}
-          </p>
-          <p className="mt-1">
-            {lead.dataProximaAcao
-              ? formatDateOnly(lead.dataProximaAcao)
-              : nextActivity
-                ? formatActivitySchedule(nextActivity)
-                : "Sem data definida"}
-          </p>
-        </div>
-      ) : null}
-
-      {hasMissingPipelineOrStage ? (
-        <div className="mt-4 rounded-md border border-brand-gold/40 bg-background/70 p-3 text-xs text-muted-foreground">
-          Funil ou etapa fora da configuracao atual. O valor salvo foi
-          preservado.
-        </div>
-      ) : null}
-
-      {lead.tags.length ? (
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          {lead.tags.map((tag) => (
-            <span
-              className="rounded-full border bg-background px-2 py-0.5 text-xs text-muted-foreground"
-              key={tag}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mt-4 grid gap-3">
-        <select
-          className={cn(fieldInputClass, "h-9 py-1 text-xs")}
-          draggable={false}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) =>
-            onMove(lead, event.target.value as CrmPipeline)
-          }
-          value={lead.pipeline}
-        >
-          {pipelineDefinitions.map((pipeline) => (
-            <option key={pipeline.key} value={pipeline.key}>
-              {pipeline.label}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className={cn(fieldInputClass, "h-9 py-1 text-xs")}
-          draggable={false}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) =>
-            onMove(lead, lead.pipeline, event.target.value as CrmStage)
-          }
-          value={lead.etapa}
-        >
-          {getFilterStages(lead.pipeline, pipelineDefinitions).map((stage) => (
-            <option key={stage.key} value={stage.key}>
-              {stageLabels[stage.key] ?? stage.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="mt-4 flex gap-2">
-        <Button
-          className="flex-1"
-          onClick={(event) => {
-            event.stopPropagation();
-            onEdit(lead);
-          }}
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          <Pencil className="h-3.5 w-3.5" aria-hidden />
-          Editar
-        </Button>
-        <Button
-          className="flex-1"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete(lead.id);
-          }}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-          Excluir
-        </Button>
-      </div>
-    </article>
+}): OperationalColumn[] {
+  const pipeline =
+    findPipelineForGroup(group, pipelineDefinitions, leads) ??
+    groupPipelineCandidates[group][0];
+  const pipelineDefinition = pipelineDefinitions.find(
+    (item) => item.key === pipeline,
   );
-}
 
-function LeadDetail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium text-foreground">{value}</span>
-    </div>
-  );
-}
+  return groupStages[group].map((stage) => {
+    const matchedStage =
+      pipelineDefinition?.stages.find((item) =>
+        stage.candidates.some(
+          (candidate) =>
+            normalizeKey(item.key) === normalizeKey(candidate) ||
+            normalizeKey(item.label) === normalizeKey(candidate),
+        ),
+      ) ??
+      findLeadStageForGroup({
+        group,
+        leads,
+        stageCandidates: stage.candidates,
+      });
 
-function FilterSelect({
-  label,
-  onChange,
-  options,
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  options: string[];
-  value: string;
-}) {
-  return (
-    <Field label={label}>
-      <select
-        className={fieldInputClass}
-        onChange={(event) => onChange(event.target.value)}
-        value={value}
-      >
-        <option value="all">Todos</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </Field>
-  );
-}
-
-function filterCrmLeads(
-  leads: CrmLead[],
-  filters: {
-    search: string;
-    pipeline: CrmPipeline | "all";
-    stage: CrmStage | "all";
-    origem: string;
-    temperature: CrmTemperature | "all";
-    status: CrmOpportunityStatus | "all";
-    consultor: string;
-    produtoInteresse: string;
-  },
-) {
-  const normalizedSearch = normalizeSearch(filters.search);
-
-  return leads.filter((lead) => {
-    const matchesSearch =
-      !normalizedSearch ||
-      normalizeSearch(
-        `${lead.nome} ${lead.telefone} ${lead.email}`,
-      ).includes(normalizedSearch);
-    const matchesPipeline =
-      filters.pipeline === "all" || lead.pipeline === filters.pipeline;
-    const matchesStage = filters.stage === "all" || lead.etapa === filters.stage;
-    const matchesOrigem =
-      filters.origem === "all" || lead.origem === filters.origem;
-    const matchesTemperature =
-      filters.temperature === "all" ||
-      lead.temperatura === filters.temperature;
-    const matchesStatus =
-      filters.status === "all" || lead.status === filters.status;
-    const matchesConsultor =
-      filters.consultor === "all" || lead.consultor === filters.consultor;
-    const matchesProduct =
-      filters.produtoInteresse === "all" ||
-      lead.produtoInteresse === filters.produtoInteresse;
-
-    return (
-      matchesSearch &&
-      matchesPipeline &&
-      matchesStage &&
-      matchesOrigem &&
-      matchesTemperature &&
-      matchesStatus &&
-      matchesConsultor &&
-      matchesProduct
-    );
+    return {
+      label: stage.label,
+      pipeline,
+      stage: matchedStage?.key ?? stage.label,
+    };
   });
 }
 
-function buildFilterOptions(leads: CrmLead[]) {
-  return {
-    origens: uniqueFilledValues(leads.map((lead) => lead.origem)),
-    consultores: uniqueFilledValues(leads.map((lead) => lead.consultor)),
-    produtos: uniqueFilledValues(leads.map((lead) => lead.produtoInteresse)),
-  };
+function findPipelineForGroup(
+  group: OperationalGroup,
+  pipelineDefinitions: Array<{ key: CrmPipeline; label: string }>,
+  leads: CrmLead[],
+) {
+  const candidates = groupPipelineCandidates[group].map(normalizeKey);
+  const configured = pipelineDefinitions.find(
+    (pipeline) =>
+      candidates.includes(normalizeKey(pipeline.key)) ||
+      candidates.includes(normalizeKey(pipeline.label)),
+  );
+
+  if (configured) {
+    return configured.key;
+  }
+
+  return leads.find((lead) => isLeadInGroup(lead, group))?.pipeline;
+}
+
+function findLeadStageForGroup({
+  group,
+  leads,
+  stageCandidates,
+}: {
+  group: OperationalGroup;
+  leads: CrmLead[];
+  stageCandidates: string[];
+}) {
+  return leads
+    .filter((lead) => isLeadInGroup(lead, group))
+    .map((lead) => ({ key: lead.etapa, label: lead.etapa }))
+    .find((stage) =>
+      stageCandidates.some(
+        (candidate) => normalizeKey(stage.key) === normalizeKey(candidate),
+      ),
+    );
+}
+
+function isLeadInGroup(lead: CrmLead, group: OperationalGroup) {
+  const candidates = groupPipelineCandidates[group].map(normalizeKey);
+
+  return candidates.includes(normalizeKey(lead.pipeline));
+}
+
+function filterBaseLeads(leads: CrmLead[], search: string) {
+  const normalizedSearch = normalizeKey(search);
+
+  if (!normalizedSearch) {
+    return leads;
+  }
+
+  return leads.filter((lead) =>
+    [lead.nome, lead.telefone, lead.email, lead.consultor, lead.pipeline, lead.etapa]
+      .map(normalizeKey)
+      .some((value) => value.includes(normalizedSearch)),
+  );
 }
 
 function getFilterStages(
@@ -1376,73 +1463,30 @@ function getFilterStages(
   );
 }
 
-function parseTags(value: string) {
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
-function getNextPendingActivity(leadId: string, activities: CrmActivity[]) {
-  return activities
-    .filter(
-      (activity) =>
-        activity.leadId === leadId && activity.status === "pending",
-    )
-    .sort((left, right) => {
-      const leftTimestamp = getActivityTimestamp(left);
-      const rightTimestamp = getActivityTimestamp(right);
-
-      return leftTimestamp - rightTimestamp;
-    })[0];
-}
-
-function isLeadNextActionOverdue(lead: CrmLead) {
-  if (lead.status !== "ativa" || !lead.dataProximaAcao) {
+function isTodayOrPast(value: string) {
+  if (!value) {
     return false;
   }
 
+  const target = new Date(`${value}T00:00:00`).getTime();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const actionDate = new Date(`${lead.dataProximaAcao}T00:00:00`);
 
-  return actionDate.getTime() < today.getTime();
+  return Number.isFinite(target) && target <= today.getTime();
 }
 
-function formatActivitySchedule(activity: CrmActivity) {
-  if (activity.data && activity.hora) {
-    return `${formatDateOnly(activity.data)} as ${activity.hora}`;
-  }
+function formatDate(value: string) {
+  const date = new Date(value);
 
-  if (activity.data) {
-    return formatDateOnly(activity.data);
-  }
-
-  if (activity.hora) {
-    return activity.hora;
-  }
-
-  return "Sem data definida";
+  return Number.isNaN(date.getTime()) ? "-" : dateOnlyFormatter.format(date);
 }
 
-function formatDateOnly(date: string) {
-  return dateFormatter.format(new Date(`${date}T00:00:00`));
-}
-
-function getActivityTimestamp(activity: CrmActivity) {
-  if (activity.data) {
-    return new Date(`${activity.data}T${activity.hora || "23:59"}`).getTime();
-  }
-
-  return new Date(activity.createdAt).getTime();
-}
-
-function uniqueFilledValues(values: string[]) {
-  return Array.from(
-    new Set(values.map((value) => value.trim()).filter(Boolean)),
-  ).sort((left, right) => left.localeCompare(right));
-}
-
-function normalizeSearch(value: string) {
-  return value.trim().toLowerCase();
+function normalizeKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
