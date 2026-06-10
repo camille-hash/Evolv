@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Pencil, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { PiperunImportPage } from "@/components/crm/piperun-import-page";
 import { Button } from "@/components/ui/button";
+import { downloadEvolvLocalBackup } from "@/modules/local-backup";
 import {
   canChangeUserRole,
   canDeactivateUser,
@@ -101,6 +102,14 @@ export function AccessSettingsPage() {
   function handleResetPassword(user: User) {
     setUsers(resetUserPassword(user.id, "123456"));
     setMessage("Senha temporária redefinida para 123456.");
+  }
+
+  function handleExportLocalBackup() {
+    const backup = downloadEvolvLocalBackup();
+
+    setMessage(
+      `Backup local gerado com ${backup.summary.existingKeys} chaves encontradas.`,
+    );
   }
 
   return (
@@ -310,6 +319,25 @@ export function AccessSettingsPage() {
               )}
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="font-semibold">Backup local</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Exporta uma copia JSON das chaves locais do EVOLV neste navegador,
+              sem apagar, importar ou modificar dados.
+            </p>
+          </div>
+          <Button
+            onClick={handleExportLocalBackup}
+            type="button"
+            variant="secondary"
+          >
+            Exportar backup local
+          </Button>
         </div>
       </section>
 
