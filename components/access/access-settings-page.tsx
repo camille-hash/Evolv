@@ -53,6 +53,7 @@ export function AccessSettingsPage() {
       senha: user.senha,
       role: "sdr",
       ativo: user.ativo,
+      mustChangePassword: user.mustChangePassword,
     });
   }
 
@@ -183,6 +184,11 @@ export function AccessSettingsPage() {
                   <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
                     {user.ativo ? "Ativo" : "Inativo"}
                   </span>
+                  {user.mustChangePassword ? (
+                    <span className="rounded-full border border-brand-gold/40 px-2 py-0.5 text-xs text-muted-foreground">
+                      Troca obrigatoria
+                    </span>
+                  ) : null}
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Usuario: {user.usuario}

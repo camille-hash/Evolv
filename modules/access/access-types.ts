@@ -22,6 +22,7 @@ export type User = {
   senha: string;
   role: UserRole;
   ativo: boolean;
+  mustChangePassword: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,5 +33,5 @@ export type UserInput = {
   senha: string;
   role: UserRole;
   ativo: boolean;
+  mustChangePassword?: boolean;
 };
-

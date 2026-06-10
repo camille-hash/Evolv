@@ -9,6 +9,7 @@ import { AccessSettingsPage } from "@/components/access/access-settings-page";
 import {
   DefaultPasswordAlert,
   LoginPage,
+  RequiredPasswordChangePage,
 } from "@/components/access/login-page";
 import { ClientPage } from "@/components/client/client-page";
 import { CrmPage } from "@/components/crm/crm-page";
@@ -147,6 +148,15 @@ export default function Home() {
 
   if (!currentUser) {
     return <LoginPage onLogin={setCurrentUser} />;
+  }
+
+  if (currentUser.mustChangePassword) {
+    return (
+      <RequiredPasswordChangePage
+        onPasswordChanged={setCurrentUser}
+        user={currentUser}
+      />
+    );
   }
 
   return (

@@ -69,6 +69,36 @@ export function saveCurrentUser(user: User) {
   window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, user.id);
 }
 
+export function changeUserPassword(userId: string, senha: string): User | null {
+  const nextPassword = senha.trim();
+
+  if (!nextPassword) {
+    return null;
+  }
+
+  const users = loadUsers();
+  const nextUsers = users.map((user) =>
+    user.id === userId
+      ? {
+          ...user,
+          senha: nextPassword,
+          mustChangePassword: false,
+          updatedAt: new Date().toISOString(),
+        }
+      : user,
+  );
+
+  saveUsers(nextUsers);
+
+  const nextUser = loadUsers().find((user) => user.id === userId) ?? null;
+
+  if (nextUser) {
+    saveCurrentUser(nextUser);
+  }
+
+  return nextUser;
+}
+
 export function clearCurrentUser() {
   if (typeof window === "undefined") {
     return;
@@ -117,7 +147,12 @@ export function resetUserPassword(userId: string, senha: string): User[] {
   const users = loadUsers();
   const nextUsers = users.map((user) =>
     user.id === userId && user.role === "sdr"
-      ? { ...user, senha: nextPassword, updatedAt: new Date().toISOString() }
+      ? {
+          ...user,
+          senha: nextPassword,
+          mustChangePassword: true,
+          updatedAt: new Date().toISOString(),
+        }
       : user,
   );
 
@@ -147,4 +182,3 @@ function readStoredUsers(): User[] {
     return [];
   }
 }
-

@@ -7,6 +7,7 @@ export const defaultAdminUser: User = {
   senha: "123456",
   role: "admin",
   ativo: true,
+  mustChangePassword: true,
   createdAt: "2026-06-10T00:00:00.000Z",
   updatedAt: "2026-06-10T00:00:00.000Z",
 };
@@ -55,6 +56,7 @@ export function createUser(input: UserInput): User {
   return {
     ...normalizeUserInput(input),
     id: crypto.randomUUID(),
+    mustChangePassword: true,
     createdAt: now,
     updatedAt: now,
   };
@@ -64,6 +66,8 @@ export function updateUser(user: User, input: UserInput): User {
   return {
     ...user,
     ...normalizeUserInput(input),
+    mustChangePassword:
+      input.mustChangePassword ?? shouldRequirePasswordChange(input),
     role: user.role === "admin" ? "admin" : "sdr",
     updatedAt: new Date().toISOString(),
   };
@@ -90,6 +94,12 @@ export function normalizeUser(value: unknown): User | null {
     senha: typeof candidate.senha === "string" ? candidate.senha : "",
     role: normalizeRole(candidate.role),
     ativo: typeof candidate.ativo === "boolean" ? candidate.ativo : true,
+    mustChangePassword:
+      typeof candidate.mustChangePassword === "boolean"
+        ? candidate.mustChangePassword
+        : normalizeRole(candidate.role) === "admin" &&
+          candidate.usuario === "admin" &&
+          candidate.senha === "123456",
     createdAt,
     updatedAt:
       typeof candidate.updatedAt === "string" ? candidate.updatedAt : createdAt,
@@ -103,6 +113,8 @@ export function normalizeUserInput(input: UserInput): UserInput {
     senha: input.senha.trim(),
     role: normalizeRole(input.role),
     ativo: input.ativo,
+    mustChangePassword:
+      input.mustChangePassword ?? shouldRequirePasswordChange(input),
   };
 }
 
@@ -113,6 +125,7 @@ export function getEmptyUserInput(): UserInput {
     senha: "",
     role: "sdr",
     ativo: true,
+    mustChangePassword: true,
   };
 }
 
@@ -120,3 +133,9 @@ function normalizeRole(role: unknown): UserRole {
   return role === "admin" || role === "sdr" ? role : "sdr";
 }
 
+function shouldRequirePasswordChange(input: UserInput) {
+  return (
+    (input.role === "admin" && input.usuario === "admin" && input.senha === "123456") ||
+    input.role === "sdr"
+  );
+}

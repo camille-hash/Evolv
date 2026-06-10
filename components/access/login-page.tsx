@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   authenticateUser,
+  changeUserPassword,
   isUsingDefaultAdminPassword,
   saveCurrentUser,
   type User,
@@ -105,8 +106,117 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   );
 }
 
+export function RequiredPasswordChangePage({
+  onPasswordChanged,
+  user,
+}: {
+  onPasswordChanged: (user: User) => void;
+  user: User;
+}) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (newPassword.length < 6) {
+      setError("A nova senha deve ter no minimo 6 caracteres.");
+      return;
+    }
+
+    if (newPassword === user.senha) {
+      setError("A nova senha nao pode ser igual a senha atual.");
+      return;
+    }
+
+    if (newPassword !== confirmation) {
+      setError("A confirmacao deve ser igual a nova senha.");
+      return;
+    }
+
+    const updatedUser = changeUserPassword(user.id, newPassword);
+
+    if (!updatedUser) {
+      setError("Nao foi possivel salvar a nova senha.");
+      return;
+    }
+
+    setError("");
+    onPasswordChanged(updatedUser);
+  }
+
+  return (
+    <main className="grid min-h-screen place-items-center p-5">
+      <section className="executive-surface w-full max-w-md rounded-md p-7 text-card-foreground sm:p-8">
+        <div className="flex items-center gap-3">
+          <div className="brand-mark" aria-hidden>
+            EV
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              EVOLV Intelligence
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold text-foreground">
+              Alterar senha de acesso
+            </h1>
+          </div>
+        </div>
+
+        <p className="mt-5 rounded-md border bg-background/70 px-3 py-2 text-sm leading-6 text-muted-foreground">
+          Por seguranca, altere sua senha antes de acessar a plataforma.
+        </p>
+
+        <form className="mt-7 grid gap-4" onSubmit={handleSubmit}>
+          <label className="grid gap-2">
+            <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Nova senha
+            </span>
+            <input
+              autoComplete="new-password"
+              className={fieldInputClass}
+              onChange={(event) => {
+                setNewPassword(event.target.value);
+                setError("");
+              }}
+              type="password"
+              value={newPassword}
+            />
+          </label>
+
+          <label className="grid gap-2">
+            <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Confirmar nova senha
+            </span>
+            <input
+              autoComplete="new-password"
+              className={fieldInputClass}
+              onChange={(event) => {
+                setConfirmation(event.target.value);
+                setError("");
+              }}
+              type="password"
+              value={confirmation}
+            />
+          </label>
+
+          {error ? (
+            <p className="rounded-md border border-destructive/25 bg-destructive/8 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+
+          <Button className="h-11" type="submit">
+            Salvar nova senha
+          </Button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 export function DefaultPasswordAlert({ user }: { user: User }) {
-  if (!isUsingDefaultAdminPassword(user)) {
+  if (!isUsingDefaultAdminPassword(user) && !user.mustChangePassword) {
     return null;
   }
 
@@ -117,4 +227,3 @@ export function DefaultPasswordAlert({ user }: { user: User }) {
     </div>
   );
 }
-
