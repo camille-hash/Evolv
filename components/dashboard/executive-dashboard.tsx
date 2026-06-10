@@ -48,9 +48,12 @@ import {
   loadCrmActivities,
   loadCrmLeads,
   loadCrmMonthlyGoal,
+  loadCrmPipelineConfig,
   saveCrmMonthlyGoal,
   summarizeCrmPipeline,
+  toCrmPipelineDefinitions,
   type CrmActivity,
+  type CrmConfigurablePipeline,
   type CrmLead,
 } from "@/modules/crm";
 import { buildStrategicRoadmap } from "@/modules/roadmap";
@@ -119,6 +122,9 @@ export function ExecutiveDashboard({
   const [crmLeads, setCrmLeads] = useState<CrmLead[]>([]);
   const [crmActivities, setCrmActivities] = useState<CrmActivity[]>([]);
   const [crmMonthlyGoal, setCrmMonthlyGoal] = useState(0);
+  const [crmPipelineConfig, setCrmPipelineConfig] = useState<
+    CrmConfigurablePipeline[]
+  >([]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -132,6 +138,7 @@ export function ExecutiveDashboard({
       setCrmLeads(loadCrmLeads());
       setCrmActivities(loadCrmActivities());
       setCrmMonthlyGoal(loadCrmMonthlyGoal());
+      setCrmPipelineConfig(loadCrmPipelineConfig());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -207,8 +214,9 @@ export function ExecutiveDashboard({
         activities: crmActivities,
         leads: crmLeads,
         monthlyGoal: crmMonthlyGoal,
+        pipelineDefinitions: toCrmPipelineDefinitions(crmPipelineConfig),
       }),
-    [crmActivities, crmLeads, crmMonthlyGoal],
+    [crmActivities, crmLeads, crmMonthlyGoal, crmPipelineConfig],
   );
   const roadmap = useMemo(
     () =>
@@ -414,6 +422,14 @@ export function ExecutiveDashboard({
             value={currencyFormatter.format(crmDashboard.activePotentialValue)}
           />
           <DashboardDetail
+            label="Valor ganho"
+            value={currencyFormatter.format(crmDashboard.wonPotentialValue)}
+          />
+          <DashboardDetail
+            label="Valor perdido"
+            value={currencyFormatter.format(crmDashboard.lostPotentialValue)}
+          />
+          <DashboardDetail
             label="Diferenca para a meta"
             value={currencyFormatter.format(crmDashboard.goalGap)}
           />
@@ -430,8 +446,16 @@ export function ExecutiveDashboard({
             </h3>
             <div className="mt-4 grid gap-3">
               <DashboardDetail
-                label="Leads ativos"
+                label="Oportunidades ativas"
                 value={String(crmDashboard.activeLeadsCount)}
+              />
+              <DashboardDetail
+                label="Oportunidades ganhas"
+                value={String(crmDashboard.wonOpportunitiesCount)}
+              />
+              <DashboardDetail
+                label="Oportunidades perdidas"
+                value={String(crmDashboard.lostOpportunitiesCount)}
               />
               <DashboardDetail
                 label="Atividades pendentes"
@@ -455,22 +479,13 @@ export function ExecutiveDashboard({
               Leads por Pipeline
             </h3>
             <div className="mt-4 grid gap-3">
-              <DashboardDetail
-                label="Prospeccao"
-                value={String(crmDashboard.leadsByPipeline.prospecting)}
-              />
-              <DashboardDetail
-                label="Vendas"
-                value={String(crmDashboard.leadsByPipeline.sales)}
-              />
-              <DashboardDetail
-                label="Administrativo"
-                value={String(crmDashboard.leadsByPipeline.administrative)}
-              />
-              <DashboardDetail
-                label="Perdidos"
-                value={String(crmDashboard.leadsByPipeline.lost)}
-              />
+              {crmDashboard.pipelineSummaries.map((pipeline) => (
+                <DashboardDetail
+                  key={pipeline.id}
+                  label={pipeline.nome}
+                  value={String(pipeline.count)}
+                />
+              ))}
             </div>
           </div>
 
@@ -630,15 +645,24 @@ export function ExecutiveDashboard({
               value={String(crmSummary.totalLeads)}
             />
             <DashboardDetail
-              label="Prospeccao"
-              value={String(crmSummary.prospecting)}
+              label="Ativas"
+              value={String(crmDashboard.opportunitiesByStatus.ativa)}
             />
-            <DashboardDetail label="Vendas" value={String(crmSummary.sales)} />
             <DashboardDetail
-              label="Administrativo"
-              value={String(crmSummary.administrative)}
+              label="Ganhas"
+              value={String(crmDashboard.opportunitiesByStatus.ganha)}
             />
-            <DashboardDetail label="Perdidos" value={String(crmSummary.lost)} />
+            <DashboardDetail
+              label="Perdidas"
+              value={String(crmDashboard.opportunitiesByStatus.perdida)}
+            />
+            {crmDashboard.pipelineSummaries.map((pipeline) => (
+              <DashboardDetail
+                key={pipeline.id}
+                label={pipeline.nome}
+                value={String(pipeline.count)}
+              />
+            ))}
           </div>
         </ExecutiveCard>
 

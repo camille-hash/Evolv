@@ -1,28 +1,46 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type DragEvent,
+  type FormEvent,
+} from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
 import { Button } from "@/components/ui/button";
 import {
-  crmPipelineLabels,
-  crmPipelines,
-  crmStageLabels,
+  crmOpportunityStatusLabels,
   crmTemperatureLabels,
+  addCrmStageToPipeline,
+  buildCrmPipelineLabels,
+  buildCrmStageLabels,
   deleteCrmLead,
   emptyCrmLeadInput,
   getDefaultStageForPipeline,
-  getStagesForPipeline,
   isStageInPipeline,
+  isLeadUsingMissingPipelineOrStage,
   loadCrmActivities,
   loadCrmLeads,
+  loadCrmPipelineConfig,
+  mergeLeadPipelinesIntoDefinitions,
+  moveCrmStage,
   recordCrmStageChange,
+  removeCrmStage,
+  resetCrmPipelineConfig,
+  resolveCrmLeadMovement,
   saveCrmLead,
   summarizeCrmPipeline,
+  toCrmPipelineDefinitions,
+  updateCrmPipelineName,
+  updateCrmStageName,
   updateCrmLeadStage,
   type CrmActivity,
+  type CrmConfigurablePipeline,
   type CrmLead,
   type CrmLeadInput,
+  type CrmOpportunityStatus,
   type CrmPipeline,
   type CrmStage,
   type CrmTemperature,
@@ -45,24 +63,35 @@ const fieldInputClass =
 export function CrmPage() {
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [activities, setActivities] = useState<CrmActivity[]>([]);
+  const [pipelineConfig, setPipelineConfig] = useState<
+    CrmConfigurablePipeline[]
+  >([]);
   const [draft, setDraft] = useState<CrmLeadInput>(emptyCrmLeadInput);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [newStageNames, setNewStageNames] = useState<Record<string, string>>({});
   const [filters, setFilters] = useState({
     search: "",
     pipeline: "all" as CrmPipeline | "all",
     stage: "all" as CrmStage | "all",
     origem: "all",
     temperature: "all" as CrmTemperature | "all",
+    status: "all" as CrmOpportunityStatus | "all",
     consultor: "all",
     produtoInteresse: "all",
   });
+  const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
+  const [dragTarget, setDragTarget] = useState<{
+    pipeline: CrmPipeline;
+    stage: CrmStage;
+  } | null>(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setLeads(loadCrmLeads());
       setActivities(loadCrmActivities());
+      setPipelineConfig(loadCrmPipelineConfig());
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -82,6 +111,26 @@ export function CrmPage() {
     [filteredLeads],
   );
   const filterOptions = useMemo(() => buildFilterOptions(leads), [leads]);
+  const configuredPipelineDefinitions = useMemo(
+    () => toCrmPipelineDefinitions(pipelineConfig),
+    [pipelineConfig],
+  );
+  const kanbanPipelineDefinitions = useMemo(
+    () =>
+      mergeLeadPipelinesIntoDefinitions({
+        leads,
+        pipelineDefinitions: configuredPipelineDefinitions,
+      }),
+    [configuredPipelineDefinitions, leads],
+  );
+  const pipelineLabels = useMemo(
+    () => buildCrmPipelineLabels(kanbanPipelineDefinitions),
+    [kanbanPipelineDefinitions],
+  );
+  const stageLabels = useMemo(
+    () => buildCrmStageLabels(kanbanPipelineDefinitions),
+    [kanbanPipelineDefinitions],
+  );
   const selectedLead = selectedLeadId
     ? leads.find((lead) => lead.id === selectedLeadId)
     : undefined;
@@ -94,6 +143,8 @@ export function CrmPage() {
           setSelectedLeadId(null);
           setActivities(loadCrmActivities());
         }}
+        pipelineLabel={pipelineLabels[selectedLead.pipeline]}
+        stageLabel={stageLabels[selectedLead.etapa]}
       />
     );
   }
@@ -121,6 +172,7 @@ export function CrmPage() {
       tags: lead.tags,
       produtoInteresse: lead.produtoInteresse,
       temperatura: lead.temperatura,
+      status: lead.status,
       proximaAcao: lead.proximaAcao,
       dataProximaAcao: lead.dataProximaAcao,
     });
@@ -149,9 +201,13 @@ export function CrmPage() {
     setDraft((currentDraft) => ({
       ...currentDraft,
       pipeline,
-      etapa: isStageInPipeline(pipeline, currentDraft.etapa)
+      etapa: isStageInPipeline(
+        pipeline,
+        currentDraft.etapa,
+        kanbanPipelineDefinitions,
+      )
         ? currentDraft.etapa
-        : getDefaultStageForPipeline(pipeline),
+        : getDefaultStageForPipeline(pipeline, kanbanPipelineDefinitions),
     }));
   }
 
@@ -160,20 +216,69 @@ export function CrmPage() {
     pipeline: CrmPipeline,
     etapa?: CrmStage,
   ) {
-    const nextStage =
-      etapa ??
-      (isStageInPipeline(pipeline, lead.etapa)
-        ? lead.etapa
-        : getDefaultStageForPipeline(pipeline));
+    const movement = resolveCrmLeadMovement({
+      lead,
+      pipeline,
+      pipelineDefinitions: kanbanPipelineDefinitions,
+      stage: etapa,
+    });
 
     recordCrmStageChange({
       leadId: lead.id,
-      fromPipeline: lead.pipeline,
-      fromStage: lead.etapa,
-      toPipeline: pipeline,
-      toStage: nextStage,
+      fromPipeline: movement.fromPipeline,
+      fromStage: movement.fromStage,
+      toPipeline: movement.toPipeline,
+      toStage: movement.toStage,
     });
-    setLeads(updateCrmLeadStage(lead.id, pipeline, etapa));
+    setLeads(
+      updateCrmLeadStage(
+        lead.id,
+        movement.toPipeline,
+        movement.toStage,
+        kanbanPipelineDefinitions,
+      ),
+    );
+  }
+
+  function handleLeadDragStart(leadId: string) {
+    setDraggedLeadId(leadId);
+  }
+
+  function handleLeadDragEnd() {
+    setDraggedLeadId(null);
+    setDragTarget(null);
+  }
+
+  function handleStageDragOver(
+    event: DragEvent<HTMLElement>,
+    pipeline: CrmPipeline,
+    stage: CrmStage,
+  ) {
+    if (!draggedLeadId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragTarget({ pipeline, stage });
+  }
+
+  function handleStageDrop(
+    event: DragEvent<HTMLElement>,
+    pipeline: CrmPipeline,
+    stage: CrmStage,
+  ) {
+    event.preventDefault();
+
+    const leadId =
+      event.dataTransfer.getData("text/plain") || draggedLeadId || "";
+    const lead = leads.find((item) => item.id === leadId);
+
+    if (lead) {
+      handleMoveLead(lead, pipeline, stage);
+    }
+
+    handleLeadDragEnd();
   }
 
   return (
@@ -241,7 +346,7 @@ export function CrmPage() {
               value={filters.pipeline}
             >
               <option value="all">Todos</option>
-              {crmPipelines.map((pipeline) => (
+              {kanbanPipelineDefinitions.map((pipeline) => (
                 <option key={pipeline.key} value={pipeline.key}>
                   {pipeline.label}
                 </option>
@@ -261,7 +366,7 @@ export function CrmPage() {
               value={filters.stage}
             >
               <option value="all">Todas</option>
-              {getFilterStages(filters.pipeline).map((stage) => (
+              {getFilterStages(filters.pipeline, kanbanPipelineDefinitions).map((stage) => (
                 <option key={stage.key} value={stage.key}>
                   {stage.label}
                 </option>
@@ -294,6 +399,26 @@ export function CrmPage() {
             >
               <option value="all">Todas</option>
               {Object.entries(crmTemperatureLabels).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Situacao da oportunidade">
+            <select
+              className={fieldInputClass}
+              onChange={(event) =>
+                setFilters((currentFilters) => ({
+                  ...currentFilters,
+                  status: event.target.value as CrmOpportunityStatus | "all",
+                }))
+              }
+              value={filters.status}
+            >
+              <option value="all">Todas</option>
+              {Object.entries(crmOpportunityStatusLabels).map(([key, label]) => (
                 <option key={key} value={key}>
                   {label}
                 </option>
@@ -339,6 +464,177 @@ export function CrmPage() {
             label="Potencial filtrado"
             value={currencyFormatter.format(totalFilteredPotential)}
           />
+        </div>
+      </section>
+
+      <section className="executive-surface rounded-md p-5 sm:p-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Configuracao
+            </p>
+            <h2 className="mt-2 text-base font-semibold">
+              Configuracao dos Funis
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Ajuste nomes e etapas sem alterar codigo. Leads com funil ou
+              etapa antiga continuam preservados e aparecem sinalizados.
+            </p>
+          </div>
+          <Button
+            onClick={() => setPipelineConfig(resetCrmPipelineConfig())}
+            type="button"
+            variant="secondary"
+          >
+            Restaurar padrao Patrion
+          </Button>
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          {pipelineConfig.map((pipeline) => (
+            <article
+              className="rounded-md border bg-background/70 p-4"
+              key={pipeline.id}
+            >
+              <Field label="Nome do pipeline">
+                <input
+                  className={fieldInputClass}
+                  onBlur={(event) =>
+                    setPipelineConfig(
+                      updateCrmPipelineName(pipeline.id, event.target.value),
+                    )
+                  }
+                  onChange={(event) =>
+                    setPipelineConfig((currentConfig) =>
+                      currentConfig.map((item) =>
+                        item.id === pipeline.id
+                          ? { ...item, nome: event.target.value }
+                          : item,
+                      ),
+                    )
+                  }
+                  value={pipeline.nome}
+                />
+              </Field>
+
+              <div className="mt-4 grid gap-3">
+                {pipeline.etapas
+                  .sort((left, right) => left.ordem - right.ordem)
+                  .map((stage, index) => (
+                    <div
+                      className="grid gap-2 rounded-md border bg-card p-3"
+                      key={stage.id}
+                    >
+                      <Field label={`Etapa ${index + 1}`}>
+                        <input
+                          className={fieldInputClass}
+                          onBlur={(event) =>
+                            setPipelineConfig(
+                              updateCrmStageName(
+                                pipeline.id,
+                                stage.id,
+                                event.target.value,
+                              ),
+                            )
+                          }
+                          onChange={(event) =>
+                            setPipelineConfig((currentConfig) =>
+                              currentConfig.map((item) =>
+                                item.id === pipeline.id
+                                  ? {
+                                      ...item,
+                                      etapas: item.etapas.map((stageItem) =>
+                                        stageItem.id === stage.id
+                                          ? {
+                                              ...stageItem,
+                                              nome: event.target.value,
+                                            }
+                                          : stageItem,
+                                      ),
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                          value={stage.nome}
+                        />
+                      </Field>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          disabled={index === 0}
+                          onClick={() =>
+                            setPipelineConfig(
+                              moveCrmStage(pipeline.id, stage.id, "up"),
+                            )
+                          }
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          Subir
+                        </Button>
+                        <Button
+                          disabled={index === pipeline.etapas.length - 1}
+                          onClick={() =>
+                            setPipelineConfig(
+                              moveCrmStage(pipeline.id, stage.id, "down"),
+                            )
+                          }
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          Descer
+                        </Button>
+                        <Button
+                          onClick={() =>
+                            setPipelineConfig(
+                              removeCrmStage(pipeline.id, stage.id),
+                            )
+                          }
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          Remover
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <input
+                  className={fieldInputClass}
+                  onChange={(event) =>
+                    setNewStageNames((currentNames) => ({
+                      ...currentNames,
+                      [pipeline.id]: event.target.value,
+                    }))
+                  }
+                  placeholder="Nova etapa"
+                  value={newStageNames[pipeline.id] ?? ""}
+                />
+                <Button
+                  onClick={() => {
+                    setPipelineConfig(
+                      addCrmStageToPipeline(
+                        pipeline.id,
+                        newStageNames[pipeline.id] ?? "",
+                      ),
+                    );
+                    setNewStageNames((currentNames) => ({
+                      ...currentNames,
+                      [pipeline.id]: "",
+                    }));
+                  }}
+                  type="button"
+                >
+                  Adicionar etapa
+                </Button>
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -481,6 +777,25 @@ export function CrmPage() {
               </select>
             </Field>
 
+            <Field label="Situacao da oportunidade">
+              <select
+                className={fieldInputClass}
+                onChange={(event) =>
+                  setDraft((currentDraft) => ({
+                    ...currentDraft,
+                    status: event.target.value as CrmOpportunityStatus,
+                  }))
+                }
+                value={draft.status}
+              >
+                {Object.entries(crmOpportunityStatusLabels).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
             <Field label="Proxima acao">
               <input
                 className={fieldInputClass}
@@ -517,7 +832,7 @@ export function CrmPage() {
                 }
                 value={draft.pipeline}
               >
-                {crmPipelines.map((pipeline) => (
+                {kanbanPipelineDefinitions.map((pipeline) => (
                   <option key={pipeline.key} value={pipeline.key}>
                     {pipeline.label}
                   </option>
@@ -536,7 +851,7 @@ export function CrmPage() {
                 }
                 value={draft.etapa}
               >
-                {getStagesForPipeline(draft.pipeline).map((stage) => (
+                {getFilterStages(draft.pipeline, kanbanPipelineDefinitions).map((stage) => (
                   <option key={stage.key} value={stage.key}>
                     {stage.label}
                   </option>
@@ -589,7 +904,7 @@ export function CrmPage() {
       </section>
 
       <section className="grid gap-6">
-        {crmPipelines.map((pipeline) => (
+        {kanbanPipelineDefinitions.map((pipeline) => (
           <article className="executive-surface rounded-md p-5 sm:p-6" key={pipeline.key}>
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -614,11 +929,25 @@ export function CrmPage() {
                 const stageLeads = filteredLeads.filter(
                   (lead) => lead.pipeline === pipeline.key && lead.etapa === stage.key,
                 );
+                const isActiveDropTarget =
+                  dragTarget?.pipeline === pipeline.key &&
+                  dragTarget.stage === stage.key;
 
                 return (
                   <section
-                    className="min-w-[260px] rounded-md border bg-background/72 p-3"
+                    className={cn(
+                      "min-w-[260px] rounded-md border bg-background/72 p-3 transition",
+                      isActiveDropTarget
+                        ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
+                        : "border-border",
+                    )}
                     key={stage.key}
+                    onDragOver={(event) =>
+                      handleStageDragOver(event, pipeline.key, stage.key)
+                    }
+                    onDrop={(event) =>
+                      handleStageDrop(event, pipeline.key, stage.key)
+                    }
                   >
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-semibold text-foreground">
@@ -639,8 +968,21 @@ export function CrmPage() {
                               lead.id,
                               activities,
                             )}
+                            hasMissingPipelineOrStage={isLeadUsingMissingPipelineOrStage(
+                              {
+                                lead,
+                                pipelineDefinitions:
+                                  configuredPipelineDefinitions,
+                              },
+                            )}
+                            pipelineDefinitions={kanbanPipelineDefinitions}
+                            pipelineLabels={pipelineLabels}
+                            stageLabels={stageLabels}
                             onDelete={handleDeleteLead}
+                            onDragEnd={handleLeadDragEnd}
+                            onDragStart={handleLeadDragStart}
                             onEdit={handleEditLead}
+                            isDragging={draggedLeadId === lead.id}
                             onOpen={setSelectedLeadId}
                             onMove={handleMoveLead}
                           />
@@ -694,15 +1036,33 @@ function Field({
 
 function LeadCard({
   lead,
+  hasMissingPipelineOrStage,
+  isDragging,
   nextActivity,
+  pipelineDefinitions,
+  pipelineLabels,
+  stageLabels,
   onDelete,
+  onDragEnd,
+  onDragStart,
   onEdit,
   onOpen,
   onMove,
 }: {
   lead: CrmLead;
+  hasMissingPipelineOrStage: boolean;
+  isDragging: boolean;
   nextActivity?: CrmActivity;
+  pipelineDefinitions: Array<{
+    key: CrmPipeline;
+    label: string;
+    stages: Array<{ key: CrmStage; label: string }>;
+  }>;
+  pipelineLabels: Record<string, string>;
+  stageLabels: Record<string, string>;
   onDelete: (leadId: string) => void;
+  onDragEnd: () => void;
+  onDragStart: (leadId: string) => void;
   onEdit: (lead: CrmLead) => void;
   onOpen: (leadId: string) => void;
   onMove: (lead: CrmLead, pipeline: CrmPipeline, etapa?: CrmStage) => void;
@@ -711,8 +1071,18 @@ function LeadCard({
 
   return (
     <article
-      className="cursor-pointer rounded-md border bg-card p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md"
+      className={cn(
+        "cursor-grab rounded-md border bg-card p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md active:cursor-grabbing",
+        isDragging && "border-primary/40 opacity-65 ring-2 ring-primary/15",
+      )}
+      draggable
       onClick={() => onOpen(lead.id)}
+      onDragEnd={onDragEnd}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", lead.id);
+        onDragStart(lead.id);
+      }}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -733,7 +1103,7 @@ function LeadCard({
                 : "text-muted-foreground",
             )}
           >
-            {crmPipelineLabels[lead.pipeline]}
+            {pipelineLabels[lead.pipeline] ?? lead.pipeline}
           </span>
           <span
             className={cn(
@@ -746,6 +1116,18 @@ function LeadCard({
             )}
           >
             {crmTemperatureLabels[lead.temperatura]}
+          </span>
+          <span
+            className={cn(
+              "rounded-full border px-2 py-0.5 text-xs font-semibold uppercase",
+              lead.status === "ganha"
+                ? "border-primary/25 bg-primary/5 text-primary"
+                : lead.status === "perdida"
+                  ? "border-destructive/20 text-destructive"
+                  : "text-muted-foreground",
+            )}
+          >
+            {crmOpportunityStatusLabels[lead.status]}
           </span>
         </div>
       </div>
@@ -796,6 +1178,13 @@ function LeadCard({
         </div>
       ) : null}
 
+      {hasMissingPipelineOrStage ? (
+        <div className="mt-4 rounded-md border border-brand-gold/40 bg-background/70 p-3 text-xs text-muted-foreground">
+          Funil ou etapa fora da configuracao atual. O valor salvo foi
+          preservado.
+        </div>
+      ) : null}
+
       {lead.tags.length ? (
         <div className="mt-4 flex flex-wrap gap-1.5">
           {lead.tags.map((tag) => (
@@ -812,13 +1201,14 @@ function LeadCard({
       <div className="mt-4 grid gap-3">
         <select
           className={cn(fieldInputClass, "h-9 py-1 text-xs")}
+          draggable={false}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) =>
             onMove(lead, event.target.value as CrmPipeline)
           }
           value={lead.pipeline}
         >
-          {crmPipelines.map((pipeline) => (
+          {pipelineDefinitions.map((pipeline) => (
             <option key={pipeline.key} value={pipeline.key}>
               {pipeline.label}
             </option>
@@ -827,15 +1217,16 @@ function LeadCard({
 
         <select
           className={cn(fieldInputClass, "h-9 py-1 text-xs")}
+          draggable={false}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) =>
             onMove(lead, lead.pipeline, event.target.value as CrmStage)
           }
           value={lead.etapa}
         >
-          {getStagesForPipeline(lead.pipeline).map((stage) => (
+          {getFilterStages(lead.pipeline, pipelineDefinitions).map((stage) => (
             <option key={stage.key} value={stage.key}>
-              {crmStageLabels[stage.key]}
+              {stageLabels[stage.key] ?? stage.label}
             </option>
           ))}
         </select>
@@ -919,6 +1310,7 @@ function filterCrmLeads(
     stage: CrmStage | "all";
     origem: string;
     temperature: CrmTemperature | "all";
+    status: CrmOpportunityStatus | "all";
     consultor: string;
     produtoInteresse: string;
   },
@@ -939,6 +1331,8 @@ function filterCrmLeads(
     const matchesTemperature =
       filters.temperature === "all" ||
       lead.temperatura === filters.temperature;
+    const matchesStatus =
+      filters.status === "all" || lead.status === filters.status;
     const matchesConsultor =
       filters.consultor === "all" || lead.consultor === filters.consultor;
     const matchesProduct =
@@ -951,6 +1345,7 @@ function filterCrmLeads(
       matchesStage &&
       matchesOrigem &&
       matchesTemperature &&
+      matchesStatus &&
       matchesConsultor &&
       matchesProduct
     );
@@ -965,12 +1360,20 @@ function buildFilterOptions(leads: CrmLead[]) {
   };
 }
 
-function getFilterStages(pipeline: CrmPipeline | "all") {
+function getFilterStages(
+  pipeline: CrmPipeline | "all",
+  pipelineDefinitions: Array<{
+    key: CrmPipeline;
+    stages: Array<{ key: CrmStage; label: string }>;
+  }>,
+) {
   if (pipeline === "all") {
-    return crmPipelines.flatMap((item) => item.stages);
+    return pipelineDefinitions.flatMap((item) => item.stages);
   }
 
-  return getStagesForPipeline(pipeline);
+  return (
+    pipelineDefinitions.find((item) => item.key === pipeline)?.stages ?? []
+  );
 }
 
 function parseTags(value: string) {
@@ -995,7 +1398,7 @@ function getNextPendingActivity(leadId: string, activities: CrmActivity[]) {
 }
 
 function isLeadNextActionOverdue(lead: CrmLead) {
-  if (lead.pipeline === "lost" || !lead.dataProximaAcao) {
+  if (lead.status !== "ativa" || !lead.dataProximaAcao) {
     return false;
   }
 

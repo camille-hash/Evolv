@@ -37,7 +37,22 @@ export type CrmPipelineDefinition = {
   stages: CrmStageDefinition[];
 };
 
+export type CrmConfigurableStage = {
+  id: CrmStage;
+  nome: string;
+  ordem: number;
+};
+
+export type CrmConfigurablePipeline = {
+  id: CrmPipeline;
+  nome: string;
+  ordem: number;
+  ativo: boolean;
+  etapas: CrmConfigurableStage[];
+};
+
 export type CrmTemperature = "fria" | "morna" | "quente";
+export type CrmOpportunityStatus = "ativa" | "ganha" | "perdida";
 
 export type CrmLead = {
   id: string;
@@ -53,6 +68,7 @@ export type CrmLead = {
   tags: string[];
   produtoInteresse: string;
   temperatura: CrmTemperature;
+  status: CrmOpportunityStatus;
   proximaAcao: string;
   dataProximaAcao: string;
   createdAt: string;

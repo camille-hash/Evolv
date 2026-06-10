@@ -4,7 +4,13 @@ import {
   normalizeCrmLead,
   updateCrmLead,
 } from "./crm-engine";
-import type { CrmLead, CrmLeadInput, CrmPipeline, CrmStage } from "./crm-types";
+import type {
+  CrmLead,
+  CrmLeadInput,
+  CrmPipeline,
+  CrmPipelineDefinition,
+  CrmStage,
+} from "./crm-types";
 
 const CRM_STORAGE_KEY = "evolv.crm.v1";
 
@@ -75,9 +81,12 @@ export function updateCrmLeadStage(
   leadId: string,
   pipeline: CrmPipeline,
   stage?: CrmStage,
+  pipelineDefinitions?: CrmPipelineDefinition[],
 ): CrmLead[] {
   const nextLeads = loadCrmLeads().map((lead) =>
-    lead.id === leadId ? moveCrmLead(lead, pipeline, stage) : lead,
+    lead.id === leadId
+      ? moveCrmLead(lead, pipeline, stage, pipelineDefinitions)
+      : lead,
   );
 
   saveCrmLeads(nextLeads);

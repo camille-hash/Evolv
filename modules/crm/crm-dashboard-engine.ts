@@ -1,4 +1,11 @@
-import type { CrmActivity, CrmLead, CrmPipeline, CrmTemperature } from "./crm-types";
+import type {
+  CrmActivity,
+  CrmLead,
+  CrmOpportunityStatus,
+  CrmPipeline,
+  CrmPipelineDefinition,
+  CrmTemperature,
+} from "./crm-types";
 
 const CRM_GOAL_STORAGE_KEY = "evolv.crm.goal.v1";
 
@@ -17,12 +24,18 @@ export type CrmNextAction = {
 export type CrmSalesDashboard = {
   monthlyGoal: number;
   activeLeadsCount: number;
+  wonOpportunitiesCount: number;
+  lostOpportunitiesCount: number;
   pendingActivitiesCount: number;
   overdueActionsCount: number;
   activePotentialValue: number;
+  wonPotentialValue: number;
+  lostPotentialValue: number;
   goalGap: number;
   goalCompletionRate: number;
+  opportunitiesByStatus: Record<CrmOpportunityStatus, number>;
   leadsByPipeline: Record<CrmPipeline, number>;
+  pipelineSummaries: Array<{ id: CrmPipeline; nome: string; count: number }>;
   leadsByTemperature: Record<CrmTemperature, number>;
   originRanking: CrmOriginRankingItem[];
   nextActions: CrmNextAction[];
@@ -72,13 +85,25 @@ export function buildCrmSalesDashboard({
   activities,
   leads,
   monthlyGoal,
+  pipelineDefinitions = [],
 }: {
   activities: CrmActivity[];
   leads: CrmLead[];
   monthlyGoal: number;
+  pipelineDefinitions?: CrmPipelineDefinition[];
 }): CrmSalesDashboard {
-  const activeLeads = leads.filter((lead) => lead.pipeline !== "lost");
+  const activeLeads = leads.filter((lead) => lead.status === "ativa");
+  const wonLeads = leads.filter((lead) => lead.status === "ganha");
+  const lostLeads = leads.filter((lead) => lead.status === "perdida");
   const activePotentialValue = activeLeads.reduce(
+    (total, lead) => total + lead.valorPretendido,
+    0,
+  );
+  const wonPotentialValue = wonLeads.reduce(
+    (total, lead) => total + lead.valorPretendido,
+    0,
+  );
+  const lostPotentialValue = lostLeads.reduce(
     (total, lead) => total + lead.valorPretendido,
     0,
   );
@@ -96,17 +121,68 @@ export function buildCrmSalesDashboard({
   return {
     monthlyGoal,
     activeLeadsCount: activeLeads.length,
+    wonOpportunitiesCount: wonLeads.length,
+    lostOpportunitiesCount: lostLeads.length,
     pendingActivitiesCount,
     overdueActionsCount: overdueActions.length,
     activePotentialValue,
+    wonPotentialValue,
+    lostPotentialValue,
     goalGap,
     goalCompletionRate,
+    opportunitiesByStatus: countLeadsByStatus(leads),
     leadsByPipeline: countLeadsByPipeline(leads),
+    pipelineSummaries: countLeadsByPipelineDefinitions({
+      leads,
+      pipelineDefinitions,
+    }),
     leadsByTemperature: countLeadsByTemperature(leads),
     originRanking: buildOriginRanking(leads),
     nextActions,
     overdueActions,
   };
+}
+
+function countLeadsByPipelineDefinitions({
+  leads,
+  pipelineDefinitions,
+}: {
+  leads: CrmLead[];
+  pipelineDefinitions: CrmPipelineDefinition[];
+}) {
+  const configuredSummaries = pipelineDefinitions.map((pipeline) => ({
+    id: pipeline.key,
+    nome: pipeline.label,
+    count: leads.filter((lead) => lead.pipeline === pipeline.key).length,
+  }));
+  const configuredIds = new Set(pipelineDefinitions.map((pipeline) => pipeline.key));
+  const unknownSummaries = Array.from(
+    new Set(
+      leads
+        .map((lead) => lead.pipeline)
+        .filter((pipeline) => !configuredIds.has(pipeline)),
+    ),
+  ).map((pipeline) => ({
+    id: pipeline,
+    nome: `${pipeline} (nao configurado)`,
+    count: leads.filter((lead) => lead.pipeline === pipeline).length,
+  }));
+
+  return [...configuredSummaries, ...unknownSummaries];
+}
+
+function countLeadsByStatus(leads: CrmLead[]) {
+  return leads.reduce<Record<CrmOpportunityStatus, number>>(
+    (summary, lead) => ({
+      ...summary,
+      [lead.status]: summary[lead.status] + 1,
+    }),
+    {
+      ativa: 0,
+      ganha: 0,
+      perdida: 0,
+    },
+  );
 }
 
 function countLeadsByPipeline(leads: CrmLead[]) {

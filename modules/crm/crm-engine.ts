@@ -1,12 +1,14 @@
 import type {
   CrmLead,
   CrmLeadInput,
+  CrmOpportunityStatus,
   CrmPipeline,
   CrmPipelineDefinition,
   CrmPipelineSummary,
   CrmStage,
   CrmTemperature,
 } from "./crm-types";
+import { toCrmPipelineDefinitions } from "./crm-pipeline-engine";
 
 export const crmPipelines: CrmPipelineDefinition[] = [
   {
@@ -78,6 +80,7 @@ export const emptyCrmLeadInput: CrmLeadInput = {
   tags: [],
   produtoInteresse: "",
   temperatura: "morna",
+  status: "ativa",
   proximaAcao: "",
   dataProximaAcao: "",
 };
@@ -88,22 +91,38 @@ export const crmTemperatureLabels: Record<CrmTemperature, string> = {
   quente: "Quente",
 };
 
+export const crmOpportunityStatusLabels: Record<CrmOpportunityStatus, string> =
+  {
+    ativa: "Ativa",
+    ganha: "Ganha",
+    perdida: "Perdida",
+  };
+
 // Future CRM path: Lead -> Cliente -> Simulacao Comercial -> Multi-Cotas -> Acompanhamento.
 // This sprint intentionally keeps that path manual, without automations or integrations.
 
-export function getStagesForPipeline(pipeline: CrmPipeline) {
-  return getPipelineDefinition(pipeline).stages;
+export function getStagesForPipeline(
+  pipeline: CrmPipeline,
+  pipelineDefinitions = crmPipelines,
+) {
+  return getPipelineDefinition(pipeline, pipelineDefinitions).stages;
 }
 
-export function getDefaultStageForPipeline(pipeline: CrmPipeline): CrmStage {
-  return getStagesForPipeline(pipeline)[0]?.key ?? "novos";
+export function getDefaultStageForPipeline(
+  pipeline: CrmPipeline,
+  pipelineDefinitions = crmPipelines,
+): CrmStage {
+  return getStagesForPipeline(pipeline, pipelineDefinitions)[0]?.key ?? "novos";
 }
 
 export function isStageInPipeline(
   pipeline: CrmPipeline,
   stage: CrmStage,
+  pipelineDefinitions = crmPipelines,
 ): boolean {
-  return getStagesForPipeline(pipeline).some((item) => item.key === stage);
+  return getStagesForPipeline(pipeline, pipelineDefinitions).some(
+    (item) => item.key === stage,
+  );
 }
 
 export function createCrmLead(input: CrmLeadInput): CrmLead {
@@ -147,18 +166,53 @@ export function moveCrmLead(
   lead: CrmLead,
   pipeline: CrmPipeline,
   stage?: CrmStage,
+  pipelineDefinitions = crmPipelines,
 ): CrmLead {
-  const normalizedPipeline = normalizePipeline(pipeline);
-  const normalizedStage = normalizeStageForPipeline(
-    normalizedPipeline,
-    stage ?? lead.etapa,
-  );
+  const movement = resolveCrmLeadMovement({
+    lead,
+    pipeline,
+    pipelineDefinitions,
+    stage,
+  });
 
   return {
     ...lead,
-    pipeline: normalizedPipeline,
-    etapa: normalizedStage,
+    pipeline: movement.toPipeline,
+    etapa: movement.toStage,
     updatedAt: new Date().toISOString(),
+  };
+}
+
+export function resolveCrmLeadMovement({
+  lead,
+  pipeline,
+  pipelineDefinitions = crmPipelines,
+  stage,
+}: {
+  lead: CrmLead;
+  pipeline: CrmPipeline;
+  pipelineDefinitions?: CrmPipelineDefinition[];
+  stage?: CrmStage;
+}) {
+  const normalizedPipeline = normalizePipeline(pipeline);
+  const targetStage =
+    stage ??
+    (isStageInPipeline(normalizedPipeline, lead.etapa, pipelineDefinitions)
+      ? lead.etapa
+      : getDefaultStageForPipeline(normalizedPipeline, pipelineDefinitions));
+  const normalizedStage = normalizeStageForPipeline(
+    normalizedPipeline,
+    targetStage,
+    pipelineDefinitions,
+  );
+
+  return {
+    changed:
+      lead.pipeline !== normalizedPipeline || lead.etapa !== normalizedStage,
+    fromPipeline: lead.pipeline,
+    fromStage: lead.etapa,
+    toPipeline: normalizedPipeline,
+    toStage: normalizedStage,
   };
 }
 
@@ -167,7 +221,7 @@ export function summarizeCrmPipeline(leads: CrmLead[]): CrmPipelineSummary {
     (summary, lead) => ({
       ...summary,
       totalLeads: summary.totalLeads + 1,
-      [lead.pipeline]: summary[lead.pipeline] + 1,
+      [lead.pipeline]: (summary[lead.pipeline] ?? 0) + 1,
     }),
     {
       totalLeads: 0,
@@ -222,6 +276,7 @@ export function normalizeCrmLead(value: unknown): CrmLead | null {
         ? candidate.produtoInteresse
         : "",
     temperatura: normalizeTemperature(candidate.temperatura),
+    status: normalizeOpportunityStatus(candidate.status),
     proximaAcao:
       typeof candidate.proximaAcao === "string" ? candidate.proximaAcao : "",
     dataProximaAcao:
@@ -233,9 +288,28 @@ export function normalizeCrmLead(value: unknown): CrmLead | null {
   };
 }
 
-function getPipelineDefinition(pipeline: CrmPipeline) {
+export function getDefaultCrmPipelineDefinitions() {
+  return toCrmPipelineDefinitions(crmPipelines.map((pipeline, index) => ({
+    id: pipeline.key,
+    nome: pipeline.label,
+    ordem: index + 1,
+    ativo: true,
+    etapas: pipeline.stages.map((stage, stageIndex) => ({
+      id: stage.key,
+      nome: stage.label,
+      ordem: stageIndex + 1,
+    })),
+  })));
+}
+
+function getPipelineDefinition(
+  pipeline: CrmPipeline,
+  pipelineDefinitions: CrmPipelineDefinition[],
+) {
   return (
-    crmPipelines.find((item) => item.key === pipeline) ?? crmPipelines[0]
+    pipelineDefinitions.find((item) => item.key === pipeline) ??
+    pipelineDefinitions[0] ??
+    crmPipelines[0]
   );
 }
 
@@ -248,10 +322,11 @@ function normalizePipeline(pipeline: unknown): CrmPipeline {
 function normalizeStageForPipeline(
   pipeline: CrmPipeline,
   stage: unknown,
+  pipelineDefinitions = crmPipelines,
 ): CrmStage {
-  return isStageInPipeline(pipeline, stage as CrmStage)
+  return isStageInPipeline(pipeline, stage as CrmStage, pipelineDefinitions)
     ? (stage as CrmStage)
-    : getDefaultStageForPipeline(pipeline);
+    : getDefaultStageForPipeline(pipeline, pipelineDefinitions);
 }
 
 function normalizeLeadInput(input: CrmLeadInput): CrmLeadInput {
@@ -269,6 +344,7 @@ function normalizeLeadInput(input: CrmLeadInput): CrmLeadInput {
     tags: normalizeTags(input.tags),
     produtoInteresse: input.produtoInteresse.trim(),
     temperatura: normalizeTemperature(input.temperatura),
+    status: normalizeOpportunityStatus(input.status),
     proximaAcao: input.proximaAcao.trim(),
     dataProximaAcao: input.dataProximaAcao.trim(),
   };
@@ -291,4 +367,10 @@ function normalizeTemperature(temperature: unknown): CrmTemperature {
     temperature === "quente"
     ? temperature
     : "morna";
+}
+
+function normalizeOpportunityStatus(status: unknown): CrmOpportunityStatus {
+  return status === "ativa" || status === "ganha" || status === "perdida"
+    ? status
+    : "ativa";
 }

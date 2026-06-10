@@ -10,6 +10,7 @@ import {
   completeCrmActivity,
   crmActivityStatusLabels,
   crmActivityTypeLabels,
+  crmOpportunityStatusLabels,
   crmPipelineLabels,
   crmStageLabels,
   deleteCrmActivity,
@@ -53,9 +54,13 @@ const activityStatuses: CrmActivityStatus[] = ["pending", "completed"];
 export function CrmLeadDetail({
   lead,
   onBack,
+  pipelineLabel,
+  stageLabel,
 }: {
   lead: CrmLead;
   onBack: () => void;
+  pipelineLabel?: string;
+  stageLabel?: string;
 }) {
   const [notes, setNotes] = useState<CrmNote[]>([]);
   const [activities, setActivities] = useState<CrmActivity[]>([]);
@@ -129,7 +134,9 @@ export function CrmLeadDetail({
               {lead.nome}
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              {crmPipelineLabels[lead.pipeline]} / {crmStageLabels[lead.etapa]}
+              {pipelineLabel ?? crmPipelineLabels[lead.pipeline]} /{" "}
+              {stageLabel ?? crmStageLabels[lead.etapa]} /{" "}
+              {crmOpportunityStatusLabels[lead.status]}
             </p>
           </div>
           <div className="rounded-md border bg-background/70 p-4 lg:min-w-[260px]">
@@ -147,9 +154,16 @@ export function CrmLeadDetail({
           <LeadDetailItem label="Responsavel" value={lead.consultor || "-"} />
           <LeadDetailItem
             label="Pipeline"
-            value={crmPipelineLabels[lead.pipeline]}
+            value={pipelineLabel ?? crmPipelineLabels[lead.pipeline]}
           />
-          <LeadDetailItem label="Etapa" value={crmStageLabels[lead.etapa]} />
+          <LeadDetailItem
+            label="Etapa"
+            value={stageLabel ?? crmStageLabels[lead.etapa]}
+          />
+          <LeadDetailItem
+            label="Situacao"
+            value={crmOpportunityStatusLabels[lead.status]}
+          />
           <LeadDetailItem
             label="Criado em"
             value={dateFormatter.format(new Date(lead.createdAt))}
