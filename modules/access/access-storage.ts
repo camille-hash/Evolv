@@ -1,6 +1,10 @@
 import {
+  canDeactivateUser,
+  canDeleteUser,
+  canChangeUserRole,
   createUser,
   defaultAdminUser,
+  isMasterAdmin,
   normalizeUser,
   updateUser,
 } from "./access-engine";
@@ -112,9 +116,17 @@ export function saveAccessUser(input: UserInput, userId?: string): User[] {
   const existingUser = userId
     ? users.find((user) => user.id === userId)
     : undefined;
+
+  if (
+    existingUser &&
+    !canChangeUserRole(users, existingUser.id, input.role)
+  ) {
+    return users;
+  }
+
   const nextUser = existingUser
     ? updateUser(existingUser, input)
-    : createUser({ ...input, role: "sdr" });
+    : createUser({ ...input, ativo: true, mustChangePassword: true });
   const nextUsers = existingUser
     ? users.map((user) => (user.id === existingUser.id ? nextUser : user))
     : [...users, nextUser];
@@ -126,8 +138,13 @@ export function saveAccessUser(input: UserInput, userId?: string): User[] {
 
 export function toggleUserActive(userId: string): User[] {
   const users = loadUsers();
+
+  if (!canDeactivateUser(users, userId)) {
+    return users;
+  }
+
   const nextUsers = users.map((user) =>
-    user.id === userId && user.role === "sdr"
+    user.id === userId
       ? { ...user, ativo: !user.ativo, updatedAt: new Date().toISOString() }
       : user,
   );
@@ -138,15 +155,16 @@ export function toggleUserActive(userId: string): User[] {
 }
 
 export function resetUserPassword(userId: string, senha: string): User[] {
-  const nextPassword = senha.trim();
+  const nextPassword = senha.trim() || "123456";
+  const users = loadUsers();
+  const targetUser = users.find((user) => user.id === userId);
 
-  if (!nextPassword) {
-    return loadUsers();
+  if (!targetUser || isMasterAdmin(targetUser)) {
+    return users;
   }
 
-  const users = loadUsers();
   const nextUsers = users.map((user) =>
-    user.id === userId && user.role === "sdr"
+    user.id === userId
       ? {
           ...user,
           senha: nextPassword,
@@ -155,6 +173,20 @@ export function resetUserPassword(userId: string, senha: string): User[] {
         }
       : user,
   );
+
+  saveUsers(nextUsers);
+
+  return loadUsers();
+}
+
+export function deleteAccessUser(userId: string): User[] {
+  const users = loadUsers();
+
+  if (!canDeleteUser(users, userId)) {
+    return users;
+  }
+
+  const nextUsers = users.filter((user) => user.id !== userId);
 
   saveUsers(nextUsers);
 

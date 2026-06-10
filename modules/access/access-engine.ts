@@ -2,7 +2,7 @@ import type { AccessSection, User, UserInput, UserRole } from "./access-types";
 
 export const defaultAdminUser: User = {
   id: "default-admin-bruno",
-  nome: "Bruno",
+  nome: "Camille",
   usuario: "admin",
   senha: "123456",
   role: "admin",
@@ -50,12 +50,69 @@ export function isUsingDefaultAdminPassword(user: User): boolean {
   return user.usuario === defaultAdminUser.usuario && user.senha === "123456";
 }
 
+export function isMasterAdmin(user: User): boolean {
+  return user.usuario === defaultAdminUser.usuario;
+}
+
+export function hasAnotherActiveAdmin(users: User[], userId: string): boolean {
+  return users.some(
+    (user) => user.id !== userId && user.role === "admin" && user.ativo,
+  );
+}
+
+export function canDeactivateUser(users: User[], userId: string): boolean {
+  const user = users.find((item) => item.id === userId);
+
+  if (!user || isMasterAdmin(user)) {
+    return false;
+  }
+
+  if (user.role === "admin" && user.ativo) {
+    return hasAnotherActiveAdmin(users, user.id);
+  }
+
+  return true;
+}
+
+export function canDeleteUser(users: User[], userId: string): boolean {
+  const user = users.find((item) => item.id === userId);
+
+  if (!user || isMasterAdmin(user)) {
+    return false;
+  }
+
+  if (user.role === "admin" && user.ativo) {
+    return hasAnotherActiveAdmin(users, user.id);
+  }
+
+  return true;
+}
+
+export function canChangeUserRole(
+  users: User[],
+  userId: string,
+  nextRole: UserRole,
+): boolean {
+  const user = users.find((item) => item.id === userId);
+
+  if (!user || isMasterAdmin(user)) {
+    return false;
+  }
+
+  if (user.role === "admin" && nextRole !== "admin" && user.ativo) {
+    return hasAnotherActiveAdmin(users, user.id);
+  }
+
+  return true;
+}
+
 export function createUser(input: UserInput): User {
   const now = new Date().toISOString();
 
   return {
     ...normalizeUserInput(input),
     id: crypto.randomUUID(),
+    ativo: true,
     mustChangePassword: true,
     createdAt: now,
     updatedAt: now,
@@ -63,12 +120,15 @@ export function createUser(input: UserInput): User {
 }
 
 export function updateUser(user: User, input: UserInput): User {
+  if (isMasterAdmin(user)) {
+    return user;
+  }
+
   return {
     ...user,
     ...normalizeUserInput(input),
     mustChangePassword:
       input.mustChangePassword ?? shouldRequirePasswordChange(input),
-    role: user.role === "admin" ? "admin" : "sdr",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -79,6 +139,7 @@ export function normalizeUser(value: unknown): User | null {
   }
 
   const candidate = value as Partial<User>;
+  const isDefaultAdmin = candidate.usuario === defaultAdminUser.usuario;
   const createdAt =
     typeof candidate.createdAt === "string"
       ? candidate.createdAt
@@ -89,11 +150,24 @@ export function normalizeUser(value: unknown): User | null {
       typeof candidate.id === "string" && candidate.id.trim()
         ? candidate.id
         : crypto.randomUUID(),
-    nome: typeof candidate.nome === "string" ? candidate.nome : "",
-    usuario: typeof candidate.usuario === "string" ? candidate.usuario : "",
+    nome: isDefaultAdmin
+      ? defaultAdminUser.nome
+      : typeof candidate.nome === "string"
+        ? candidate.nome
+        : "",
+    usuario: isDefaultAdmin
+      ? defaultAdminUser.usuario
+      : typeof candidate.usuario === "string"
+        ? candidate.usuario
+        : "",
     senha: typeof candidate.senha === "string" ? candidate.senha : "",
-    role: normalizeRole(candidate.role),
-    ativo: typeof candidate.ativo === "boolean" ? candidate.ativo : true,
+    role:
+      isDefaultAdmin ? defaultAdminUser.role : normalizeRole(candidate.role),
+    ativo: isDefaultAdmin
+      ? defaultAdminUser.ativo
+      : typeof candidate.ativo === "boolean"
+        ? candidate.ativo
+        : true,
     mustChangePassword:
       typeof candidate.mustChangePassword === "boolean"
         ? candidate.mustChangePassword

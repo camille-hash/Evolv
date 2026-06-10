@@ -1,11 +1,16 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Pencil, RotateCcw, ShieldCheck } from "lucide-react";
+import { Pencil, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { PiperunImportPage } from "@/components/crm/piperun-import-page";
 import { Button } from "@/components/ui/button";
 import {
+  canChangeUserRole,
+  canDeactivateUser,
+  canDeleteUser,
+  deleteAccessUser,
   getEmptyUserInput,
+  isMasterAdmin,
   loadUsers,
   resetUserPassword,
   roleLabels,
@@ -22,9 +27,7 @@ export function AccessSettingsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [draft, setDraft] = useState<UserInput>(getEmptyUserInput());
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>(
-    {},
-  );
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -36,13 +39,24 @@ export function AccessSettingsPage() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (
+      editingUserId &&
+      !canChangeUserRole(users, editingUserId, draft.role)
+    ) {
+      setMessage("É necessário manter pelo menos um administrador ativo.");
+      return;
+    }
+
     setUsers(saveAccessUser(draft, editingUserId ?? undefined));
     setDraft(getEmptyUserInput());
     setEditingUserId(null);
+    setMessage("");
   }
 
   function handleEdit(user: User) {
-    if (user.role === "admin") {
+    if (isMasterAdmin(user)) {
+      setMessage("O administrador master está protegido e pode apenas ser visualizado.");
       return;
     }
 
@@ -51,15 +65,42 @@ export function AccessSettingsPage() {
       nome: user.nome,
       usuario: user.usuario,
       senha: user.senha,
-      role: "sdr",
+      role: user.role,
       ativo: user.ativo,
       mustChangePassword: user.mustChangePassword,
     });
+    setMessage("");
   }
 
   function handleCancelEdit() {
     setEditingUserId(null);
     setDraft(getEmptyUserInput());
+    setMessage("");
+  }
+
+  function handleToggleActive(user: User) {
+    if (!canDeactivateUser(users, user.id)) {
+      setMessage("É necessário manter pelo menos um administrador ativo.");
+      return;
+    }
+
+    setUsers(toggleUserActive(user.id));
+    setMessage("");
+  }
+
+  function handleDelete(user: User) {
+    if (!canDeleteUser(users, user.id)) {
+      setMessage("É necessário manter pelo menos um administrador ativo.");
+      return;
+    }
+
+    setUsers(deleteAccessUser(user.id));
+    setMessage("");
+  }
+
+  function handleResetPassword(user: User) {
+    setUsers(resetUserPassword(user.id, "123456"));
+    setMessage("Senha temporária redefinida para 123456.");
   }
 
   return (
@@ -69,10 +110,10 @@ export function AccessSettingsPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Acesso
           </p>
-          <h2 className="text-xl font-semibold">Gestao de usuarios</h2>
+          <h2 className="text-xl font-semibold">Gestão de usuários</h2>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            Controle local e provisório para Bruno e SDRs. Esta camada nao
-            substitui autenticacao real e sera evoluida para Supabase Auth no
+            Controle local e provisório para administradores e SDRs. Esta camada não
+            substitui autenticação real e será evoluída para Supabase Auth no
             futuro.
           </p>
         </div>
@@ -82,13 +123,19 @@ export function AccessSettingsPage() {
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" aria-hidden />
           <div>
-            <h3 className="font-semibold">Criar ou editar SDR</h3>
+            <h3 className="font-semibold">Gestão de usuários</h3>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Administradores acessam toda a plataforma. SDRs acessam apenas
-              Dashboard e CRM.
+              Crie administradores e SDRs com troca obrigatória de senha no
+              primeiro acesso.
             </p>
           </div>
         </div>
+
+        {message ? (
+          <p className="mt-4 rounded-md border border-brand-gold/40 bg-background/70 px-3 py-2 text-sm text-muted-foreground">
+            {message}
+          </p>
+        ) : null}
 
         <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
           <Field label="Nome">
@@ -105,7 +152,7 @@ export function AccessSettingsPage() {
             />
           </Field>
 
-          <Field label="Usuario">
+          <Field label="Usuário">
             <input
               className={fieldInputClass}
               onChange={(event) =>
@@ -135,7 +182,17 @@ export function AccessSettingsPage() {
           </Field>
 
           <Field label="Perfil">
-            <select className={fieldInputClass} disabled value={draft.role}>
+            <select
+              className={fieldInputClass}
+              onChange={(event) =>
+                setDraft((currentDraft) => ({
+                  ...currentDraft,
+                  role: event.target.value as User["role"],
+                }))
+              }
+              value={draft.role}
+            >
+              <option value="admin">Administrador</option>
               <option value="sdr">SDR</option>
             </select>
           </Field>
@@ -151,12 +208,12 @@ export function AccessSettingsPage() {
               }
               type="checkbox"
             />
-            Usuario ativo
+            Usuário ativo
           </label>
 
           <div className="flex flex-wrap gap-3 md:col-span-2">
             <Button type="submit">
-              {editingUserId ? "Salvar SDR" : "Criar SDR"}
+              {editingUserId ? "Salvar usuário" : "Criar usuário"}
             </Button>
             {editingUserId ? (
               <Button onClick={handleCancelEdit} type="button" variant="ghost">
@@ -168,7 +225,7 @@ export function AccessSettingsPage() {
       </section>
 
       <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
-        <h3 className="font-semibold">Usuarios cadastrados</h3>
+        <h3 className="font-semibold">Usuários cadastrados</h3>
         <div className="mt-5 grid gap-3">
           {users.map((user) => (
             <article
@@ -181,21 +238,26 @@ export function AccessSettingsPage() {
                   <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
                     {roleLabels[user.role]}
                   </span>
+                  {isMasterAdmin(user) ? (
+                    <span className="rounded-full border border-primary/25 bg-primary/5 px-2 py-0.5 text-xs text-primary">
+                      Administrador Master
+                    </span>
+                  ) : null}
                   <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
                     {user.ativo ? "Ativo" : "Inativo"}
                   </span>
                   {user.mustChangePassword ? (
                     <span className="rounded-full border border-brand-gold/40 px-2 py-0.5 text-xs text-muted-foreground">
-                      Troca obrigatoria
+                      Troca de senha pendente
                     </span>
                   ) : null}
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Usuario: {user.usuario}
+                  Usuário: {user.usuario}
                 </p>
               </div>
 
-              {user.role === "sdr" ? (
+              {!isMasterAdmin(user) ? (
                 <div className="grid gap-2 sm:min-w-[360px]">
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -208,40 +270,15 @@ export function AccessSettingsPage() {
                       Editar
                     </Button>
                     <Button
-                      onClick={() => setUsers(toggleUserActive(user.id))}
+                      onClick={() => handleToggleActive(user)}
                       size="sm"
                       type="button"
                       variant="ghost"
                     >
                       {user.ativo ? "Desativar" : "Ativar"}
                     </Button>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      className={fieldInputClass}
-                      onChange={(event) =>
-                        setPasswordDrafts((currentDrafts) => ({
-                          ...currentDrafts,
-                          [user.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="Nova senha"
-                      type="password"
-                      value={passwordDrafts[user.id] ?? ""}
-                    />
                     <Button
-                      onClick={() => {
-                        setUsers(
-                          resetUserPassword(
-                            user.id,
-                            passwordDrafts[user.id] ?? "",
-                          ),
-                        );
-                        setPasswordDrafts((currentDrafts) => ({
-                          ...currentDrafts,
-                          [user.id]: "",
-                        }));
-                      }}
+                      onClick={() => handleResetPassword(user)}
                       size="sm"
                       type="button"
                       variant="secondary"
@@ -249,11 +286,21 @@ export function AccessSettingsPage() {
                       <RotateCcw className="h-3.5 w-3.5" aria-hidden />
                       Redefinir
                     </Button>
+                    <Button
+                      onClick={() => handleDelete(user)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      Excluir
+                    </Button>
                   </div>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Administrador padrao protegido contra exclusao fisica.
+                  Visualizar. O usuário admin não pode ser editado,
+                  desativado, excluído ou rebaixado.
                 </p>
               )}
             </article>
