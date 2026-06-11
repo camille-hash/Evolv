@@ -955,7 +955,9 @@ function SimulationOperationPanel({
             <div className="mt-6 flex flex-col gap-3 rounded-md border bg-primary/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                  Gerando proposta para
+                  {leadProposalContext.intent === "simulation"
+                    ? "Gerando simulacao para"
+                    : "Gerando proposta para"}
                 </p>
                 <p className="mt-1 text-base font-semibold text-foreground">
                   {leadProposalContext.leadName}
@@ -996,6 +998,7 @@ function SimulationOperationPanel({
 
         <AnchoredProposalsSection
           comfortableInstallment={comfortableInstallment}
+          isHighlighted={leadProposalContext?.intent === "proposal"}
           proposals={anchoredProposals}
           onComfortableInstallmentChange={onSetComfortableInstallment}
           onCustomizeProposal={onCustomizeAnchoredProposal}
@@ -1120,6 +1123,7 @@ function SimulationOperationPanel({
 
 function AnchoredProposalsSection({
   comfortableInstallment,
+  isHighlighted = false,
   proposals,
   onComfortableInstallmentChange,
   onCustomizeProposal,
@@ -1127,6 +1131,7 @@ function AnchoredProposalsSection({
   onSaveProposal,
 }: {
   comfortableInstallment: string;
+  isHighlighted?: boolean;
   proposals: AnchoredProposal[];
   onComfortableInstallmentChange: (value: string) => void;
   onCustomizeProposal: (proposal: AnchoredProposal) => void;
@@ -1134,7 +1139,12 @@ function AnchoredProposalsSection({
   onSaveProposal: (proposal: AnchoredProposal) => void;
 }) {
   return (
-    <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+    <section
+      className={cn(
+        "rounded-md border bg-card p-5 text-card-foreground sm:p-6",
+        isHighlighted && "border-primary/30 bg-primary/[0.025]",
+      )}
+    >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">

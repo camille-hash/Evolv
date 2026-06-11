@@ -121,7 +121,7 @@ export default function Home() {
       : "dashboard";
   const currentSimulatorPage = simulatorPageBySection[visibleActiveSection];
   const pageTitle = pageTitles[visibleActiveSection];
-  const canCurrentUserGenerateLeadProposal = currentUser
+  const canCurrentUserGenerateLeadSimulation = currentUser
     ? canAccessSection(currentUser.role, "presentation")
     : false;
   const handleClientContextChange = useCallback((context: ClientContext) => {
@@ -155,8 +155,12 @@ export default function Home() {
     }
   }
 
-  function handleGenerateProposalFromLead(lead: CrmLead) {
+  function handleGenerateSimulationFromLead(
+    lead: CrmLead,
+    intent: "simulation" | "proposal",
+  ) {
     const nextContext = saveCrmLeadProposalContext({
+      intent,
       leadId: lead.id,
       leadName: lead.nome,
     });
@@ -224,9 +228,14 @@ export default function Home() {
 
         {visibleActiveSection === "crm" ? (
           <CrmPage
+            onGenerateSimulation={
+              canCurrentUserGenerateLeadSimulation
+                ? (lead) => handleGenerateSimulationFromLead(lead, "simulation")
+                : undefined
+            }
             onGenerateProposal={
-              canCurrentUserGenerateLeadProposal
-                ? handleGenerateProposalFromLead
+              canCurrentUserGenerateLeadSimulation
+                ? (lead) => handleGenerateSimulationFromLead(lead, "proposal")
                 : undefined
             }
           />

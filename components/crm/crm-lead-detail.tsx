@@ -86,6 +86,7 @@ export function CrmLeadDetail({
   lead,
   onBack,
   onEdit,
+  onGenerateSimulation,
   onGenerateProposal,
   pipelineLabel,
   stageLabel,
@@ -93,6 +94,7 @@ export function CrmLeadDetail({
   lead: CrmLead;
   onBack: () => void;
   onEdit: () => void;
+  onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
   pipelineLabel?: string;
   stageLabel?: string;
@@ -315,6 +317,17 @@ export function CrmLeadDetail({
                 <Pencil className="h-3.5 w-3.5" aria-hidden />
                 Editar
               </Button>
+              {onGenerateSimulation ? (
+                <Button
+                  onClick={() => onGenerateSimulation(lead)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden />
+                  Gerar simulacao
+                </Button>
+              ) : null}
               {onGenerateProposal ? (
                 <Button
                   onClick={() => onGenerateProposal(lead)}

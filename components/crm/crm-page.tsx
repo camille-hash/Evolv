@@ -122,8 +122,10 @@ const fieldInputClass =
 const INITIAL_PIPELINE_CARDS_LIMIT = 5;
 
 export function CrmPage({
+  onGenerateSimulation,
   onGenerateProposal,
 }: {
+  onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
 }) {
   const [activeTab, setActiveTab] = useState<CrmOperationalTab>("my-day");
@@ -237,6 +239,7 @@ export function CrmPage({
           setSelectedLeadId(null);
           handleEditLead(selectedLead);
         }}
+        onGenerateSimulation={(lead) => onGenerateSimulation?.(lead)}
         onGenerateProposal={(lead) => onGenerateProposal?.(lead)}
         pipelineLabel={selectedLead.pipeline}
         stageLabel={selectedLead.etapa}
