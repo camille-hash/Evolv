@@ -1047,6 +1047,8 @@ function CompactLeadCard({
   onDragStart: (leadId: string) => void;
   onEdit: (lead: CrmLead) => void;
 }) {
+  const hasRelevantValue = lead.valorPretendido > 0;
+
   return (
     <article
       className="cursor-grab rounded-md border bg-card px-2.5 py-2 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
@@ -1058,21 +1060,28 @@ function CompactLeadCard({
         onDragStart(lead.id);
       }}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5">
         <h4 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
           {lead.nome}
         </h4>
-        <TemperatureBadge temperature={lead.temperatura} />
+        <div className="shrink-0">
+          <TemperatureBadge temperature={lead.temperatura} />
+        </div>
       </div>
-      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
-        <span className="shrink-0 font-semibold text-foreground">
+      <div className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-xs">
+        <span
+          className={cn(
+            "shrink-0",
+            hasRelevantValue
+              ? "font-semibold text-foreground"
+              : "font-medium text-muted-foreground/70",
+          )}
+        >
           {currencyFormatter.format(lead.valorPretendido)}
         </span>
-        {lead.proximaAcao ? (
-          <span className="min-w-0 truncate text-right text-muted-foreground">
-            {lead.proximaAcao}
-          </span>
-        ) : null}
+        <span className="min-w-0 truncate text-right text-muted-foreground">
+          {lead.proximaAcao || "-"}
+        </span>
       </div>
       <Button
         className="mt-2 h-7 w-full text-xs"
