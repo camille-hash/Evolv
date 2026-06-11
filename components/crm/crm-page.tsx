@@ -56,9 +56,11 @@ type CrmOperationalTab =
 type OperationalGroup = "prospecting" | "sales" | "administrative" | "lost";
 
 type OperationalColumn = {
+  group?: OperationalGroup;
   label: string;
   pipeline: CrmPipeline;
   stage: CrmStage;
+  status?: CrmLead["status"];
 };
 
 const crmTabs: Array<{ key: CrmOperationalTab; label: string; quiet?: boolean }> = [
@@ -208,6 +210,8 @@ export function CrmPage() {
       : activeTab === "prospecting" || activeTab === "my-day"
         ? "prospecting"
         : null;
+  const shouldShowCommercialPipeline =
+    activeTab === "my-day" || activeTab === "prospecting" || activeTab === "sales";
   const shouldShowOperationalSupport =
     activeTab === "my-day" ||
     activeTab === "prospecting" ||
@@ -452,11 +456,18 @@ export function CrmPage() {
         <>
           <FocusOfTheDayPanel groups={focusGroups} />
           <OperationalKanban
-            columns={buildOperationalColumns({
-              group: activePipelineGroup,
-              leads: filteredLeads,
-              pipelineDefinitions: kanbanPipelineDefinitions,
-            })}
+            columns={
+              shouldShowCommercialPipeline
+                ? buildCommercialPipelineColumns({
+                    leads: filteredLeads,
+                    pipelineDefinitions: kanbanPipelineDefinitions,
+                  })
+                : buildOperationalColumns({
+                    group: activePipelineGroup,
+                    leads: filteredLeads,
+                    pipelineDefinitions: kanbanPipelineDefinitions,
+                  })
+            }
             dragTarget={dragTarget}
             group={activePipelineGroup}
             leads={filteredLeads}
@@ -1107,30 +1118,39 @@ function OperationalKanban({
 }) {
   return (
     <section className="executive-surface rounded-md p-3.5 sm:p-4">
-      <div className="grid gap-2 overflow-x-auto pb-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="flex w-full gap-2 overflow-x-auto pb-2">
         {columns.map((column) => {
-          const stageLeads = leads.filter(
-            (lead) =>
-              isLeadInGroup(lead, group) &&
-              normalizeKey(lead.etapa) === normalizeKey(column.stage),
-          );
+          const stageLeads = column.status
+            ? leads.filter((lead) => lead.status === column.status)
+            : leads.filter(
+                (lead) =>
+                  isLeadInGroup(lead, column.group ?? group) &&
+                  normalizeKey(lead.etapa) === normalizeKey(column.stage),
+              );
           const isActiveDropTarget =
+            !column.status &&
             dragTarget?.pipeline === column.pipeline &&
             dragTarget.stage === column.stage;
 
           return (
             <section
               className={cn(
-                "min-w-[210px] overflow-hidden rounded-md border bg-background/72 p-2 transition",
+                "flex h-[min(62vh,720px)] w-[210px] flex-none flex-col overflow-hidden rounded-md border bg-background/72 p-2 transition",
                 isActiveDropTarget
                   ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
                   : "border-border",
               )}
               key={`${column.pipeline}-${column.stage}`}
-              onDragOver={(event) =>
-                onDragOver(event, column.pipeline, column.stage)
-              }
-              onDrop={(event) => onDrop(event, column.pipeline, column.stage)}
+              onDragOver={(event) => {
+                if (!column.status) {
+                  onDragOver(event, column.pipeline, column.stage);
+                }
+              }}
+              onDrop={(event) => {
+                if (!column.status) {
+                  onDrop(event, column.pipeline, column.stage);
+                }
+              }}
             >
               <div className="flex min-w-0 items-center justify-between gap-2">
                 <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
@@ -1140,12 +1160,13 @@ function OperationalKanban({
                   {stageLeads.length}
                 </span>
               </div>
-              <div className="mt-2 grid gap-1.5">
+              <div className="mt-2 grid min-h-0 flex-1 gap-1.5 overflow-y-auto pr-1">
                 {stageLeads.length ? (
                   stageLeads.map((lead) => (
                     <CompactLeadCard
                       key={lead.id}
                       lead={lead}
+                      readOnly={Boolean(column.status)}
                       onDragEnd={onDragEnd}
                       onDragStart={onDragStart}
                       onEdit={onEdit}
@@ -1170,20 +1191,29 @@ function CompactLeadCard({
   onDragEnd,
   onDragStart,
   onEdit,
+  readOnly = false,
 }: {
   lead: CrmLead;
   onDragEnd: () => void;
   onDragStart: (leadId: string) => void;
   onEdit: (lead: CrmLead) => void;
+  readOnly?: boolean;
 }) {
   const hasRelevantValue = lead.valorPretendido > 0;
 
   return (
     <article
-      className="min-w-0 cursor-grab overflow-hidden rounded-md border bg-card px-2 py-1.5 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
-      draggable
+      className={cn(
+        "min-w-0 overflow-hidden rounded-md border bg-card px-2 py-1.5 shadow-sm transition hover:border-primary/30",
+        readOnly ? "cursor-default" : "cursor-grab active:cursor-grabbing",
+      )}
+      draggable={!readOnly}
       onDragEnd={onDragEnd}
       onDragStart={(event) => {
+        if (readOnly) {
+          return;
+        }
+
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", lead.id);
         onDragStart(lead.id);
@@ -1793,11 +1823,47 @@ function buildOperationalColumns({
       });
 
     return {
+      group,
       label: stage.label,
       pipeline,
       stage: matchedStage?.key ?? stage.label,
     };
   });
+}
+
+function buildCommercialPipelineColumns({
+  leads,
+  pipelineDefinitions,
+}: {
+  leads: CrmLead[];
+  pipelineDefinitions: Array<{
+    key: CrmPipeline;
+    label: string;
+    stages: Array<{ key: CrmStage; label: string }>;
+  }>;
+}): OperationalColumn[] {
+  const prospectingColumns = buildOperationalColumns({
+    group: "prospecting",
+    leads,
+    pipelineDefinitions,
+  });
+  const salesColumns = buildOperationalColumns({
+    group: "sales",
+    leads,
+    pipelineDefinitions,
+  });
+
+  return [
+    ...prospectingColumns,
+    ...salesColumns,
+    {
+      group: "sales",
+      label: "Ganhos",
+      pipeline: salesColumns[0]?.pipeline ?? "sales",
+      stage: "Ganhos",
+      status: "ganha",
+    },
+  ];
 }
 
 function findPipelineForGroup(
