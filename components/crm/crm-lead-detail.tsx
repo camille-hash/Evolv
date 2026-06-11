@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, Plus, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarClock,
+  Check,
+  MessageCircle,
+  Pencil,
+  Phone,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   addCrmActivity,
@@ -13,6 +23,7 @@ import {
   crmOpportunityStatusLabels,
   crmPipelineLabels,
   crmStageLabels,
+  crmTemperatureLabels,
   deleteCrmActivity,
   deleteCrmNote,
   loadCrmActivities,
@@ -24,6 +35,7 @@ import {
   type CrmLead,
   type CrmNote,
   type CrmStageChange,
+  type CrmTemperature,
 } from "@/modules/crm";
 import { cn } from "@/lib/utils";
 
@@ -54,11 +66,13 @@ const activityStatuses: CrmActivityStatus[] = ["pending", "completed"];
 export function CrmLeadDetail({
   lead,
   onBack,
+  onEdit,
   pipelineLabel,
   stageLabel,
 }: {
   lead: CrmLead;
   onBack: () => void;
+  onEdit: () => void;
   pipelineLabel?: string;
   stageLabel?: string;
 }) {
@@ -94,6 +108,13 @@ export function CrmLeadDetail({
       }),
     [activities, lead, notes, stageChanges],
   );
+  const pipelineName = pipelineLabel ?? crmPipelineLabels[lead.pipeline];
+  const stageName = stageLabel ?? crmStageLabels[lead.etapa];
+  const phoneDigits = lead.telefone.replace(/\D/g, "");
+  const canUsePhone = phoneDigits.length > 0;
+  const nextActionText = lead.proximaAcao
+    ? `${lead.proximaAcao}${lead.dataProximaAcao ? ` - ${lead.dataProximaAcao}` : ""}`
+    : "";
 
   function handleAddNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -122,7 +143,7 @@ export function CrmLeadDetail({
     <section className="grid gap-6">
       <section className="executive-surface rounded-md p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
+          <div className="min-w-0">
             <Button onClick={onBack} type="button" variant="ghost">
               <ArrowLeft className="h-4 w-4" aria-hidden />
               Voltar ao CRM
@@ -130,14 +151,17 @@ export function CrmLeadDetail({
             <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Oportunidade comercial
             </p>
-            <h2 className="mt-2 text-3xl font-semibold text-foreground">
-              {lead.nome}
-            </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {pipelineLabel ?? crmPipelineLabels[lead.pipeline]} /{" "}
-              {stageLabel ?? crmStageLabels[lead.etapa]} /{" "}
-              {crmOpportunityStatusLabels[lead.status]}
-            </p>
+            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-3">
+              <h2 className="min-w-0 truncate text-3xl font-semibold text-foreground">
+                {lead.nome}
+              </h2>
+              <TemperatureBadge temperature={lead.temperatura} />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <OperationalPill label={pipelineName} />
+              <OperationalPill label={stageName} />
+              <OperationalPill label={crmOpportunityStatusLabels[lead.status]} />
+            </div>
           </div>
           <div className="rounded-md border bg-background/70 p-4 lg:min-w-[260px]">
             <p className="text-xs text-muted-foreground">Valor potencial P&S</p>
@@ -147,19 +171,108 @@ export function CrmLeadDetail({
           </div>
         </div>
 
+        <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+          <article
+            className={cn(
+              "rounded-md border p-4",
+              lead.proximaAcao
+                ? "border-primary/20 bg-primary/5"
+                : "border-[#d9a184] bg-[#f5e8df]",
+            )}
+          >
+            <div className="flex items-start gap-3">
+              {lead.proximaAcao ? (
+                <CalendarClock
+                  className="mt-0.5 h-4 w-4 text-primary"
+                  aria-hidden
+                />
+              ) : (
+                <AlertTriangle
+                  className="mt-0.5 h-4 w-4 text-[#9a4f32]"
+                  aria-hidden
+                />
+              )}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Proxima acao
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {nextActionText || "Sem proxima acao definida"}
+                </p>
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-md border bg-background/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Acoes rapidas
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {canUsePhone ? (
+                <Button asChild size="sm" type="button" variant="secondary">
+                  <a href={`tel:${phoneDigits}`}>
+                    <Phone className="h-3.5 w-3.5" aria-hidden />
+                    Ligar
+                  </a>
+                </Button>
+              ) : (
+                <Button disabled size="sm" type="button" variant="secondary">
+                  <Phone className="h-3.5 w-3.5" aria-hidden />
+                  Ligar
+                </Button>
+              )}
+              {canUsePhone ? (
+                <Button asChild size="sm" type="button" variant="secondary">
+                  <a
+                    href={`https://wa.me/${phoneDigits}`}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+                    WhatsApp
+                  </a>
+                </Button>
+              ) : (
+                <Button disabled size="sm" type="button" variant="secondary">
+                  <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+                  WhatsApp
+                </Button>
+              )}
+              <Button onClick={onEdit} size="sm" type="button">
+                <Pencil className="h-3.5 w-3.5" aria-hidden />
+                Editar
+              </Button>
+            </div>
+          </article>
+        </div>
+
+        <div className="mt-4 rounded-md border bg-background/70 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Historico operacional
+          </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <OperationalHistoryItem
+              label="Lead criado"
+              value={formatDateTime(lead.createdAt)}
+            />
+            <OperationalHistoryItem
+              label="Etapa atual"
+              value={`${pipelineName} / ${stageName}`}
+            />
+            <OperationalHistoryItem
+              label="Ultima atualizacao"
+              value={formatDateTime(lead.updatedAt)}
+            />
+          </div>
+        </div>
+
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <LeadDetailItem label="Telefone" value={lead.telefone || "-"} />
           <LeadDetailItem label="E-mail" value={lead.email || "-"} />
           <LeadDetailItem label="Origem" value={lead.origem || "-"} />
           <LeadDetailItem label="Responsavel" value={lead.consultor || "-"} />
-          <LeadDetailItem
-            label="Pipeline"
-            value={pipelineLabel ?? crmPipelineLabels[lead.pipeline]}
-          />
-          <LeadDetailItem
-            label="Etapa"
-            value={stageLabel ?? crmStageLabels[lead.etapa]}
-          />
+          <LeadDetailItem label="Pipeline" value={pipelineName} />
+          <LeadDetailItem label="Etapa" value={stageName} />
           <LeadDetailItem
             label="Situacao"
             value={crmOpportunityStatusLabels[lead.status]}
@@ -419,6 +532,48 @@ function LeadDetailItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function OperationalPill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+      {label}
+    </span>
+  );
+}
+
+function OperationalHistoryItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-md border bg-card px-3 py-2">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-medium text-foreground">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function TemperatureBadge({ temperature }: { temperature: CrmTemperature }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 text-xs font-semibold",
+        temperature === "quente"
+          ? "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]"
+          : temperature === "fria"
+            ? "border-[#c8d4dc] bg-[#edf3f6] text-[#546977]"
+            : "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]",
+      )}
+    >
+      {crmTemperatureLabels[temperature]}
+    </span>
+  );
+}
+
 function Field({
   children,
   label,
@@ -456,4 +611,10 @@ function formatActivitySchedule(activity: CrmActivity) {
   }
 
   return "Sem data definida";
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? "-" : dateFormatter.format(date);
 }

@@ -217,6 +217,10 @@ export function CrmPage() {
         onBack={() => {
           setSelectedLeadId(null);
         }}
+        onEdit={() => {
+          setSelectedLeadId(null);
+          handleEditLead(selectedLead);
+        }}
         pipelineLabel={selectedLead.pipeline}
         stageLabel={selectedLead.etapa}
       />
