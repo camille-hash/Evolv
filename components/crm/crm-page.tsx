@@ -7,7 +7,7 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { AlertTriangle, Clock3, Flame, Pencil, Plus } from "lucide-react";
 import { AccessSettingsPage } from "@/components/access/access-settings-page";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
 import { Button } from "@/components/ui/button";
@@ -192,6 +192,10 @@ export function CrmPage() {
   );
   const myDayGroups = useMemo(
     () => buildMyDayGroups(filteredLeads),
+    [filteredLeads],
+  );
+  const focusGroups = useMemo(
+    () => buildCommercialFocusGroups(filteredLeads),
     [filteredLeads],
   );
   const filteredBaseLeads = useMemo(
@@ -445,21 +449,24 @@ export function CrmPage() {
       </section>
 
       {activePipelineGroup ? (
-        <OperationalKanban
-          columns={buildOperationalColumns({
-            group: activePipelineGroup,
-            leads: filteredLeads,
-            pipelineDefinitions: kanbanPipelineDefinitions,
-          })}
-          dragTarget={dragTarget}
-          group={activePipelineGroup}
-          leads={filteredLeads}
-          onDragEnd={handleLeadDragEnd}
-          onDragOver={handleStageDragOver}
-          onDragStart={handleLeadDragStart}
-          onDrop={handleStageDrop}
-          onEdit={handleEditLead}
-        />
+        <>
+          <FocusOfTheDayPanel groups={focusGroups} />
+          <OperationalKanban
+            columns={buildOperationalColumns({
+              group: activePipelineGroup,
+              leads: filteredLeads,
+              pipelineDefinitions: kanbanPipelineDefinitions,
+            })}
+            dragTarget={dragTarget}
+            group={activePipelineGroup}
+            leads={filteredLeads}
+            onDragEnd={handleLeadDragEnd}
+            onDragOver={handleStageDragOver}
+            onDragStart={handleLeadDragStart}
+            onDrop={handleStageDrop}
+            onEdit={handleEditLead}
+          />
+        </>
       ) : null}
 
       {shouldShowOperationalSupport ? (
@@ -876,6 +883,124 @@ function PipelineSettingsPanel({
         ))}
       </div>
     </section>
+  );
+}
+
+function FocusOfTheDayPanel({
+  groups,
+}: {
+  groups: ReturnType<typeof buildCommercialFocusGroups>;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-4 sm:p-5">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Foco do Dia
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-foreground">
+            Prioridades comerciais
+          </h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Oportunidades que merecem atencao antes de percorrer o funil.
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        <FocusMetricCard
+          icon={<Flame className="h-4 w-4" aria-hidden />}
+          leads={groups.hotWithoutAction}
+          title="Leads quentes sem proxima acao"
+          tone="warm"
+        />
+        <FocusMetricCard
+          icon={<AlertTriangle className="h-4 w-4" aria-hidden />}
+          leads={groups.overdueActions}
+          title="Proximas acoes vencidas"
+          tone="attention"
+        />
+        <FocusMetricCard
+          icon={<Clock3 className="h-4 w-4" aria-hidden />}
+          leads={groups.staleLeads}
+          title="Leads aguardando movimentacao"
+          tone="quiet"
+        />
+      </div>
+    </section>
+  );
+}
+
+function FocusMetricCard({
+  icon,
+  leads,
+  title,
+  tone,
+}: {
+  icon: React.ReactNode;
+  leads: CrmLead[];
+  title: string;
+  tone: "attention" | "quiet" | "warm";
+}) {
+  return (
+    <article
+      className={cn(
+        "rounded-md border p-3",
+        tone === "attention"
+          ? "border-[#d9a184] bg-[#f5e8df]"
+          : tone === "warm"
+            ? "border-[#d9c28a] bg-[#f7f0df]"
+            : "border-[#c8d4dc] bg-[#edf3f6]",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "shrink-0",
+                tone === "attention"
+                  ? "text-[#9a4f32]"
+                  : tone === "warm"
+                    ? "text-[#80662f]"
+                    : "text-[#546977]",
+              )}
+            >
+              {icon}
+            </span>
+            <h4 className="truncate text-sm font-semibold text-foreground">
+              {title}
+            </h4>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {leads.length
+              ? "Revise antes de avancar no funil."
+              : "Sem prioridade neste grupo."}
+          </p>
+        </div>
+        <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs font-semibold text-foreground">
+          {leads.length}
+        </span>
+      </div>
+
+      {leads.length ? (
+        <div className="mt-3 grid gap-1.5">
+          {leads.slice(0, 3).map((lead) => (
+            <div
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border bg-background/70 px-2 py-1.5 text-xs"
+              key={lead.id}
+            >
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {lead.nome}
+              </span>
+              <span className="text-muted-foreground">
+                {formatDate(lead.updatedAt)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -1616,6 +1741,22 @@ function buildMyDayGroups(leads: CrmLead[]) {
   };
 }
 
+function buildCommercialFocusGroups(leads: CrmLead[]) {
+  const activeLeads = leads.filter((lead) => lead.status === "ativa");
+
+  return {
+    hotWithoutAction: activeLeads.filter(
+      (lead) => lead.temperatura === "quente" && !lead.proximaAcao.trim(),
+    ),
+    overdueActions: activeLeads.filter((lead) =>
+      isBeforeToday(lead.dataProximaAcao),
+    ),
+    staleLeads: activeLeads.filter((lead) =>
+      isOlderThanDays(lead.updatedAt, 14),
+    ),
+  };
+}
+
 function buildOperationalColumns({
   group,
   leads,
@@ -1751,6 +1892,32 @@ function isTodayOrPast(value: string) {
   today.setHours(0, 0, 0, 0);
 
   return Number.isFinite(target) && target <= today.getTime();
+}
+
+function isBeforeToday(value: string) {
+  if (!value) {
+    return false;
+  }
+
+  const target = new Date(`${value}T00:00:00`).getTime();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Number.isFinite(target) && target < today.getTime();
+}
+
+function isOlderThanDays(value: string, days: number) {
+  const target = new Date(value).getTime();
+
+  if (!Number.isFinite(target)) {
+    return false;
+  }
+
+  const limit = new Date();
+  limit.setHours(0, 0, 0, 0);
+  limit.setDate(limit.getDate() - days);
+
+  return target < limit.getTime();
 }
 
 function formatDate(value: string) {
