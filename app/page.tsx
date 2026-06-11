@@ -25,6 +25,13 @@ import {
   type SimulatorPanelPage,
 } from "@/components/simulator/simulator-panel";
 import {
+  clearCrmLeadProposalContext,
+  loadCrmLeadProposalContext,
+  saveCrmLeadProposalContext,
+  type CrmLead,
+  type CrmLeadProposalContext,
+} from "@/modules/crm";
+import {
   emptyClientContext,
   loadClientContext,
   type ClientContext,
@@ -104,6 +111,8 @@ export default function Home() {
   const [clientContext, setClientContext] =
     useState<ClientContext>(emptyClientContext);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [leadProposalContext, setLeadProposalContext] =
+    useState<CrmLeadProposalContext | null>(null);
   const [accessReady, setAccessReady] = useState(false);
   const visibleActiveSection =
     currentUser &&
@@ -112,6 +121,9 @@ export default function Home() {
       : "dashboard";
   const currentSimulatorPage = simulatorPageBySection[visibleActiveSection];
   const pageTitle = pageTitles[visibleActiveSection];
+  const canCurrentUserGenerateLeadProposal = currentUser
+    ? canAccessSection(currentUser.role, "presentation")
+    : false;
   const handleClientContextChange = useCallback((context: ClientContext) => {
     setClientContext(context);
   }, []);
@@ -121,6 +133,7 @@ export default function Home() {
       const storedUser = loadCurrentUser();
       setCurrentUser(storedUser);
       setClientContext(loadClientContext());
+      setLeadProposalContext(loadCrmLeadProposalContext());
       setAccessReady(true);
     }, 0);
 
@@ -140,6 +153,21 @@ export default function Home() {
     ) {
       setActiveSection(section);
     }
+  }
+
+  function handleGenerateProposalFromLead(lead: CrmLead) {
+    const nextContext = saveCrmLeadProposalContext({
+      leadId: lead.id,
+      leadName: lead.nome,
+    });
+
+    setLeadProposalContext(nextContext);
+    handleNavigate("presentation");
+  }
+
+  function handleClearLeadProposalContext() {
+    clearCrmLeadProposalContext();
+    setLeadProposalContext(null);
   }
 
   if (!accessReady) {
@@ -194,10 +222,26 @@ export default function Home() {
           <ClientPage onClientContextChange={handleClientContextChange} />
         ) : null}
 
-        {visibleActiveSection === "crm" ? <CrmPage /> : null}
+        {visibleActiveSection === "crm" ? (
+          <CrmPage
+            onGenerateProposal={
+              canCurrentUserGenerateLeadProposal
+                ? handleGenerateProposalFromLead
+                : undefined
+            }
+          />
+        ) : null}
 
         {visibleActiveSection === "presentation" ? (
-          <ClientPresentationPage />
+          leadProposalContext ? (
+            <SimulatorPanel
+              activePage="simulation"
+              leadProposalContext={leadProposalContext}
+              onClearLeadProposalContext={handleClearLeadProposalContext}
+            />
+          ) : (
+            <ClientPresentationPage />
+          )
         ) : null}
 
         {visibleActiveSection === "multiCotas" ? <MultiCotasPage /> : null}

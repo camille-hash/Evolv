@@ -121,7 +121,11 @@ const fieldInputClass =
   "w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15";
 const INITIAL_PIPELINE_CARDS_LIMIT = 5;
 
-export function CrmPage() {
+export function CrmPage({
+  onGenerateProposal,
+}: {
+  onGenerateProposal?: (lead: CrmLead) => void;
+}) {
   const [activeTab, setActiveTab] = useState<CrmOperationalTab>("my-day");
   const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
   const [expandedPipelineColumns, setExpandedPipelineColumns] = useState<
@@ -233,6 +237,7 @@ export function CrmPage() {
           setSelectedLeadId(null);
           handleEditLead(selectedLead);
         }}
+        onGenerateProposal={(lead) => onGenerateProposal?.(lead)}
         pipelineLabel={selectedLead.pipeline}
         stageLabel={selectedLead.etapa}
       />

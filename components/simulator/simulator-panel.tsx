@@ -66,6 +66,11 @@ import {
   type Recommendation,
 } from "@/modules/recommendations";
 import {
+  addCrmLeadSimulation,
+  loadCrmLeadSimulations,
+  type CrmLeadProposalContext,
+} from "@/modules/crm";
+import {
   loadPortfolioSnapshot,
   type PortfolioSnapshot,
 } from "@/modules/portfolio";
@@ -78,6 +83,12 @@ import type { Operation, OperationDraft } from "@/modules/operations";
 import { cn } from "@/lib/utils";
 
 type SimulatorFormState = SimulatorSavedFormState;
+
+type AnchoredPersonalizationSource = {
+  proposalLabel: string;
+  sourceName: string;
+  sourceSimulationId: string;
+};
 
 export type SimulatorPanelPage =
   | "simulation"
@@ -161,16 +172,20 @@ const percentFormatter = new Intl.NumberFormat("pt-BR", {
 export function SimulatorPanel({
   activePage = "simulation",
   operation,
+  leadProposalContext,
   onOperationChange,
   onOpenSimulation,
+  onClearLeadProposalContext,
 }: {
   activePage?: SimulatorPanelPage;
   operation?: Operation | null;
+  leadProposalContext?: CrmLeadProposalContext | null;
   onOperationChange?: (payload: {
     draft: OperationDraft;
     presentation: SimulatorCommercialPresentation;
   }) => void;
   onOpenSimulation?: () => void;
+  onClearLeadProposalContext?: () => void;
 }) {
   const [activeSimulationId, setActiveSimulationId] = useState<string | null>(
     null,
@@ -207,6 +222,8 @@ export function SimulatorPanel({
   const [anchoredProposals, setAnchoredProposals] = useState<
     AnchoredProposal[]
   >([]);
+  const [personalizationSource, setPersonalizationSource] =
+    useState<AnchoredPersonalizationSource | null>(null);
   const [formState, setFormState] =
     useState<SimulatorFormState>(initialFormState);
   const appliedOperationIdRef = useRef<string | null>(null);
@@ -452,9 +469,12 @@ export function SimulatorPanel({
           simulatorInput={simulatorInput}
           anchoredProposals={anchoredProposals}
           comfortableInstallment={comfortableInstallment}
+          leadProposalContext={leadProposalContext}
+          personalizationSource={personalizationSource}
           onCommercialDataChange={updateCommercialData}
           onContemplationMonthChange={updateContemplationMonth}
           onFormStateChange={updateFormState}
+          onCustomizeAnchoredProposal={handleCustomizeAnchoredProposal}
           onGenerateAnchoredProposals={handleGenerateAnchoredProposals}
           onGeneratePdf={handleGeneratePdf}
           onInsuranceOptionChange={handleSelectInsuranceOption}
@@ -462,8 +482,9 @@ export function SimulatorPanel({
           onSaveSimulation={handleSaveSimulation}
           onScenarioChange={setSelectedScenarioKey}
           onSetComfortableInstallment={setComfortableInstallment}
-          onSetBidType={setBidType}
+          onSetBidType={handleSetBidType}
           onSetSimulationName={setSimulationName}
+          onClearLeadProposalContext={onClearLeadProposalContext}
           isInsuranceOptionDisabled={isInsuranceOptionDisabled}
         />
       ) : null}
@@ -520,6 +541,7 @@ export function SimulatorPanel({
   );
 
   function updateFormState(partialState: Partial<SimulatorFormState>) {
+    setAnchoredProposals([]);
     setFormState((current) => ({ ...current, ...partialState }));
   }
 
@@ -552,6 +574,7 @@ export function SimulatorPanel({
   }
 
   function updateContemplationMonth(nextMonth: number) {
+    setAnchoredProposals([]);
     setContemplationMonth(
       Math.min(Math.max(1, Math.trunc(nextMonth)), simulatorInput.termMonths),
     );
@@ -573,8 +596,9 @@ export function SimulatorPanel({
     const administratorData = selectedAdministrator
       ? createSavedAdministratorData(selectedAdministrator)
       : createDefaultSavedAdministratorData();
+    const shouldCreateNewProposal = Boolean(personalizationSource);
     const savedSimulation = saveSimulation({
-      id: activeSimulationId,
+      id: shouldCreateNewProposal ? null : activeSimulationId,
       draft: {
         name: simulationName,
         formState,
@@ -584,6 +608,8 @@ export function SimulatorPanel({
         insuranceOption,
         contemplationMonth: presentation.contemplationMonth,
         bidType,
+        sourceSimulationId: personalizationSource?.sourceSimulationId,
+        sourceProposalLabel: personalizationSource?.proposalLabel,
       },
       presentation,
     });
@@ -595,12 +621,15 @@ export function SimulatorPanel({
       savedSimulation.administratorData.selectedAdministratorId,
     );
     setAdministratorDraft(toAdministratorFromSavedData(savedSimulation));
+    setPersonalizationSource(null);
     setSavedSimulations(loadSavedSimulations());
+    linkSimulationToLeadContext(savedSimulation);
   }
 
   function handleGenerateAnchoredProposals() {
     const referenceInstallment = parseCurrencyNumber(comfortableInstallment);
 
+    setPersonalizationSource(null);
     setAnchoredProposals(
       buildAnchoredProposals({
         referenceInstallment,
@@ -614,10 +643,34 @@ export function SimulatorPanel({
   }
 
   function handleSaveAnchoredProposal(proposal: AnchoredProposal) {
+    const savedSimulation = persistAnchoredProposal(proposal);
+
+    setSavedSimulations(loadSavedSimulations());
+    setSimulationName((currentName) => currentName || savedSimulation.name);
+    linkSimulationToLeadContext(savedSimulation);
+  }
+
+  function handleCustomizeAnchoredProposal(proposal: AnchoredProposal) {
+    const sourceSimulation = persistAnchoredProposal(proposal);
+
+    setActiveSimulationId(null);
+    setSimulationName(`${sourceSimulation.name} - Ajuste Comercial`);
+    setSelectedScenarioKey(proposal.scenarioKey);
+    setContemplationMonth(proposal.presentation.contemplationMonth);
+    setPersonalizationSource({
+      proposalLabel: proposal.label,
+      sourceName: sourceSimulation.name,
+      sourceSimulationId: sourceSimulation.id,
+    });
+    setSavedSimulations(loadSavedSimulations());
+  }
+
+  function persistAnchoredProposal(proposal: AnchoredProposal) {
     const administratorData = selectedAdministrator
       ? createSavedAdministratorData(selectedAdministrator)
       : createDefaultSavedAdministratorData();
-    const savedSimulation = saveSimulation({
+
+    return saveSimulation({
       id: null,
       draft: {
         name: buildAnchoredProposalName(simulationName, proposal.label),
@@ -631,9 +684,27 @@ export function SimulatorPanel({
       },
       presentation: proposal.presentation,
     });
+  }
 
-    setSavedSimulations(loadSavedSimulations());
-    setSimulationName((currentName) => currentName || savedSimulation.name);
+  function linkSimulationToLeadContext(simulation: SimulatorSavedSimulation) {
+    if (!leadProposalContext) {
+      return;
+    }
+
+    const existingRecord = loadCrmLeadSimulations(
+      leadProposalContext.leadId,
+    ).find((record) => record.simulationId === simulation.id);
+
+    if (existingRecord) {
+      return;
+    }
+
+    addCrmLeadSimulation({
+      leadId: leadProposalContext.leadId,
+      notes: "Proposta gerada a partir do dossie do lead.",
+      simulation,
+      status: "apresentada",
+    });
   }
 
   function handleOpenSimulation(simulation: SimulatorSavedSimulation) {
@@ -653,6 +724,8 @@ export function SimulatorPanel({
     );
     setContemplationMonth(simulation.contemplationMonth);
     setBidType(simulation.bidType);
+    setPersonalizationSource(null);
+    setAnchoredProposals([]);
     onOpenSimulation?.();
   }
 
@@ -667,6 +740,7 @@ export function SimulatorPanel({
 
     setSelectedAdministratorId(administrator.id);
     setAdministratorDraft(administrator);
+    setAnchoredProposals([]);
     setFormState((currentFormState) =>
       applyAdministratorToSimulationForm(currentFormState, administrator),
     );
@@ -685,6 +759,7 @@ export function SimulatorPanel({
 
     setAdministrators(nextAdministrators);
     setSelectedAdministratorId(administratorDraft.id);
+    setAnchoredProposals([]);
     setFormState((currentFormState) =>
       applyAdministratorToSimulationForm(currentFormState, administratorDraft),
     );
@@ -704,6 +779,7 @@ export function SimulatorPanel({
     setAdministrators(defaultAdministrators);
     setSelectedAdministratorId(customAdministrator.id);
     setAdministratorDraft(customAdministrator);
+    setAnchoredProposals([]);
     setFormState((currentFormState) =>
       applyAdministratorToSimulationForm(currentFormState, customAdministrator),
     );
@@ -715,7 +791,13 @@ export function SimulatorPanel({
       return;
     }
 
+    setAnchoredProposals([]);
     setInsuranceOption(option);
+  }
+
+  function handleSetBidType(nextBidType: BidType) {
+    setAnchoredProposals([]);
+    setBidType(nextBidType);
   }
 
   function isInsuranceOptionDisabled(option: InsuranceOption) {
@@ -767,8 +849,11 @@ function SimulationOperationPanel({
   simulatorInput,
   anchoredProposals,
   comfortableInstallment,
+  leadProposalContext,
+  personalizationSource,
   onCommercialDataChange,
   onContemplationMonthChange,
+  onCustomizeAnchoredProposal,
   onFormStateChange,
   onGenerateAnchoredProposals,
   onGeneratePdf,
@@ -779,6 +864,7 @@ function SimulationOperationPanel({
   onSetComfortableInstallment,
   onSetBidType,
   onSetSimulationName,
+  onClearLeadProposalContext,
   isInsuranceOptionDisabled,
 }: {
   activeSimulationId: string | null;
@@ -794,8 +880,11 @@ function SimulationOperationPanel({
   simulatorInput: SimulatorInput;
   anchoredProposals: AnchoredProposal[];
   comfortableInstallment: string;
+  leadProposalContext?: CrmLeadProposalContext | null;
+  personalizationSource: AnchoredPersonalizationSource | null;
   onCommercialDataChange: (state: Partial<SimulatorCommercialData>) => void;
   onContemplationMonthChange: (month: number) => void;
+  onCustomizeAnchoredProposal: (proposal: AnchoredProposal) => void;
   onFormStateChange: (state: Partial<SimulatorFormState>) => void;
   onGenerateAnchoredProposals: () => void;
   onGeneratePdf: () => void;
@@ -806,6 +895,7 @@ function SimulationOperationPanel({
   onSetComfortableInstallment: (value: string) => void;
   onSetBidType: (bidType: BidType) => void;
   onSetSimulationName: (name: string) => void;
+  onClearLeadProposalContext?: () => void;
   isInsuranceOptionDisabled: (option: InsuranceOption) => boolean;
 }) {
   return (
@@ -838,7 +928,9 @@ function SimulationOperationPanel({
               <div className="grid gap-2 sm:grid-cols-2">
                 <PrimaryActionButton onClick={onSaveSimulation}>
                   <Save className="h-4 w-4" aria-hidden="true" />
-                  Salvar
+                  {personalizationSource
+                    ? "Salvar como nova proposta"
+                    : "Salvar"}
                 </PrimaryActionButton>
                 <SecondaryActionButton onClick={onGeneratePdf}>
                   <FileDown className="h-4 w-4" aria-hidden="true" />
@@ -850,8 +942,32 @@ function SimulationOperationPanel({
                   Editando simulacao salva.
                 </p>
               ) : null}
+              {personalizationSource ? (
+                <p className="rounded-md border bg-primary/[0.04] px-3 py-2 text-xs leading-5 text-muted-foreground">
+                  Personalizando a partir de {personalizationSource.sourceName}.
+                  O registro original sera preservado.
+                </p>
+              ) : null}
             </div>
           </div>
+
+          {leadProposalContext ? (
+            <div className="mt-6 flex flex-col gap-3 rounded-md border bg-primary/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                  Gerando proposta para
+                </p>
+                <p className="mt-1 text-base font-semibold text-foreground">
+                  {leadProposalContext.leadName}
+                </p>
+              </div>
+              {onClearLeadProposalContext ? (
+                <SecondaryActionButton onClick={onClearLeadProposalContext}>
+                  Encerrar contexto do lead
+                </SecondaryActionButton>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
             <div>
@@ -882,6 +998,7 @@ function SimulationOperationPanel({
           comfortableInstallment={comfortableInstallment}
           proposals={anchoredProposals}
           onComfortableInstallmentChange={onSetComfortableInstallment}
+          onCustomizeProposal={onCustomizeAnchoredProposal}
           onGenerate={onGenerateAnchoredProposals}
           onSaveProposal={onSaveAnchoredProposal}
         />
@@ -1005,12 +1122,14 @@ function AnchoredProposalsSection({
   comfortableInstallment,
   proposals,
   onComfortableInstallmentChange,
+  onCustomizeProposal,
   onGenerate,
   onSaveProposal,
 }: {
   comfortableInstallment: string;
   proposals: AnchoredProposal[];
   onComfortableInstallmentChange: (value: string) => void;
+  onCustomizeProposal: (proposal: AnchoredProposal) => void;
   onGenerate: () => void;
   onSaveProposal: (proposal: AnchoredProposal) => void;
 }) {
@@ -1092,10 +1211,15 @@ function AnchoredProposalsSection({
                 />
               </div>
 
-              <SecondaryActionButton onClick={() => onSaveProposal(proposal)}>
-                <Save className="h-4 w-4" aria-hidden="true" />
-                Salvar proposta
-              </SecondaryActionButton>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <SecondaryActionButton onClick={() => onCustomizeProposal(proposal)}>
+                  Personalizar
+                </SecondaryActionButton>
+                <SecondaryActionButton onClick={() => onSaveProposal(proposal)}>
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                  Salvar proposta
+                </SecondaryActionButton>
+              </div>
             </article>
           ))}
         </div>

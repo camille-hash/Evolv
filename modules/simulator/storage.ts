@@ -48,6 +48,8 @@ export type SimulatorSavedDraft = {
   insuranceOption: InsuranceOption;
   contemplationMonth: number;
   bidType: BidType;
+  sourceSimulationId?: string;
+  sourceProposalLabel?: string;
 };
 
 export type SimulatorSavedSimulation = SimulatorSavedDraft & {

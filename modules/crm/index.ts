@@ -3,6 +3,7 @@ export * from "./crm-dashboard-engine";
 export * from "./crm-detail-engine";
 export * from "./crm-detail-storage";
 export * from "./crm-lead-simulation-storage";
+export * from "./crm-lead-proposal-context";
 export * from "./crm-pipeline-engine";
 export * from "./crm-pipeline-storage";
 export * from "./crm-storage";
