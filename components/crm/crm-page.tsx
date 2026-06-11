@@ -394,7 +394,7 @@ export function CrmPage() {
   }
 
   return (
-    <section className="grid gap-6">
+    <section className="grid gap-4">
       <section className="executive-surface rounded-md p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -431,7 +431,7 @@ export function CrmPage() {
           summary={searchSummary}
         />
 
-        <nav className="mt-6 flex gap-2 overflow-x-auto pb-1">
+        <nav className="mt-4 flex gap-2 overflow-x-auto pb-1">
           {crmTabs.map((tab) => (
             <button
               className={cn(
@@ -903,40 +903,33 @@ function FocusOfTheDayPanel({
   groups: ReturnType<typeof buildCommercialFocusGroups>;
 }) {
   return (
-    <section className="executive-surface rounded-md p-4 sm:p-5">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+    <section className="executive-surface rounded-md px-3 py-2.5 sm:px-4">
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+        <div className="flex shrink-0 items-center gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Foco do Dia
           </p>
-          <h3 className="mt-1 text-lg font-semibold text-foreground">
-            Prioridades comerciais
-          </h3>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Oportunidades que merecem atencao antes de percorrer o funil.
-        </p>
-      </div>
-
-      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        <div className="grid flex-1 gap-2 sm:grid-cols-3">
         <FocusMetricCard
           icon={<Flame className="h-4 w-4" aria-hidden />}
           leads={groups.hotWithoutAction}
-          title="Leads quentes sem proxima acao"
+          title="Quentes sem acao"
           tone="warm"
         />
         <FocusMetricCard
           icon={<AlertTriangle className="h-4 w-4" aria-hidden />}
           leads={groups.overdueActions}
-          title="Proximas acoes vencidas"
+          title="Acoes vencidas"
           tone="attention"
         />
         <FocusMetricCard
           icon={<Clock3 className="h-4 w-4" aria-hidden />}
           leads={groups.staleLeads}
-          title="Leads aguardando movimentacao"
+          title="Sem movimentacao"
           tone="quiet"
         />
+        </div>
       </div>
     </section>
   );
@@ -956,7 +949,7 @@ function FocusMetricCard({
   return (
     <article
       className={cn(
-        "rounded-md border p-3",
+        "rounded-md border px-2.5 py-1.5",
         tone === "attention"
           ? "border-[#d9a184] bg-[#f5e8df]"
           : tone === "warm"
@@ -964,53 +957,28 @@ function FocusMetricCard({
             : "border-[#c8d4dc] bg-[#edf3f6]",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "shrink-0",
-                tone === "attention"
-                  ? "text-[#9a4f32]"
-                  : tone === "warm"
-                    ? "text-[#80662f]"
-                    : "text-[#546977]",
-              )}
-            >
-              {icon}
-            </span>
-            <h4 className="truncate text-sm font-semibold text-foreground">
-              {title}
-            </h4>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {leads.length
-              ? "Revise antes de avancar no funil."
-              : "Sem prioridade neste grupo."}
-          </p>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              "shrink-0",
+              tone === "attention"
+                ? "text-[#9a4f32]"
+                : tone === "warm"
+                  ? "text-[#80662f]"
+                  : "text-[#546977]",
+            )}
+          >
+            {icon}
+          </span>
+          <h4 className="truncate text-xs font-semibold text-foreground">
+            {title}
+          </h4>
         </div>
         <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs font-semibold text-foreground">
           {leads.length}
         </span>
       </div>
-
-      {leads.length ? (
-        <div className="mt-3 grid gap-1.5">
-          {leads.slice(0, 3).map((lead) => (
-            <div
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border bg-background/70 px-2 py-1.5 text-xs"
-              key={lead.id}
-            >
-              <span className="min-w-0 truncate font-medium text-foreground">
-                {lead.nome}
-              </span>
-              <span className="text-muted-foreground">
-                {formatDate(lead.updatedAt)}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </article>
   );
 }
