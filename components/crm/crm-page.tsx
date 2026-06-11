@@ -1017,7 +1017,6 @@ function OperationalKanban({
                     <CompactLeadCard
                       key={lead.id}
                       lead={lead}
-                      mode={group === "administrative" ? "admin" : "sales"}
                       onDragEnd={onDragEnd}
                       onDragStart={onDragStart}
                       onEdit={onEdit}
@@ -1039,20 +1038,18 @@ function OperationalKanban({
 
 function CompactLeadCard({
   lead,
-  mode,
   onDragEnd,
   onDragStart,
   onEdit,
 }: {
   lead: CrmLead;
-  mode: "sales" | "admin";
   onDragEnd: () => void;
   onDragStart: (leadId: string) => void;
   onEdit: (lead: CrmLead) => void;
 }) {
   return (
     <article
-      className="cursor-grab rounded-md border bg-card p-3 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
+      className="cursor-grab rounded-md border bg-card px-2.5 py-2 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
       draggable
       onDragEnd={onDragEnd}
       onDragStart={(event) => {
@@ -1061,38 +1058,30 @@ function CompactLeadCard({
         onDragStart(lead.id);
       }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h4 className="truncate text-sm font-semibold text-foreground">
-            {lead.nome}
-          </h4>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {lead.telefone || "Sem telefone"}
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
+          {lead.nome}
+        </h4>
         <TemperatureBadge temperature={lead.temperatura} />
       </div>
-      <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
-        <LeadLine
-          label={mode === "admin" ? "Responsavel" : "Valor"}
-          value={
-            mode === "admin"
-              ? lead.consultor || "-"
-              : currencyFormatter.format(lead.valorPretendido)
-          }
-        />
-        {mode === "sales" ? (
-          <LeadLine label="Proxima" value={lead.proximaAcao || "-"} />
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
+        <span className="shrink-0 font-semibold text-foreground">
+          {currencyFormatter.format(lead.valorPretendido)}
+        </span>
+        {lead.proximaAcao ? (
+          <span className="min-w-0 truncate text-right text-muted-foreground">
+            {lead.proximaAcao}
+          </span>
         ) : null}
       </div>
       <Button
-        className="mt-3 w-full"
+        className="mt-2 h-7 w-full text-xs"
         onClick={() => onEdit(lead)}
         size="sm"
         type="button"
         variant="secondary"
       >
-        <Pencil className="h-3.5 w-3.5" aria-hidden />
+        <Pencil className="h-3 w-3" aria-hidden />
         Editar
       </Button>
     </article>
