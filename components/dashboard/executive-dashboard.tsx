@@ -218,6 +218,10 @@ export function ExecutiveDashboard({
       }),
     [crmActivities, crmLeads, crmMonthlyGoal, crmPipelineConfig],
   );
+  const crmExecutive = useMemo(
+    () => buildCommercialExecutiveDashboard(crmLeads),
+    [crmLeads],
+  );
   const roadmap = useMemo(
     () =>
       buildStrategicRoadmap({
@@ -380,6 +384,163 @@ export function ExecutiveDashboard({
         intelligence={portfolioIntelligence}
         title="Saude Patrimonial"
       />
+
+      <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Dashboard Executivo Comercial
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-foreground">
+              Saude do funil e prioridades de gestao
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Visao consolidada para identificar gargalos, valor em jogo e
+              oportunidades que precisam de acao.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <DashboardDetail
+            label="Leads ativos"
+            value={String(crmDashboard.activeLeadsCount)}
+          />
+          <DashboardDetail
+            label="Leads ganhos"
+            value={String(crmDashboard.wonOpportunitiesCount)}
+          />
+          <DashboardDetail
+            label="Leads perdidos"
+            value={String(crmDashboard.lostOpportunitiesCount)}
+          />
+          <DashboardDetail
+            label="Valor ativo"
+            value={currencyFormatter.format(crmDashboard.activePotentialValue)}
+          />
+          <DashboardDetail
+            label="Valor ganho"
+            value={currencyFormatter.format(crmDashboard.wonPotentialValue)}
+          />
+          <DashboardDetail
+            label="Valor perdido"
+            value={currencyFormatter.format(crmDashboard.lostPotentialValue)}
+          />
+        </div>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-md border bg-background/70 p-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Conversao do funil
+            </h3>
+            <div className="mt-4 grid gap-2">
+              {crmExecutive.funnelSteps.map((step, index) => (
+                <div key={step.label}>
+                  <div className="flex items-center justify-between gap-4 rounded-md border bg-card px-3 py-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {step.label}
+                    </span>
+                    <span className="rounded-full border bg-background px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                      {step.count}
+                    </span>
+                  </div>
+                  {index < crmExecutive.funnelSteps.length - 1 ? (
+                    <div className="ml-4 h-4 border-l border-border" />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            <CrmListCard title="Gargalos do processo">
+              <DashboardDetail
+                label="Maior volume"
+                value={formatBottleneck(crmExecutive.bottlenecks.highestVolume)}
+              />
+              <DashboardDetail
+                label="Maior permanencia"
+                value={formatBottleneck(crmExecutive.bottlenecks.highestStaleness)}
+              />
+              <DashboardDetail
+                label="Maior concentracao de perdas"
+                value={formatBottleneck(crmExecutive.bottlenecks.highestLoss)}
+              />
+            </CrmListCard>
+
+            <CrmListCard title="Oportunidades prioritarias">
+              <DashboardDetail
+                label="Quentes"
+                value={String(crmExecutive.priorities.hot.length)}
+              />
+              <DashboardDetail
+                label="Acoes vencidas"
+                value={String(crmExecutive.priorities.overdue.length)}
+              />
+              <DashboardDetail
+                label="Maior valor ativo"
+                value={
+                  crmExecutive.priorities.highestValue[0]
+                    ? `${crmExecutive.priorities.highestValue[0].nome} - ${currencyFormatter.format(
+                        crmExecutive.priorities.highestValue[0].valorPretendido,
+                      )}`
+                    : "Sem oportunidade ativa"
+                }
+              />
+            </CrmListCard>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-3">
+          <CrmListCard title="Responsaveis com mais leads ativos">
+            {crmExecutive.consultantRankingByCount.length ? (
+              crmExecutive.consultantRankingByCount.map((item) => (
+                <DashboardDetail
+                  key={item.consultor}
+                  label={item.consultor}
+                  value={`${item.count} leads`}
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhum lead ativo no momento.
+              </p>
+            )}
+          </CrmListCard>
+
+          <CrmListCard title="Responsaveis por valor em pipeline">
+            {crmExecutive.consultantRankingByValue.length ? (
+              crmExecutive.consultantRankingByValue.map((item) => (
+                <DashboardDetail
+                  key={item.consultor}
+                  label={item.consultor}
+                  value={currencyFormatter.format(item.value)}
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhum valor ativo no pipeline.
+              </p>
+            )}
+          </CrmListCard>
+
+          <CrmListCard title="Maiores valores ativos">
+            {crmExecutive.priorities.highestValue.length ? (
+              crmExecutive.priorities.highestValue.map((lead) => (
+                <DashboardDetail
+                  key={lead.id}
+                  label={lead.nome}
+                  value={currencyFormatter.format(lead.valorPretendido)}
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma oportunidade ativa com valor.
+              </p>
+            )}
+          </CrmListCard>
+        </div>
+      </section>
 
       <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -868,6 +1029,185 @@ function CrmListCard({
       <div className="mt-4 grid gap-3">{children}</div>
     </div>
   );
+}
+
+type CommercialBottleneck = {
+  count: number;
+  label: string;
+  suffix?: string;
+};
+
+function buildCommercialExecutiveDashboard(leads: CrmLead[]) {
+  const activeLeads = leads.filter((lead) => lead.status === "ativa");
+  const funnelSteps = [
+    { label: "Novos", match: ["novos"] },
+    { label: "Abertura", match: ["abertura"] },
+    { label: "Conexao", match: ["conexao", "conexão"] },
+    { label: "Green Flag", match: ["green flag", "green-flag"] },
+    { label: "Documentacao", match: ["documentacao", "documentação"] },
+  ].map((step) => ({
+    count: activeLeads.filter((lead) =>
+      step.match.some((candidate) => normalizeDashboardText(lead.etapa) === normalizeDashboardText(candidate)),
+    ).length,
+    label: step.label,
+  }));
+
+  funnelSteps.push({
+    count: leads.filter((lead) => lead.status === "ganha").length,
+    label: "Ganho",
+  });
+
+  return {
+    bottlenecks: {
+      highestLoss: buildHighestStageCount(
+        leads.filter((lead) => lead.status === "perdida"),
+      ),
+      highestStaleness: buildHighestStaleness(activeLeads),
+      highestVolume: buildHighestStageCount(activeLeads),
+    },
+    consultantRankingByCount: buildConsultantRanking(activeLeads, "count"),
+    consultantRankingByValue: buildConsultantRanking(activeLeads, "value"),
+    funnelSteps,
+    priorities: {
+      highestValue: [...activeLeads]
+        .filter((lead) => lead.valorPretendido > 0)
+        .sort((left, right) => right.valorPretendido - left.valorPretendido)
+        .slice(0, 5),
+      hot: activeLeads
+        .filter((lead) => lead.temperatura === "quente")
+        .slice(0, 5),
+      overdue: activeLeads
+        .filter((lead) => isDashboardDateBeforeToday(lead.dataProximaAcao))
+        .slice(0, 5),
+    },
+  };
+}
+
+function buildHighestStageCount(leads: CrmLead[]): CommercialBottleneck | null {
+  const counts = leads.reduce<Record<string, number>>((summary, lead) => {
+    const label = lead.etapa || "Etapa nao informada";
+
+    return {
+      ...summary,
+      [label]: (summary[label] ?? 0) + 1,
+    };
+  }, {});
+
+  return (
+    Object.entries(counts)
+      .map(([label, count]) => ({ count, label }))
+      .sort((left, right) => right.count - left.count)[0] ?? null
+  );
+}
+
+function buildHighestStaleness(leads: CrmLead[]): CommercialBottleneck | null {
+  const byStage = leads.reduce<
+    Record<string, { count: number; totalDays: number }>
+  >((summary, lead) => {
+    const label = lead.etapa || "Etapa nao informada";
+    const staleDays = getDaysSince(lead.updatedAt);
+
+    if (staleDays === null) {
+      return summary;
+    }
+
+    return {
+      ...summary,
+      [label]: {
+        count: (summary[label]?.count ?? 0) + 1,
+        totalDays: (summary[label]?.totalDays ?? 0) + staleDays,
+      },
+    };
+  }, {});
+
+  return (
+    Object.entries(byStage)
+      .map(([label, value]) => ({
+        count: Math.round(value.totalDays / value.count),
+        label,
+        suffix: "dias medios sem atualizacao",
+      }))
+      .sort((left, right) => right.count - left.count)[0] ?? null
+  );
+}
+
+function buildConsultantRanking(
+  leads: CrmLead[],
+  mode: "count" | "value",
+) {
+  const ranking = leads.reduce<
+    Record<string, { consultor: string; count: number; value: number }>
+  >((summary, lead) => {
+    const consultor = lead.consultor || "Sem responsavel";
+    const current = summary[consultor] ?? {
+      consultor,
+      count: 0,
+      value: 0,
+    };
+
+    return {
+      ...summary,
+      [consultor]: {
+        consultor,
+        count: current.count + 1,
+        value: current.value + lead.valorPretendido,
+      },
+    };
+  }, {});
+
+  return Object.values(ranking)
+    .sort((left, right) =>
+      mode === "count" ? right.count - left.count : right.value - left.value,
+    )
+    .slice(0, 5);
+}
+
+function formatBottleneck(bottleneck: CommercialBottleneck | null) {
+  if (!bottleneck) {
+    return "Sem dados suficientes";
+  }
+
+  return bottleneck.suffix
+    ? `${bottleneck.label} - ${bottleneck.count} ${bottleneck.suffix}`
+    : `${bottleneck.label} - ${bottleneck.count}`;
+}
+
+function isDashboardDateBeforeToday(value: string) {
+  if (!value) {
+    return false;
+  }
+
+  const target = new Date(`${value}T00:00:00`).getTime();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Number.isFinite(target) && target < today.getTime();
+}
+
+function getDaysSince(value: string) {
+  const target = new Date(value).getTime();
+
+  if (!Number.isFinite(target)) {
+    return null;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.max(
+    0,
+    Math.floor((today.getTime() - target) / (1000 * 60 * 60 * 24)),
+  );
+}
+
+function normalizeDashboardText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function formatDaysRemaining(days: number) {
