@@ -977,8 +977,8 @@ function OperationalKanban({
   onEdit: (lead: CrmLead) => void;
 }) {
   return (
-    <section className="executive-surface rounded-md p-4 sm:p-5">
-      <div className="grid gap-3 overflow-x-auto pb-2 xl:grid-cols-3 2xl:grid-cols-6">
+    <section className="executive-surface rounded-md p-3.5 sm:p-4">
+      <div className="grid gap-2 overflow-x-auto pb-2 xl:grid-cols-3 2xl:grid-cols-6">
         {columns.map((column) => {
           const stageLeads = leads.filter(
             (lead) =>
@@ -992,7 +992,7 @@ function OperationalKanban({
           return (
             <section
               className={cn(
-                "min-w-[235px] rounded-md border bg-background/72 p-2.5 transition",
+                "min-w-[210px] overflow-hidden rounded-md border bg-background/72 p-2 transition",
                 isActiveDropTarget
                   ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
                   : "border-border",
@@ -1003,11 +1003,11 @@ function OperationalKanban({
               }
               onDrop={(event) => onDrop(event, column.pipeline, column.stage)}
             >
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-foreground">
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
                   {column.label}
                 </h3>
-                <span className="rounded-full border bg-card px-2 py-0.5 text-xs text-muted-foreground">
+                <span className="shrink-0 rounded-full border bg-card px-1.5 py-0.5 text-xs text-muted-foreground">
                   {stageLeads.length}
                 </span>
               </div>
@@ -1051,7 +1051,7 @@ function CompactLeadCard({
 
   return (
     <article
-      className="cursor-grab rounded-md border bg-card px-2.5 py-1.5 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
+      className="min-w-0 cursor-grab overflow-hidden rounded-md border bg-card px-2 py-1.5 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
       draggable
       onDragEnd={onDragEnd}
       onDragStart={(event) => {
@@ -1060,18 +1060,18 @@ function CompactLeadCard({
         onDragStart(lead.id);
       }}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center justify-between gap-1.5 overflow-hidden">
         <h4 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
           {lead.nome}
         </h4>
-        <div className="shrink-0">
+        <div className="shrink-0 overflow-hidden">
           <TemperatureBadge temperature={lead.temperatura} />
         </div>
       </div>
-      <div className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-xs">
+      <div className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 overflow-hidden text-xs">
         <span
           className={cn(
-            "shrink-0",
+            "shrink-0 whitespace-nowrap",
             hasRelevantValue
               ? "font-semibold text-foreground"
               : "font-medium text-muted-foreground/70",
@@ -1079,21 +1079,21 @@ function CompactLeadCard({
         >
           {currencyFormatter.format(lead.valorPretendido)}
         </span>
-        <span className="min-w-0 truncate text-right text-muted-foreground">
+        <span className="min-w-0 truncate whitespace-nowrap text-right text-muted-foreground">
           {lead.proximaAcao || "-"}
         </span>
       </div>
       <div className="mt-1 flex justify-end">
         <Button
           aria-label={`Editar ${lead.nome}`}
-          className="h-6 w-7 px-0"
+          className="h-6 w-6 px-0"
           onClick={() => onEdit(lead)}
           size="sm"
           title="Editar"
           type="button"
           variant="ghost"
         >
-          <Pencil className="h-3.5 w-3.5" aria-hidden />
+          <Pencil className="h-3 w-3" aria-hidden />
         </Button>
       </div>
     </article>
