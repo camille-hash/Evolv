@@ -31,6 +31,12 @@ type SupabaseCrmLeadRow = {
   updated_at: string | null;
 };
 
+type DateNormalizationLog = {
+  field: string;
+  from: unknown;
+  to: string | null | undefined;
+};
+
 const crmLeadColumns = [
   "id",
   "external_id",
@@ -105,13 +111,19 @@ export class SupabaseCrmRepository implements CrmRepository {
     id: string,
     patch: Partial<CrmLead>,
   ): Promise<CrmLead | null> {
-    const updatePayload = mapCrmLeadPatchToSupabaseRow(patch);
+    const { normalizedDates, updatePayload } = mapCrmLeadPatchToSupabaseRow(patch);
     const fields = Object.keys(updatePayload);
 
     console.info("[EVOLV CRM] Supabase update solicitado", {
       fields,
       id,
       lookup: "id",
+    });
+    console.info("[EVOLV CRM] Campos de data normalizados no PATCH", {
+      normalizedDates,
+    });
+    console.info("[EVOLV CRM] Payload final enviado ao Supabase", {
+      updatePayload,
     });
 
     const { data, error } = await this.supabase
@@ -226,12 +238,21 @@ function mapSupabaseCrmLead(row: SupabaseCrmLeadRow): CrmLead {
 }
 
 function mapCrmLeadPatchToSupabaseRow(patch: Partial<CrmLead>) {
+  const normalizedDates: DateNormalizationLog[] = [];
   const row: Record<string, unknown> = {
-    updated_at: patch.updatedAt ?? new Date().toISOString(),
+    updated_at: normalizeTimestampValue(
+      "updated_at",
+      patch.updatedAt ?? new Date(),
+      normalizedDates,
+    ),
   };
 
   setIfPresent(row, "external_id", patch.externalId);
-  setIfPresent(row, "closed_at", patch.closedAt);
+  setIfPresent(
+    row,
+    "closed_at",
+    normalizeTimestampValue("closed_at", patch.closedAt, normalizedDates),
+  );
   setIfPresent(row, "titulo_oportunidade", patch.tituloOportunidade);
   setIfPresent(row, "nome", patch.nome);
   setIfPresent(row, "telefone", patch.telefone);
@@ -248,10 +269,22 @@ function mapCrmLeadPatchToSupabaseRow(patch: Partial<CrmLead>) {
   setIfPresent(row, "temperatura", patch.temperatura);
   setIfPresent(row, "status", patch.status);
   setIfPresent(row, "proxima_acao", patch.proximaAcao);
-  setIfPresent(row, "data_proxima_acao", patch.dataProximaAcao);
-  setIfPresent(row, "created_at", patch.createdAt);
+  setIfPresent(
+    row,
+    "data_proxima_acao",
+    normalizeDateOnlyValue(
+      "data_proxima_acao",
+      patch.dataProximaAcao,
+      normalizedDates,
+    ),
+  );
+  setIfPresent(
+    row,
+    "created_at",
+    normalizeTimestampValue("created_at", patch.createdAt, normalizedDates),
+  );
 
-  return row;
+  return { normalizedDates, updatePayload: row };
 }
 
 function setIfPresent(
@@ -262,6 +295,169 @@ function setIfPresent(
   if (value !== undefined) {
     row[key] = value;
   }
+}
+
+function normalizeDateOnlyValue(
+  field: string,
+  value: unknown,
+  normalizedDates: DateNormalizationLog[],
+) {
+  const normalizedValue = normalizeDateValue(field, value, "date");
+
+  if (normalizedValue.changed) {
+    normalizedDates.push({
+      field,
+      from: value,
+      to: normalizedValue.value,
+    });
+  }
+
+  return normalizedValue.value;
+}
+
+function normalizeTimestampValue(
+  field: string,
+  value: unknown,
+  normalizedDates: DateNormalizationLog[],
+) {
+  const normalizedValue = normalizeDateValue(field, value, "timestamp");
+
+  if (normalizedValue.changed) {
+    normalizedDates.push({
+      field,
+      from: value,
+      to: normalizedValue.value,
+    });
+  }
+
+  return normalizedValue.value;
+}
+
+function normalizeDateValue(
+  field: string,
+  value: unknown,
+  mode: "date" | "timestamp",
+): { changed: boolean; value: string | null | undefined } {
+  if (value === undefined) {
+    return { changed: false, value: undefined };
+  }
+
+  if (value === null) {
+    return { changed: false, value: null };
+  }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      console.warn("[EVOLV CRM] Campo de data invalido removido do PATCH", {
+        field,
+        value,
+      });
+
+      return { changed: true, value: undefined };
+    }
+
+    const isoValue = value.toISOString();
+
+    return {
+      changed: true,
+      value: mode === "date" ? isoValue.slice(0, 10) : isoValue,
+    };
+  }
+
+  if (typeof value !== "string") {
+    console.warn("[EVOLV CRM] Campo de data com tipo inesperado removido do PATCH", {
+      field,
+      type: typeof value,
+      value,
+    });
+
+    return { changed: true, value: undefined };
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return { changed: true, value: null };
+  }
+
+  const brazilianDate = parseBrazilianDate(trimmedValue);
+
+  if (brazilianDate) {
+    return {
+      changed: true,
+      value:
+        mode === "date"
+          ? brazilianDate.dateOnly
+          : `${brazilianDate.dateOnly}T${brazilianDate.time ?? "00:00:00"}.000Z`,
+    };
+  }
+
+  const isoDateOnlyMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (isoDateOnlyMatch) {
+    return {
+      changed: false,
+      value:
+        mode === "date" ? trimmedValue : `${trimmedValue}T00:00:00.000Z`,
+    };
+  }
+
+  const parsedDate = new Date(trimmedValue);
+
+  if (!Number.isNaN(parsedDate.getTime())) {
+    const isoValue = parsedDate.toISOString();
+
+    return {
+      changed: isoValue !== trimmedValue,
+      value: mode === "date" ? isoValue.slice(0, 10) : isoValue,
+    };
+  }
+
+  console.warn("[EVOLV CRM] Campo de data invalido removido do PATCH", {
+    field,
+    value,
+  });
+
+  return { changed: true, value: undefined };
+}
+
+function parseBrazilianDate(value: string) {
+  const match = value.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const [, dayText, monthText, yearText, hourText, minuteText, secondText] =
+    match;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  const hour = hourText ? Number(hourText) : 0;
+  const minute = minuteText ? Number(minuteText) : 0;
+  const second = secondText ? Number(secondText) : 0;
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second
+  ) {
+    return null;
+  }
+
+  return {
+    dateOnly: date.toISOString().slice(0, 10),
+    time: `${String(hour).padStart(2, "0")}:${String(minute).padStart(
+      2,
+      "0",
+    )}:${String(second).padStart(2, "0")}`,
+  };
 }
 
 function normalizeNumber(value: number | string | null) {
