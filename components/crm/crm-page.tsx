@@ -30,9 +30,10 @@ import {
   saveCrmLead,
   summarizeCrmAdvancedSearch,
   toCrmPipelineDefinitions,
+  updateCrmLead,
+  updateCrmLeadInRepository,
   updateCrmPipelineName,
   updateCrmStageName,
-  updateCrmLeadStage,
   type CrmConfigurablePipeline,
   type CrmAdvancedSearchFilters,
   type CrmLead,
@@ -210,9 +211,29 @@ export function CrmPage() {
     );
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLeads(saveCrmLead(draft, editingLeadId ?? undefined));
+
+    if (editingLeadId) {
+      const existingLead = leads.find((lead) => lead.id === editingLeadId);
+
+      if (!existingLead) {
+        return;
+      }
+
+      const nextLead = updateCrmLead(existingLead, draft);
+      const savedLead =
+        (await updateCrmLeadInRepository(editingLeadId, nextLead)) ?? nextLead;
+
+      setLeads((currentLeads) =>
+        currentLeads.map((lead) =>
+          lead.id === editingLeadId ? savedLead : lead,
+        ),
+      );
+    } else {
+      setLeads(saveCrmLead(draft));
+    }
+
     setDraft(emptyCrmLeadInput);
     setEditingLeadId(null);
   }
@@ -259,7 +280,7 @@ export function CrmPage() {
     }));
   }
 
-  function handleMoveLead(
+  async function handleMoveLead(
     lead: CrmLead,
     pipeline: CrmPipeline,
     etapa?: CrmStage,
@@ -278,12 +299,19 @@ export function CrmPage() {
       toPipeline: movement.toPipeline,
       toStage: movement.toStage,
     });
-    setLeads(
-      updateCrmLeadStage(
-        lead.id,
-        movement.toPipeline,
-        movement.toStage,
-        kanbanPipelineDefinitions,
+
+    const nextLead: CrmLead = {
+      ...lead,
+      pipeline: movement.toPipeline,
+      etapa: movement.toStage,
+      updatedAt: new Date().toISOString(),
+    };
+    const savedLead =
+      (await updateCrmLeadInRepository(lead.id, nextLead)) ?? nextLead;
+
+    setLeads((currentLeads) =>
+      currentLeads.map((currentLead) =>
+        currentLead.id === lead.id ? savedLead : currentLead,
       ),
     );
   }

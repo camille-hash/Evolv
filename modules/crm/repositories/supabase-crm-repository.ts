@@ -100,6 +100,26 @@ export class SupabaseCrmRepository implements CrmRepository {
 
     return data ? mapSupabaseCrmLead(data as unknown as SupabaseCrmLeadRow) : null;
   }
+
+  async updateLead(
+    id: string,
+    patch: Partial<CrmLead>,
+  ): Promise<CrmLead | null> {
+    const updatePayload = mapCrmLeadPatchToSupabaseRow(patch);
+
+    const { data, error } = await this.supabase
+      .from("crm_leads")
+      .update(updatePayload)
+      .eq("id", id)
+      .select(crmLeadColumns)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data ? mapSupabaseCrmLead(data as unknown as SupabaseCrmLeadRow) : null;
+  }
 }
 
 export function canUseSupabaseCrmRepository() {
@@ -148,6 +168,45 @@ function mapSupabaseCrmLead(row: SupabaseCrmLeadRow): CrmLead {
     createdAt: row.created_at ?? now,
     updatedAt: row.updated_at ?? row.created_at ?? now,
   };
+}
+
+function mapCrmLeadPatchToSupabaseRow(patch: Partial<CrmLead>) {
+  const row: Record<string, unknown> = {
+    updated_at: patch.updatedAt ?? new Date().toISOString(),
+  };
+
+  setIfPresent(row, "external_id", patch.externalId);
+  setIfPresent(row, "closed_at", patch.closedAt);
+  setIfPresent(row, "titulo_oportunidade", patch.tituloOportunidade);
+  setIfPresent(row, "nome", patch.nome);
+  setIfPresent(row, "telefone", patch.telefone);
+  setIfPresent(row, "email", patch.email);
+  setIfPresent(row, "pais", patch.pais);
+  setIfPresent(row, "origem", patch.origem);
+  setIfPresent(row, "consultor", patch.consultor);
+  setIfPresent(row, "valor_pretendido", patch.valorPretendido);
+  setIfPresent(row, "observacoes", patch.observacoes);
+  setIfPresent(row, "pipeline", patch.pipeline);
+  setIfPresent(row, "etapa", patch.etapa);
+  setIfPresent(row, "tags", patch.tags);
+  setIfPresent(row, "produto_interesse", patch.produtoInteresse);
+  setIfPresent(row, "temperatura", patch.temperatura);
+  setIfPresent(row, "status", patch.status);
+  setIfPresent(row, "proxima_acao", patch.proximaAcao);
+  setIfPresent(row, "data_proxima_acao", patch.dataProximaAcao);
+  setIfPresent(row, "created_at", patch.createdAt);
+
+  return row;
+}
+
+function setIfPresent(
+  row: Record<string, unknown>,
+  key: string,
+  value: unknown,
+) {
+  if (value !== undefined) {
+    row[key] = value;
+  }
 }
 
 function normalizeNumber(value: number | string | null) {

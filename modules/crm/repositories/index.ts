@@ -46,3 +46,23 @@ export async function getCrmLeadByIdFromRepository(
     return localCrmRepository.getById(id);
   }
 }
+
+export async function updateCrmLeadInRepository(
+  id: string,
+  patch: Partial<CrmLead>,
+): Promise<CrmLead | null> {
+  if (!canUseSupabaseCrmRepository()) {
+    return localCrmRepository.updateLead(id, patch);
+  }
+
+  try {
+    return await createSupabaseCrmRepository().updateLead(id, patch);
+  } catch (error) {
+    console.warn(
+      "Falha ao atualizar lead no Supabase. Verifique se existe policy de update em public.crm_leads. Usando fallback localStorage.",
+      error,
+    );
+
+    return localCrmRepository.updateLead(id, patch);
+  }
+}
