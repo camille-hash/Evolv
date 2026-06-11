@@ -222,6 +222,10 @@ export function CrmPage() {
       }
 
       const nextLead = updateCrmLead(existingLead, draft);
+      console.info("[EVOLV CRM] Salvando edicao principal do lead.", {
+        externalId: nextLead.externalId,
+        id: editingLeadId,
+      });
       const savedLead =
         (await updateCrmLeadInRepository(editingLeadId, nextLead)) ?? nextLead;
 
@@ -306,6 +310,14 @@ export function CrmPage() {
       etapa: movement.toStage,
       updatedAt: new Date().toISOString(),
     };
+    console.info("[EVOLV CRM] Salvando movimentacao do lead.", {
+      externalId: nextLead.externalId,
+      fromPipeline: movement.fromPipeline,
+      fromStage: movement.fromStage,
+      id: lead.id,
+      toPipeline: movement.toPipeline,
+      toStage: movement.toStage,
+    });
     const savedLead =
       (await updateCrmLeadInRepository(lead.id, nextLead)) ?? nextLead;
 

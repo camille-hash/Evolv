@@ -106,6 +106,13 @@ export class SupabaseCrmRepository implements CrmRepository {
     patch: Partial<CrmLead>,
   ): Promise<CrmLead | null> {
     const updatePayload = mapCrmLeadPatchToSupabaseRow(patch);
+    const fields = Object.keys(updatePayload);
+
+    console.info("[EVOLV CRM] Supabase update solicitado", {
+      fields,
+      id,
+      lookup: "id",
+    });
 
     const { data, error } = await this.supabase
       .from("crm_leads")
@@ -118,7 +125,55 @@ export class SupabaseCrmRepository implements CrmRepository {
       throw error;
     }
 
-    return data ? mapSupabaseCrmLead(data as unknown as SupabaseCrmLeadRow) : null;
+    if (data) {
+      console.info("[EVOLV CRM] Supabase update confirmado", {
+        id,
+        lookup: "id",
+      });
+
+      return mapSupabaseCrmLead(data as unknown as SupabaseCrmLeadRow);
+    }
+
+    if (patch.externalId) {
+      console.info(
+        "[EVOLV CRM] Nenhum lead atualizado por id. Tentando external_id.",
+        {
+          externalId: patch.externalId,
+          id,
+        },
+      );
+
+      const { data: externalIdData, error: externalIdError } =
+        await this.supabase
+          .from("crm_leads")
+          .update(updatePayload)
+          .eq("external_id", patch.externalId)
+          .select(crmLeadColumns)
+          .maybeSingle();
+
+      if (externalIdError) {
+        throw externalIdError;
+      }
+
+      if (externalIdData) {
+        console.info("[EVOLV CRM] Supabase update confirmado", {
+          externalId: patch.externalId,
+          id,
+          lookup: "external_id",
+        });
+
+        return mapSupabaseCrmLead(
+          externalIdData as unknown as SupabaseCrmLeadRow,
+        );
+      }
+    }
+
+    console.warn("[EVOLV CRM] Supabase update nao encontrou o lead.", {
+      externalId: patch.externalId,
+      id,
+    });
+
+    return null;
   }
 }
 
