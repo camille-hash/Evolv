@@ -1,4 +1,10 @@
 export {
+  buildAnchoredProposals,
+  type AnchoredProposal,
+  type AnchoredProposalInput,
+  type AnchoredProposalKind,
+} from "@/modules/simulator/anchoring";
+export {
   ADMINISTRATORS_STORAGE_KEY,
   applyAdministratorToSimulationForm,
   createDefaultSavedAdministratorData,

@@ -20,6 +20,7 @@ import {
 } from "@/modules/client-context";
 import {
   applyAdministratorToSimulationForm,
+  buildAnchoredProposals,
   buildSimulatorCommercialPresentation,
   calculateSimulatorScenarios,
   createDefaultSavedAdministratorData,
@@ -36,6 +37,7 @@ import {
   saveSimulation,
   simulatorExampleInput,
   type BidType,
+  type AnchoredProposal,
   type InsuranceOption,
   type SimulatorAdministrator,
   type SimulatorCommercialPresentation,
@@ -201,6 +203,10 @@ export function SimulatorPanel({
     useState<InsuranceOption>("with-insurance");
   const [bidType, setBidType] = useState<BidType>("none");
   const [contemplationMonth, setContemplationMonth] = useState(1);
+  const [comfortableInstallment, setComfortableInstallment] = useState("");
+  const [anchoredProposals, setAnchoredProposals] = useState<
+    AnchoredProposal[]
+  >([]);
   const [formState, setFormState] =
     useState<SimulatorFormState>(initialFormState);
   const appliedOperationIdRef = useRef<string | null>(null);
@@ -444,13 +450,18 @@ export function SimulatorPanel({
           selectedScenarioKey={selectedScenarioKey}
           simulationName={simulationName}
           simulatorInput={simulatorInput}
+          anchoredProposals={anchoredProposals}
+          comfortableInstallment={comfortableInstallment}
           onCommercialDataChange={updateCommercialData}
           onContemplationMonthChange={updateContemplationMonth}
           onFormStateChange={updateFormState}
+          onGenerateAnchoredProposals={handleGenerateAnchoredProposals}
           onGeneratePdf={handleGeneratePdf}
           onInsuranceOptionChange={handleSelectInsuranceOption}
+          onSaveAnchoredProposal={handleSaveAnchoredProposal}
           onSaveSimulation={handleSaveSimulation}
           onScenarioChange={setSelectedScenarioKey}
+          onSetComfortableInstallment={setComfortableInstallment}
           onSetBidType={setBidType}
           onSetSimulationName={setSimulationName}
           isInsuranceOptionDisabled={isInsuranceOptionDisabled}
@@ -587,6 +598,44 @@ export function SimulatorPanel({
     setSavedSimulations(loadSavedSimulations());
   }
 
+  function handleGenerateAnchoredProposals() {
+    const referenceInstallment = parseCurrencyNumber(comfortableInstallment);
+
+    setAnchoredProposals(
+      buildAnchoredProposals({
+        referenceInstallment,
+        calculation,
+        input: simulatorInput,
+        insuranceOption,
+        bidType,
+        contemplationMonth: presentation.contemplationMonth,
+      }),
+    );
+  }
+
+  function handleSaveAnchoredProposal(proposal: AnchoredProposal) {
+    const administratorData = selectedAdministrator
+      ? createSavedAdministratorData(selectedAdministrator)
+      : createDefaultSavedAdministratorData();
+    const savedSimulation = saveSimulation({
+      id: null,
+      draft: {
+        name: buildAnchoredProposalName(simulationName, proposal.label),
+        formState,
+        commercialData,
+        administratorData,
+        selectedScenarioKey: proposal.scenarioKey,
+        insuranceOption,
+        contemplationMonth: proposal.presentation.contemplationMonth,
+        bidType,
+      },
+      presentation: proposal.presentation,
+    });
+
+    setSavedSimulations(loadSavedSimulations());
+    setSimulationName((currentName) => currentName || savedSimulation.name);
+  }
+
   function handleOpenSimulation(simulation: SimulatorSavedSimulation) {
     setActiveSimulationId(simulation.id);
     setSimulationName(simulation.name);
@@ -716,13 +765,18 @@ function SimulationOperationPanel({
   selectedScenarioKey,
   simulationName,
   simulatorInput,
+  anchoredProposals,
+  comfortableInstallment,
   onCommercialDataChange,
   onContemplationMonthChange,
   onFormStateChange,
+  onGenerateAnchoredProposals,
   onGeneratePdf,
   onInsuranceOptionChange,
+  onSaveAnchoredProposal,
   onSaveSimulation,
   onScenarioChange,
+  onSetComfortableInstallment,
   onSetBidType,
   onSetSimulationName,
   isInsuranceOptionDisabled,
@@ -738,13 +792,18 @@ function SimulationOperationPanel({
   selectedScenarioKey: SimulatorScenarioKey;
   simulationName: string;
   simulatorInput: SimulatorInput;
+  anchoredProposals: AnchoredProposal[];
+  comfortableInstallment: string;
   onCommercialDataChange: (state: Partial<SimulatorCommercialData>) => void;
   onContemplationMonthChange: (month: number) => void;
   onFormStateChange: (state: Partial<SimulatorFormState>) => void;
+  onGenerateAnchoredProposals: () => void;
   onGeneratePdf: () => void;
   onInsuranceOptionChange: (option: InsuranceOption) => void;
+  onSaveAnchoredProposal: (proposal: AnchoredProposal) => void;
   onSaveSimulation: () => void;
   onScenarioChange: (scenario: SimulatorScenarioKey) => void;
+  onSetComfortableInstallment: (value: string) => void;
   onSetBidType: (bidType: BidType) => void;
   onSetSimulationName: (name: string) => void;
   isInsuranceOptionDisabled: (option: InsuranceOption) => boolean;
@@ -817,6 +876,14 @@ function SimulationOperationPanel({
         <CommercialDataSection
           commercialData={commercialData}
           onChange={onCommercialDataChange}
+        />
+
+        <AnchoredProposalsSection
+          comfortableInstallment={comfortableInstallment}
+          proposals={anchoredProposals}
+          onComfortableInstallmentChange={onSetComfortableInstallment}
+          onGenerate={onGenerateAnchoredProposals}
+          onSaveProposal={onSaveAnchoredProposal}
         />
 
       </div>
@@ -931,6 +998,137 @@ function SimulationOperationPanel({
         </section>
       </aside>
     </section>
+  );
+}
+
+function AnchoredProposalsSection({
+  comfortableInstallment,
+  proposals,
+  onComfortableInstallmentChange,
+  onGenerate,
+  onSaveProposal,
+}: {
+  comfortableInstallment: string;
+  proposals: AnchoredProposal[];
+  onComfortableInstallmentChange: (value: string) => void;
+  onGenerate: () => void;
+  onSaveProposal: (proposal: AnchoredProposal) => void;
+}) {
+  return (
+    <section className="rounded-md border bg-card p-5 text-card-foreground sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Ancoragem comercial
+          </p>
+          <h2 className="mt-2 text-base font-semibold">
+            Gerador de propostas
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Informe a parcela confortavel do cliente para comparar opcoes
+            conservadora, recomendada e patrimonial usando as regras atuais da
+            simulacao.
+          </p>
+        </div>
+        <div className="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_auto] lg:w-[420px]">
+          <SimulatorInputField
+            label="Parcela confortavel do cliente"
+            value={comfortableInstallment}
+            onChange={onComfortableInstallmentChange}
+          />
+          <div className="flex items-end">
+            <PrimaryActionButton onClick={onGenerate}>
+              Gerar propostas
+            </PrimaryActionButton>
+          </div>
+        </div>
+      </div>
+
+      {proposals.length > 0 ? (
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {proposals.map((proposal) => (
+            <article
+              className="grid gap-4 rounded-md border bg-background p-4"
+              key={proposal.kind}
+            >
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                  {proposal.label}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {proposal.objective}
+                </p>
+              </div>
+
+              <div className="grid gap-3 text-sm">
+                <AnchoredProposalValue
+                  label="Credito"
+                  value={currencyFormatter.format(
+                    proposal.presentation.contractedCredit,
+                  )}
+                />
+                <AnchoredProposalValue
+                  label="Parcela"
+                  value={currencyFormatter.format(
+                    proposal.presentation.installmentBeforeContemplation,
+                  )}
+                  featured
+                />
+                <AnchoredProposalValue
+                  label="Cenario"
+                  value={proposal.presentation.selectedScenarioName}
+                />
+                <AnchoredProposalValue
+                  label="Parcela pos"
+                  value={currencyFormatter.format(
+                    proposal.presentation.installmentAfterContemplation,
+                  )}
+                />
+                <AnchoredProposalValue
+                  label="Venda estimada"
+                  value={currencyFormatter.format(
+                    proposal.presentation.estimatedCardSaleValue,
+                  )}
+                />
+              </div>
+
+              <SecondaryActionButton onClick={() => onSaveProposal(proposal)}>
+                <Save className="h-4 w-4" aria-hidden="true" />
+                Salvar proposta
+              </SecondaryActionButton>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-md border border-dashed bg-background p-4 text-sm text-muted-foreground">
+          Nenhuma proposta gerada ainda.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AnchoredProposalValue({
+  featured = false,
+  label,
+  value,
+}: {
+  featured?: boolean;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          "mt-1 font-medium text-foreground",
+          featured && "text-lg font-semibold",
+        )}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -1740,6 +1938,27 @@ function parsePositiveNumber(value: string) {
   const normalized = Number(value.replace(",", "."));
 
   return Number.isFinite(normalized) && normalized > 0 ? normalized : 0.01;
+}
+
+function parseCurrencyNumber(value: string) {
+  const normalized = value
+    .replace(/\s/g, "")
+    .replace(/[R$]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsedValue = Number(normalized);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+}
+
+function buildAnchoredProposalName(baseName: string, proposalLabel: string) {
+  const trimmedBaseName = baseName.trim();
+
+  if (trimmedBaseName) {
+    return `${trimmedBaseName} - ${proposalLabel}`;
+  }
+
+  return `Proposta ${proposalLabel}`;
 }
 
 function percentToRate(value: string) {
