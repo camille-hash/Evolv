@@ -119,10 +119,14 @@ const dateOnlyFormatter = new Intl.DateTimeFormat("pt-BR", {
 
 const fieldInputClass =
   "w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15";
+const INITIAL_PIPELINE_CARDS_LIMIT = 5;
 
 export function CrmPage() {
   const [activeTab, setActiveTab] = useState<CrmOperationalTab>("my-day");
   const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
+  const [expandedPipelineColumns, setExpandedPipelineColumns] = useState<
+    Record<string, boolean>
+  >({});
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [pipelineConfig, setPipelineConfig] = useState<
     CrmConfigurablePipeline[]
@@ -393,9 +397,16 @@ export function CrmPage() {
     handleLeadDragEnd();
   }
 
+  function handleTogglePipelineColumn(columnId: string) {
+    setExpandedPipelineColumns((currentColumns) => ({
+      ...currentColumns,
+      [columnId]: !currentColumns[columnId],
+    }));
+  }
+
   return (
-    <section className="grid gap-4">
-      <section className="executive-surface rounded-md p-5 sm:p-6">
+    <section className="grid min-w-0 gap-4 overflow-x-hidden">
+      <section className="executive-surface min-w-0 rounded-md p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -453,7 +464,7 @@ export function CrmPage() {
       </section>
 
       {activePipelineGroup ? (
-        <>
+        <div className="grid min-w-0 gap-4 overflow-x-hidden">
           <FocusOfTheDayPanel groups={focusGroups} />
           <OperationalKanban
             columns={
@@ -471,13 +482,15 @@ export function CrmPage() {
             dragTarget={dragTarget}
             group={activePipelineGroup}
             leads={filteredLeads}
+            expandedColumnIds={expandedPipelineColumns}
             onDragEnd={handleLeadDragEnd}
             onDragOver={handleStageDragOver}
             onDragStart={handleLeadDragStart}
             onDrop={handleStageDrop}
             onEdit={handleEditLead}
+            onToggleColumn={handleTogglePipelineColumn}
           />
-        </>
+        </div>
       ) : null}
 
       {shouldShowOperationalSupport ? (
@@ -1058,6 +1071,7 @@ function PriorityBlock({
 function OperationalKanban({
   columns,
   dragTarget,
+  expandedColumnIds,
   group,
   leads,
   onDragEnd,
@@ -1065,9 +1079,11 @@ function OperationalKanban({
   onDragStart,
   onDrop,
   onEdit,
+  onToggleColumn,
 }: {
   columns: OperationalColumn[];
   dragTarget: { pipeline: CrmPipeline; stage: CrmStage } | null;
+  expandedColumnIds: Record<string, boolean>;
   group: OperationalGroup;
   leads: CrmLead[];
   onDragEnd: () => void;
@@ -1083,11 +1099,14 @@ function OperationalKanban({
     stage: CrmStage,
   ) => void;
   onEdit: (lead: CrmLead) => void;
+  onToggleColumn: (columnId: string) => void;
 }) {
   return (
-    <section className="executive-surface rounded-md p-3.5 sm:p-4">
-      <div className="flex w-full items-start gap-3 overflow-x-auto pb-3">
-        {columns.map((column) => {
+    <section className="executive-surface min-w-0 overflow-hidden rounded-md p-3.5 sm:p-4">
+      <div className="w-full min-w-0 overflow-x-auto pb-3">
+        <div className="flex w-max items-start gap-3">
+          {columns.map((column) => {
+          const columnId = getOperationalColumnId(column);
           const stageLeads = column.status
             ? leads.filter((lead) => lead.status === column.status)
             : leads.filter(
@@ -1095,6 +1114,12 @@ function OperationalKanban({
                   isLeadInGroup(lead, column.group ?? group) &&
                   normalizeKey(lead.etapa) === normalizeKey(column.stage),
               );
+          const isExpanded = Boolean(expandedColumnIds[columnId]);
+          const visibleStageLeads = isExpanded
+            ? stageLeads
+            : stageLeads.slice(0, INITIAL_PIPELINE_CARDS_LIMIT);
+          const hasHiddenLeads =
+            stageLeads.length > INITIAL_PIPELINE_CARDS_LIMIT;
           const isActiveDropTarget =
             !column.status &&
             dragTarget?.pipeline === column.pipeline &&
@@ -1108,7 +1133,7 @@ function OperationalKanban({
                   ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
                   : "border-border",
               )}
-              key={`${column.pipeline}-${column.stage}`}
+              key={columnId}
               onDragOver={(event) => {
                 if (!column.status) {
                   onDragOver(event, column.pipeline, column.stage);
@@ -1130,7 +1155,7 @@ function OperationalKanban({
               </div>
               <div className="mt-2 grid gap-1.5">
                 {stageLeads.length ? (
-                  stageLeads.map((lead) => (
+                  visibleStageLeads.map((lead) => (
                     <CompactLeadCard
                       key={lead.id}
                       lead={lead}
@@ -1145,10 +1170,22 @@ function OperationalKanban({
                     Sem oportunidades.
                   </div>
                 )}
+                {hasHiddenLeads ? (
+                  <button
+                    className="mt-1 inline-flex w-fit items-center text-xs font-medium text-primary transition hover:text-primary/80"
+                    onClick={() => onToggleColumn(columnId)}
+                    type="button"
+                  >
+                    {isExpanded
+                      ? "Ver menos"
+                      : `Ver todos (${stageLeads.length})`}
+                  </button>
+                ) : null}
               </div>
             </section>
           );
-        })}
+          })}
+        </div>
       </div>
     </section>
   );
@@ -1832,6 +1869,15 @@ function buildCommercialPipelineColumns({
       status: "ganha",
     },
   ];
+}
+
+function getOperationalColumnId(column: OperationalColumn) {
+  return [
+    column.group ?? "pipeline",
+    column.pipeline,
+    column.stage,
+    column.status ?? "active",
+  ].join(":");
 }
 
 function findPipelineForGroup(
