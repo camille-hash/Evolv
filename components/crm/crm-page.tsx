@@ -977,8 +977,8 @@ function OperationalKanban({
   onEdit: (lead: CrmLead) => void;
 }) {
   return (
-    <section className="executive-surface rounded-md p-5 sm:p-6">
-      <div className="grid gap-4 overflow-x-auto pb-2 xl:grid-cols-3 2xl:grid-cols-6">
+    <section className="executive-surface rounded-md p-4 sm:p-5">
+      <div className="grid gap-3 overflow-x-auto pb-2 xl:grid-cols-3 2xl:grid-cols-6">
         {columns.map((column) => {
           const stageLeads = leads.filter(
             (lead) =>
@@ -992,7 +992,7 @@ function OperationalKanban({
           return (
             <section
               className={cn(
-                "min-w-[235px] rounded-md border bg-background/72 p-3 transition",
+                "min-w-[235px] rounded-md border bg-background/72 p-2.5 transition",
                 isActiveDropTarget
                   ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
                   : "border-border",
@@ -1011,7 +1011,7 @@ function OperationalKanban({
                   {stageLeads.length}
                 </span>
               </div>
-              <div className="mt-3 grid gap-2">
+              <div className="mt-2 grid gap-1.5">
                 {stageLeads.length ? (
                   stageLeads.map((lead) => (
                     <CompactLeadCard
@@ -1051,7 +1051,7 @@ function CompactLeadCard({
 
   return (
     <article
-      className="cursor-grab rounded-md border bg-card px-2.5 py-2 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
+      className="cursor-grab rounded-md border bg-card px-2.5 py-1.5 shadow-sm transition hover:border-primary/30 active:cursor-grabbing"
       draggable
       onDragEnd={onDragEnd}
       onDragStart={(event) => {
@@ -1060,7 +1060,7 @@ function CompactLeadCard({
         onDragStart(lead.id);
       }}
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-2">
         <h4 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
           {lead.nome}
         </h4>
@@ -1068,7 +1068,7 @@ function CompactLeadCard({
           <TemperatureBadge temperature={lead.temperatura} />
         </div>
       </div>
-      <div className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-xs">
+      <div className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-xs">
         <span
           className={cn(
             "shrink-0",
@@ -1083,16 +1083,19 @@ function CompactLeadCard({
           {lead.proximaAcao || "-"}
         </span>
       </div>
-      <Button
-        className="mt-2 h-7 w-full text-xs"
-        onClick={() => onEdit(lead)}
-        size="sm"
-        type="button"
-        variant="secondary"
-      >
-        <Pencil className="h-3 w-3" aria-hidden />
-        Editar
-      </Button>
+      <div className="mt-1 flex justify-end">
+        <Button
+          aria-label={`Editar ${lead.nome}`}
+          className="h-6 w-7 px-0"
+          onClick={() => onEdit(lead)}
+          size="sm"
+          title="Editar"
+          type="button"
+          variant="ghost"
+        >
+          <Pencil className="h-3.5 w-3.5" aria-hidden />
+        </Button>
+      </div>
     </article>
   );
 }
@@ -1567,12 +1570,12 @@ function TemperatureBadge({ temperature }: { temperature: CrmTemperature }) {
   return (
     <span
       className={cn(
-        "rounded-full border px-2 py-0.5 text-xs font-medium",
+        "rounded-full border px-1.5 py-0.5 text-[0.68rem] font-semibold leading-4",
         temperature === "quente"
-          ? "border-primary/30 bg-primary/5 text-primary"
+          ? "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]"
           : temperature === "fria"
-            ? "text-muted-foreground"
-            : "border-brand-gold/40 text-brand-ink",
+            ? "border-[#c8d4dc] bg-[#edf3f6] text-[#546977]"
+            : "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]",
       )}
     >
       {crmTemperatureLabels[temperature]}
