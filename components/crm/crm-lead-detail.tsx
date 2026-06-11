@@ -246,6 +246,40 @@ export function CrmLeadDetail({
           </div>
         </div>
 
+        {(onGenerateSimulation || onGenerateProposal) ? (
+          <div className="mt-5 rounded-md border bg-background/80 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Propostas comerciais
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Inicie uma simulacao ou uma proposta por ancoragem com este
+                  lead ja vinculado.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {onGenerateSimulation ? (
+                  <Button
+                    onClick={() => onGenerateSimulation(lead)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Gerar simulação
+                  </Button>
+                ) : null}
+                {onGenerateProposal ? (
+                  <Button onClick={() => onGenerateProposal(lead)} type="button">
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Gerar proposta
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.9fr]">
           <article
             className={cn(
@@ -325,7 +359,7 @@ export function CrmLeadDetail({
                   variant="secondary"
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden />
-                  Gerar simulacao
+                  Gerar simulação
                 </Button>
               ) : null}
               {onGenerateProposal ? (

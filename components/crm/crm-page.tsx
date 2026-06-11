@@ -527,7 +527,7 @@ export function CrmPage({
       ) : null}
 
       {activeTab === "settings" ? (
-        <section className="grid gap-6">
+        <section className="grid min-w-0 gap-6">
           <LeadForm
             draft={draft}
             editingLeadId={editingLeadId}
@@ -745,9 +745,9 @@ function PipelineSettingsPanel({
   pipelineConfig: CrmConfigurablePipeline[];
 }) {
   return (
-    <section className="executive-surface rounded-md p-5 sm:p-6">
+    <section className="executive-surface min-w-0 rounded-md p-5 sm:p-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Configuracao
           </p>
@@ -760,6 +760,7 @@ function PipelineSettingsPanel({
           </p>
         </div>
         <Button
+          className="w-full sm:w-auto"
           onClick={() => onPipelineConfigChange(resetCrmPipelineConfig())}
           type="button"
           variant="secondary"
@@ -771,7 +772,7 @@ function PipelineSettingsPanel({
       <div className="mt-5 grid gap-4 xl:grid-cols-2">
         {pipelineConfig.map((pipeline) => (
           <article
-            className="rounded-md border bg-background/70 p-4"
+            className="min-w-0 rounded-md border bg-background/70 p-4"
             key={pipeline.id}
           >
             <Field label="Nome do pipeline">
@@ -881,9 +882,9 @@ function PipelineSettingsPanel({
                 ))}
             </div>
 
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
-                className={fieldInputClass}
+                className={cn(fieldInputClass, "min-w-0 flex-1")}
                 onChange={(event) =>
                   onNewStageNamesChange((currentNames) => ({
                     ...currentNames,
@@ -894,6 +895,7 @@ function PipelineSettingsPanel({
                 value={newStageNames[pipeline.id] ?? ""}
               />
               <Button
+                className="shrink-0"
                 onClick={() => {
                   onPipelineConfigChange(
                     addCrmStageToPipeline(
@@ -1327,55 +1329,63 @@ function LostLeadsPanel({
   onEdit: (lead: CrmLead) => void;
 }) {
   return (
-    <section className="executive-surface rounded-md p-5 sm:p-6">
+    <section className="executive-surface min-w-0 rounded-md p-5 sm:p-6">
       <div className="flex flex-col gap-1">
         <h3 className="font-semibold">Perdidos</h3>
         <p className="text-sm text-muted-foreground">
           Lista de recuperacao, treinamento e reativacao de base.
         </p>
       </div>
-      <div className="mt-5 overflow-x-auto">
-        <table className="min-w-[820px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-            <tr className="border-b">
-              <th className="px-3 py-3">Nome</th>
-              <th className="px-3 py-3">Telefone</th>
-              <th className="px-3 py-3">Motivo</th>
-              <th className="px-3 py-3">Responsavel</th>
-              <th className="px-3 py-3">Data da perda</th>
-              <th className="px-3 py-3">Acao</th>
-            </tr>
-          </thead>
-          <tbody>
-            {leads.map((lead) => (
-              <tr className="border-b last:border-b-0" key={lead.id}>
-                <td className="px-3 py-3 font-medium">{lead.nome}</td>
-                <td className="px-3 py-3 text-muted-foreground">
-                  {lead.telefone || "-"}
-                </td>
-                <td className="px-3 py-3 text-muted-foreground">
-                  {lead.etapa}
-                </td>
-                <td className="px-3 py-3 text-muted-foreground">
-                  {lead.consultor || "-"}
-                </td>
-                <td className="px-3 py-3 text-muted-foreground">
-                  {formatDate(lead.updatedAt)}
-                </td>
-                <td className="px-3 py-3">
-                  <Button
-                    onClick={() => onEdit(lead)}
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                  >
-                    Editar
-                  </Button>
-                </td>
+      <div className="mt-5 min-w-0 overflow-x-auto rounded-md border bg-background/60">
+        {leads.length ? (
+          <table className="min-w-[860px] table-fixed text-left text-sm">
+            <thead className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+              <tr className="border-b">
+                <th className="w-[230px] px-3 py-3">Nome</th>
+                <th className="w-[150px] px-3 py-3">Telefone</th>
+                <th className="w-[190px] px-3 py-3">Motivo</th>
+                <th className="w-[150px] px-3 py-3">Responsavel</th>
+                <th className="w-[130px] px-3 py-3">Data da perda</th>
+                <th className="w-[90px] px-3 py-3">Acao</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {leads.map((lead) => (
+                <tr className="border-b last:border-b-0" key={lead.id}>
+                  <td className="truncate px-3 py-3 font-medium">
+                    {lead.nome}
+                  </td>
+                  <td className="truncate px-3 py-3 text-muted-foreground">
+                    {lead.telefone || "-"}
+                  </td>
+                  <td className="truncate px-3 py-3 text-muted-foreground">
+                    {lead.etapa}
+                  </td>
+                  <td className="truncate px-3 py-3 text-muted-foreground">
+                    {lead.consultor || "-"}
+                  </td>
+                  <td className="px-3 py-3 text-muted-foreground">
+                    {formatDate(lead.updatedAt)}
+                  </td>
+                  <td className="px-3 py-3">
+                    <Button
+                      onClick={() => onEdit(lead)}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      Editar
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="p-4 text-sm text-muted-foreground">
+            Nenhum lead perdido nos filtros atuais.
+          </p>
+        )}
       </div>
     </section>
   );
