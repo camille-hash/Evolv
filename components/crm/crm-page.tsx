@@ -120,6 +120,7 @@ const fieldInputClass =
 
 export function CrmPage() {
   const [activeTab, setActiveTab] = useState<CrmOperationalTab>("my-day");
+  const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [pipelineConfig, setPipelineConfig] = useState<
     CrmConfigurablePipeline[]
@@ -197,6 +198,17 @@ export function CrmPage() {
     () => filterBaseLeads(filteredLeads, baseSearch),
     [baseSearch, filteredLeads],
   );
+  const activePipelineGroup =
+    activeTab === "sales" || activeTab === "administrative"
+      ? activeTab
+      : activeTab === "prospecting" || activeTab === "my-day"
+        ? "prospecting"
+        : null;
+  const shouldShowOperationalSupport =
+    activeTab === "my-day" ||
+    activeTab === "prospecting" ||
+    activeTab === "sales" ||
+    activeTab === "administrative";
 
   if (selectedLead) {
     return (
@@ -385,19 +397,24 @@ export function CrmPage() {
               excesso de informacao visual.
             </p>
           </div>
-          <div className="grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[420px]">
-            <CrmSummaryMetric label="Meu dia" value={myDayGroups.total} />
-            <CrmSummaryMetric
-              label="Quentes"
-              value={myDayGroups.hot.length}
-            />
-            <CrmSummaryMetric label="Base filtrada" value={filteredLeads.length} />
-          </div>
+        </div>
+
+        <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
+          <CrmCompactMetric label="Ativas" value={searchSummary.active} />
+          <CrmCompactMetric label="Ganhas" value={searchSummary.gained} />
+          <CrmCompactMetric label="Perdidas" value={searchSummary.lost} />
+          <CrmCompactMetric
+            label="Valor filtrado"
+            value={currencyFormatter.format(searchSummary.totalPotential)}
+          />
+          <CrmCompactMetric label="Base filtrada" value={filteredLeads.length} />
         </div>
 
         <AdvancedSearchPanel
           filters={advancedFilters}
+          isOpen={isAdvancedSearchOpen}
           onChange={setAdvancedFilters}
+          onToggle={() => setIsAdvancedSearchOpen((currentValue) => !currentValue)}
           options={searchOptions}
           summary={searchSummary}
         />
@@ -423,65 +440,29 @@ export function CrmPage() {
         </nav>
       </section>
 
-      {activeTab === "my-day" ? (
+      {activePipelineGroup ? (
+        <OperationalKanban
+          columns={buildOperationalColumns({
+            group: activePipelineGroup,
+            leads: filteredLeads,
+            pipelineDefinitions: kanbanPipelineDefinitions,
+          })}
+          dragTarget={dragTarget}
+          group={activePipelineGroup}
+          leads={filteredLeads}
+          onDragEnd={handleLeadDragEnd}
+          onDragOver={handleStageDragOver}
+          onDragStart={handleLeadDragStart}
+          onDrop={handleStageDrop}
+          onEdit={handleEditLead}
+        />
+      ) : null}
+
+      {shouldShowOperationalSupport ? (
         <MyDayPanel
           groups={myDayGroups}
           onEdit={handleEditLead}
           onOpen={setSelectedLeadId}
-        />
-      ) : null}
-
-      {activeTab === "prospecting" ? (
-        <OperationalKanban
-          columns={buildOperationalColumns({
-            group: "prospecting",
-            leads: filteredLeads,
-            pipelineDefinitions: kanbanPipelineDefinitions,
-          })}
-          dragTarget={dragTarget}
-          group="prospecting"
-          leads={filteredLeads}
-          onDragEnd={handleLeadDragEnd}
-          onDragOver={handleStageDragOver}
-          onDragStart={handleLeadDragStart}
-          onDrop={handleStageDrop}
-          onEdit={handleEditLead}
-        />
-      ) : null}
-
-      {activeTab === "sales" ? (
-        <OperationalKanban
-          columns={buildOperationalColumns({
-            group: "sales",
-            leads: filteredLeads,
-            pipelineDefinitions: kanbanPipelineDefinitions,
-          })}
-          dragTarget={dragTarget}
-          group="sales"
-          leads={filteredLeads}
-          onDragEnd={handleLeadDragEnd}
-          onDragOver={handleStageDragOver}
-          onDragStart={handleLeadDragStart}
-          onDrop={handleStageDrop}
-          onEdit={handleEditLead}
-        />
-      ) : null}
-
-      {activeTab === "administrative" ? (
-        <OperationalKanban
-          columns={buildOperationalColumns({
-            group: "administrative",
-            leads: filteredLeads,
-            pipelineDefinitions: kanbanPipelineDefinitions,
-          })}
-          dragTarget={dragTarget}
-          group="administrative"
-          leads={filteredLeads}
-          onDragEnd={handleLeadDragEnd}
-          onDragOver={handleStageDragOver}
-          onDragStart={handleLeadDragStart}
-          onDrop={handleStageDrop}
-          onEdit={handleEditLead}
         />
       ) : null}
 
@@ -528,12 +509,16 @@ export function CrmPage() {
 
 function AdvancedSearchPanel({
   filters,
+  isOpen,
   onChange,
+  onToggle,
   options,
   summary,
 }: {
   filters: CrmAdvancedSearchFilters;
+  isOpen: boolean;
   onChange: React.Dispatch<React.SetStateAction<CrmAdvancedSearchFilters>>;
+  onToggle: () => void;
   options: ReturnType<typeof buildCrmAdvancedSearchOptions>;
   summary: ReturnType<typeof summarizeCrmAdvancedSearch>;
 }) {
@@ -549,20 +534,28 @@ function AdvancedSearchPanel({
   }
 
   return (
-    <section className="mt-6 rounded-md border bg-background/72 p-4">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+    <section className="mt-5 rounded-md border bg-background/72 p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h3 className="font-semibold text-foreground">Busca Avancada</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Filtra todas as abas operacionais do CRM.
+          <h3 className="text-sm font-semibold text-foreground">
+            Busca Avancada
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {summary.total} registros encontrados nos filtros atuais.
           </p>
         </div>
-        <Button onClick={clearFilters} type="button" variant="secondary">
-          Limpar filtros
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onToggle} type="button" variant="secondary">
+            {isOpen ? "Recolher filtros" : "Expandir filtros"}
+          </Button>
+          <Button onClick={clearFilters} type="button" variant="ghost">
+            Limpar filtros
+          </Button>
+        </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      {isOpen ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <label className="grid gap-2 text-sm font-medium xl:col-span-2">
           <span>Busca livre</span>
           <input
@@ -658,18 +651,8 @@ function AdvancedSearchPanel({
           ]}
           value={filters.origem}
         />
-      </div>
-
-      <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
-        <CrmSummaryMetric label="Total encontrado" value={summary.total} />
-        <CrmSummaryMetric label="Ativas" value={summary.active} />
-        <CrmSummaryMetric label="Ganhas" value={summary.gained} />
-        <CrmSummaryMetric label="Perdidas" value={summary.lost} />
-        <CrmSummaryMetric
-          label="Valor P&S filtrado"
-          value={currencyFormatter.format(summary.totalPotential)}
-        />
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1548,7 +1531,7 @@ function LeadForm({
   );
 }
 
-function CrmSummaryMetric({
+function CrmCompactMetric({
   label,
   value,
 }: {
@@ -1556,9 +1539,13 @@ function CrmSummaryMetric({
   value: number | string;
 }) {
   return (
-    <div className="rounded-md border bg-background/70 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
+    <div className="rounded-md border bg-background/60 px-3 py-2">
+      <p className="text-[0.68rem] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 truncate text-sm font-semibold text-foreground">
+        {value}
+      </p>
     </div>
   );
 }
