@@ -26,17 +26,26 @@ import {
   crmTemperatureLabels,
   deleteCrmActivity,
   deleteCrmNote,
+  addCrmLeadSimulation,
+  loadCrmLeadSimulations,
   loadCrmActivities,
   loadCrmNotes,
   loadCrmStageChanges,
+  updateCrmLeadSimulationStatus,
   type CrmActivity,
   type CrmActivityStatus,
   type CrmActivityType,
   type CrmLead,
+  type CrmLeadSimulationRecord,
+  type CrmLeadSimulationStatus,
   type CrmNote,
   type CrmStageChange,
   type CrmTemperature,
 } from "@/modules/crm";
+import {
+  loadSavedSimulations,
+  type SimulatorSavedSimulation,
+} from "@/modules/simulator";
 import { cn } from "@/lib/utils";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -62,6 +71,16 @@ const activityTypes: CrmActivityType[] = [
 ];
 
 const activityStatuses: CrmActivityStatus[] = ["pending", "completed"];
+const simulationStatuses: CrmLeadSimulationStatus[] = [
+  "apresentada",
+  "descartada",
+  "escolhida",
+];
+const simulationStatusLabels: Record<CrmLeadSimulationStatus, string> = {
+  apresentada: "Apresentada ao cliente",
+  descartada: "Descartada",
+  escolhida: "Proposta escolhida",
+};
 
 export function CrmLeadDetail({
   lead,
@@ -79,7 +98,18 @@ export function CrmLeadDetail({
   const [notes, setNotes] = useState<CrmNote[]>([]);
   const [activities, setActivities] = useState<CrmActivity[]>([]);
   const [stageChanges, setStageChanges] = useState<CrmStageChange[]>([]);
+  const [savedSimulations, setSavedSimulations] = useState<
+    SimulatorSavedSimulation[]
+  >([]);
+  const [leadSimulations, setLeadSimulations] = useState<
+    CrmLeadSimulationRecord[]
+  >([]);
   const [noteContent, setNoteContent] = useState("");
+  const [simulationDraft, setSimulationDraft] = useState({
+    notes: "",
+    simulationId: "",
+    status: "apresentada" as CrmLeadSimulationStatus,
+  });
   const [activityDraft, setActivityDraft] = useState({
     titulo: "",
     tipo: "ligacao" as CrmActivityType,
@@ -93,6 +123,8 @@ export function CrmLeadDetail({
       setNotes(loadCrmNotes(lead.id));
       setActivities(loadCrmActivities(lead.id));
       setStageChanges(loadCrmStageChanges(lead.id));
+      setSavedSimulations(loadSavedSimulations());
+      setLeadSimulations(loadCrmLeadSimulations(lead.id));
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -137,6 +169,45 @@ export function CrmLeadDetail({
       hora: "",
       status: "pending",
     });
+  }
+
+  function handleAddSimulation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const selectedSimulation = savedSimulations.find(
+      (simulation) => simulation.id === simulationDraft.simulationId,
+    );
+
+    if (!selectedSimulation) {
+      return;
+    }
+
+    setLeadSimulations(
+      addCrmLeadSimulation({
+        leadId: lead.id,
+        notes: simulationDraft.notes,
+        simulation: selectedSimulation,
+        status: simulationDraft.status,
+      }),
+    );
+    setSimulationDraft({
+      notes: "",
+      simulationId: "",
+      status: "apresentada",
+    });
+  }
+
+  function handleSimulationStatusChange(
+    recordId: string,
+    status: CrmLeadSimulationStatus,
+  ) {
+    setLeadSimulations(
+      updateCrmLeadSimulationStatus({
+        leadId: lead.id,
+        recordId,
+        status,
+      }),
+    );
   }
 
   return (
@@ -294,6 +365,167 @@ export function CrmLeadDetail({
           <p className="mt-3 text-sm leading-6 text-foreground">
             {lead.observacoes || "Nenhuma observacao registrada."}
           </p>
+        </div>
+      </section>
+
+      <section className="executive-surface rounded-md p-5 sm:p-6">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Simulacoes
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-foreground">
+              Historico comercial do lead
+            </h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Registre propostas apresentadas, descartadas ou escolhidas.
+          </p>
+        </div>
+
+        <form
+          className="mt-5 grid gap-4 rounded-md border bg-background/70 p-4 lg:grid-cols-[1fr_0.7fr_1fr_auto]"
+          onSubmit={handleAddSimulation}
+        >
+          <Field label="Simulacao existente">
+            <select
+              className={fieldInputClass}
+              onChange={(event) =>
+                setSimulationDraft((currentDraft) => ({
+                  ...currentDraft,
+                  simulationId: event.target.value,
+                }))
+              }
+              required
+              value={simulationDraft.simulationId}
+            >
+              <option value="">Selecionar simulacao</option>
+              {savedSimulations.map((simulation) => (
+                <option key={simulation.id} value={simulation.id}>
+                  {simulation.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Status">
+            <select
+              className={fieldInputClass}
+              onChange={(event) =>
+                setSimulationDraft((currentDraft) => ({
+                  ...currentDraft,
+                  status: event.target.value as CrmLeadSimulationStatus,
+                }))
+              }
+              value={simulationDraft.status}
+            >
+              {simulationStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {simulationStatusLabels[status]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Observacoes">
+            <input
+              className={fieldInputClass}
+              onChange={(event) =>
+                setSimulationDraft((currentDraft) => ({
+                  ...currentDraft,
+                  notes: event.target.value,
+                }))
+              }
+              placeholder="Contexto da proposta"
+              value={simulationDraft.notes}
+            />
+          </Field>
+
+          <div className="flex items-end">
+            <Button
+              className="w-full lg:w-fit"
+              disabled={!savedSimulations.length}
+              type="submit"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              Registrar
+            </Button>
+          </div>
+        </form>
+
+        {!savedSimulations.length ? (
+          <p className="mt-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            Nenhuma simulacao salva encontrada. Salve uma simulacao antes de
+            vincular ao lead.
+          </p>
+        ) : null}
+
+        <div className="mt-5 grid gap-3">
+          {leadSimulations.length ? (
+            leadSimulations.map((simulation, index) => (
+              <article
+                className="rounded-md border bg-background/70 p-4"
+                key={simulation.id}
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Simulacao {String(index + 1).padStart(2, "0")}
+                    </p>
+                    <h4 className="mt-2 text-base font-semibold text-foreground">
+                      {simulation.simulationName}
+                    </h4>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Data: {formatDateTime(simulation.simulationDate)}
+                    </p>
+                  </div>
+                  <SimulationStatusBadge status={simulation.status} />
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <LeadDetailItem
+                    label="Credito"
+                    value={currencyFormatter.format(simulation.credit)}
+                  />
+                  <LeadDetailItem
+                    label="Parcela"
+                    value={currencyFormatter.format(simulation.installment)}
+                  />
+                  <LeadDetailItem label="Cenario" value={simulation.scenario} />
+                  <LeadDetailItem
+                    label="Administradora"
+                    value={simulation.administrator}
+                  />
+                </div>
+
+                {simulation.notes ? (
+                  <p className="mt-4 rounded-md border bg-card p-3 text-sm leading-6 text-foreground">
+                    {simulation.notes}
+                  </p>
+                ) : null}
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {simulationStatuses.map((status) => (
+                    <Button
+                      key={status}
+                      onClick={() =>
+                        handleSimulationStatusChange(simulation.id, status)
+                      }
+                      size="sm"
+                      type="button"
+                      variant={
+                        simulation.status === status ? "default" : "secondary"
+                      }
+                    >
+                      {simulationStatusLabels[status]}
+                    </Button>
+                  ))}
+                </div>
+              </article>
+            ))
+          ) : (
+            <EmptyState text="Nenhuma simulacao vinculada a este lead." />
+          )}
         </div>
       </section>
 
@@ -570,6 +802,27 @@ function TemperatureBadge({ temperature }: { temperature: CrmTemperature }) {
       )}
     >
       {crmTemperatureLabels[temperature]}
+    </span>
+  );
+}
+
+function SimulationStatusBadge({
+  status,
+}: {
+  status: CrmLeadSimulationStatus;
+}) {
+  return (
+    <span
+      className={cn(
+        "w-fit rounded-full border px-2.5 py-1 text-xs font-semibold",
+        status === "escolhida"
+          ? "border-primary/25 bg-primary/5 text-primary"
+          : status === "descartada"
+            ? "border-[#c8d4dc] bg-[#edf3f6] text-[#546977]"
+            : "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]",
+      )}
+    >
+      {simulationStatusLabels[status]}
     </span>
   );
 }
