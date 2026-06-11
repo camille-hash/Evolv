@@ -1118,7 +1118,7 @@ function OperationalKanban({
 }) {
   return (
     <section className="executive-surface rounded-md p-3.5 sm:p-4">
-      <div className="flex w-full gap-2 overflow-x-auto pb-2">
+      <div className="flex w-full items-start gap-3 overflow-x-auto pb-3">
         {columns.map((column) => {
           const stageLeads = column.status
             ? leads.filter((lead) => lead.status === column.status)
@@ -1135,7 +1135,7 @@ function OperationalKanban({
           return (
             <section
               className={cn(
-                "flex h-[min(62vh,720px)] w-[210px] flex-none flex-col overflow-hidden rounded-md border bg-background/72 p-2 transition",
+                "w-[260px] flex-none rounded-md border bg-background/72 p-2.5 transition",
                 isActiveDropTarget
                   ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
                   : "border-border",
@@ -1160,7 +1160,7 @@ function OperationalKanban({
                   {stageLeads.length}
                 </span>
               </div>
-              <div className="mt-2 grid min-h-0 flex-1 gap-1.5 overflow-y-auto pr-1">
+              <div className="mt-2 grid gap-1.5">
                 {stageLeads.length ? (
                   stageLeads.map((lead) => (
                     <CompactLeadCard
