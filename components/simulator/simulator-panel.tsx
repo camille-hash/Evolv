@@ -1010,9 +1010,9 @@ function SimulationOperationPanel({
           ) : null}
         </section>
 
-        <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-8">
+        <section className="overflow-hidden rounded-md border border-emerald-200/20 bg-[radial-gradient(circle_at_top_left,rgba(220,198,126,0.24),transparent_32%),linear-gradient(135deg,#10201f_0%,#0f3b35_48%,#0f766e_100%)] p-6 text-white shadow-[0_24px_70px_rgba(15,59,53,0.24)] sm:p-8">
           <div className="mx-auto max-w-4xl text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-50/70">
               Mes de contemplacao
             </p>
             <div className="mt-5 flex items-center justify-center gap-5">
@@ -1027,10 +1027,10 @@ function SimulationOperationPanel({
                 <Minus className="h-5 w-5" aria-hidden="true" />
               </IconButton>
               <div className="min-w-36">
-                <div className="text-7xl font-semibold tracking-normal text-foreground sm:text-8xl">
+                <div className="text-7xl font-semibold tracking-normal text-white drop-shadow-sm sm:text-8xl">
                   {presentation.contemplationMonth}
                 </div>
-                <div className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <div className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-emerald-50/70">
                   de {simulatorInput.termMonths} meses
                 </div>
               </div>
@@ -1046,7 +1046,7 @@ function SimulationOperationPanel({
               </IconButton>
             </div>
             <input
-              className="mt-8 w-full accent-primary"
+              className="mt-8 w-full accent-[#d9c77f]"
               max={simulatorInput.termMonths}
               min={1}
               onChange={(event) =>
