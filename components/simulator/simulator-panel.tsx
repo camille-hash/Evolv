@@ -217,6 +217,7 @@ export function SimulatorPanel({
   const [insuranceOption, setInsuranceOption] =
     useState<InsuranceOption>("with-insurance");
   const [bidType, setBidType] = useState<BidType>("none");
+  const [isTechnicalDataOpen, setIsTechnicalDataOpen] = useState(false);
   const [contemplationMonth, setContemplationMonth] = useState(1);
   const [comfortableInstallment, setComfortableInstallment] = useState("");
   const [anchoredProposals, setAnchoredProposals] = useState<
@@ -495,12 +496,12 @@ export function SimulatorPanel({
           insuranceOption={insuranceOption}
           intelligenceSummary={intelligenceSummary}
           presentation={presentation}
-          selectedAdministrator={selectedAdministrator}
           selectedScenarioKey={selectedScenarioKey}
           simulationName={simulationName}
           simulatorInput={simulatorInput}
           anchoredProposals={anchoredProposals}
           comfortableInstallment={comfortableInstallment}
+          isTechnicalDataOpen={isTechnicalDataOpen}
           leadProposalContext={leadProposalContext}
           personalizationSource={personalizationSource}
           onCommercialDataChange={updateCommercialData}
@@ -516,6 +517,9 @@ export function SimulatorPanel({
           onSetComfortableInstallment={setComfortableInstallment}
           onSetBidType={handleSetBidType}
           onSetSimulationName={setSimulationName}
+          onToggleTechnicalData={() =>
+            setIsTechnicalDataOpen((currentValue) => !currentValue)
+          }
           onClearLeadProposalContext={onClearLeadProposalContext}
           isInsuranceOptionDisabled={isInsuranceOptionDisabled}
         />
@@ -875,12 +879,12 @@ function SimulationOperationPanel({
   insuranceOption,
   intelligenceSummary,
   presentation,
-  selectedAdministrator,
   selectedScenarioKey,
   simulationName,
   simulatorInput,
   anchoredProposals,
   comfortableInstallment,
+  isTechnicalDataOpen,
   leadProposalContext,
   personalizationSource,
   onCommercialDataChange,
@@ -896,6 +900,7 @@ function SimulationOperationPanel({
   onSetComfortableInstallment,
   onSetBidType,
   onSetSimulationName,
+  onToggleTechnicalData,
   onClearLeadProposalContext,
   isInsuranceOptionDisabled,
 }: {
@@ -906,12 +911,12 @@ function SimulationOperationPanel({
   insuranceOption: InsuranceOption;
   intelligenceSummary: IntelligenceSummary;
   presentation: ReturnType<typeof buildSimulatorCommercialPresentation>;
-  selectedAdministrator: SimulatorAdministrator | null;
   selectedScenarioKey: SimulatorScenarioKey;
   simulationName: string;
   simulatorInput: SimulatorInput;
   anchoredProposals: AnchoredProposal[];
   comfortableInstallment: string;
+  isTechnicalDataOpen: boolean;
   leadProposalContext?: CrmLeadProposalContext | null;
   personalizationSource: AnchoredPersonalizationSource | null;
   onCommercialDataChange: (state: Partial<SimulatorCommercialData>) => void;
@@ -927,11 +932,12 @@ function SimulationOperationPanel({
   onSetComfortableInstallment: (value: string) => void;
   onSetBidType: (bidType: BidType) => void;
   onSetSimulationName: (name: string) => void;
+  onToggleTechnicalData: () => void;
   onClearLeadProposalContext?: () => void;
   isInsuranceOptionDisabled: (option: InsuranceOption) => boolean;
 }) {
   return (
-    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <section className="grid gap-5">
       <div className="grid gap-5">
         <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -1002,25 +1008,129 @@ function SimulationOperationPanel({
               ) : null}
             </div>
           ) : null}
+        </section>
 
-          <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
-            <div>
-              <p className="text-sm text-muted-foreground">
-                Credito contratado
-              </p>
-              <p className="mt-2 text-4xl font-semibold tracking-normal text-foreground">
-                {currencyFormatter.format(presentation.contractedCredit)}
-              </p>
+        <section className="rounded-md border bg-card p-6 text-card-foreground sm:p-8">
+          <div className="mx-auto max-w-4xl text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Mes de contemplacao
+            </p>
+            <div className="mt-5 flex items-center justify-center gap-5">
+              <IconButton
+                label="Diminuir mes"
+                onClick={() =>
+                  onContemplationMonthChange(
+                    presentation.contemplationMonth - 1,
+                  )
+                }
+              >
+                <Minus className="h-5 w-5" aria-hidden="true" />
+              </IconButton>
+              <div className="min-w-36">
+                <div className="text-7xl font-semibold tracking-normal text-foreground sm:text-8xl">
+                  {presentation.contemplationMonth}
+                </div>
+                <div className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  de {simulatorInput.termMonths} meses
+                </div>
+              </div>
+              <IconButton
+                label="Aumentar mes"
+                onClick={() =>
+                  onContemplationMonthChange(
+                    presentation.contemplationMonth + 1,
+                  )
+                }
+              >
+                <Plus className="h-5 w-5" aria-hidden="true" />
+              </IconButton>
             </div>
-            <div className="rounded-md border bg-background p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                Contemplacao
-              </p>
-              <p className="mt-2 text-2xl font-semibold">
-                Mes {presentation.contemplationMonth}
-              </p>
-            </div>
+            <input
+              className="mt-8 w-full accent-primary"
+              max={simulatorInput.termMonths}
+              min={1}
+              onChange={(event) =>
+                onContemplationMonthChange(Number(event.target.value))
+              }
+              type="range"
+              value={presentation.contemplationMonth}
+            />
           </div>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <CommercialMetric
+            label="Credito contratado"
+            value={currencyFormatter.format(presentation.contractedCredit)}
+            featured
+          />
+          <CommercialMetric
+            label="Parcela antes"
+            value={currencyFormatter.format(
+              presentation.installmentBeforeContemplation,
+            )}
+            featured
+          />
+          <CommercialMetric
+            label="Parcela pos"
+            value={currencyFormatter.format(
+              presentation.installmentAfterContemplation,
+            )}
+            featured
+          />
+          <CommercialMetric
+            label="Lucro estimado"
+            value={currencyFormatter.format(
+              presentation.estimatedCardSaleProfit,
+            )}
+            featured
+          />
+        </section>
+
+        <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="rounded-md border bg-card p-5 text-card-foreground">
+            <h3 className="text-sm font-semibold">Cenarios comerciais</h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {scenarioOptions.map((option) => (
+                <SelectionButton
+                  isActive={selectedScenarioKey === option.key}
+                  key={option.key}
+                  onClick={() => onScenarioChange(option.key)}
+                >
+                  {option.label}
+                </SelectionButton>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-md border bg-card p-5 text-card-foreground">
+            <h3 className="text-sm font-semibold">Ajustes comerciais</h3>
+            <div className="mt-4 grid gap-3">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                {insuranceOptions.map((option) => (
+                  <SelectionButton
+                    disabled={isInsuranceOptionDisabled(option.key)}
+                    isActive={insuranceOption === option.key}
+                    key={option.key}
+                    onClick={() => onInsuranceOptionChange(option.key)}
+                  >
+                    {option.label}
+                  </SelectionButton>
+                ))}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
+                {bidOptions.map((option) => (
+                  <SelectionButton
+                    isActive={bidType === option.key}
+                    key={option.key}
+                    onClick={() => onSetBidType(option.key)}
+                  >
+                    {option.label}
+                  </SelectionButton>
+                ))}
+              </div>
+            </div>
+          </section>
         </section>
 
         <CommercialDataSection
@@ -1038,100 +1148,6 @@ function SimulationOperationPanel({
           onSaveProposal={onSaveAnchoredProposal}
         />
 
-      </div>
-
-      <aside className="grid gap-5">
-        <section className="rounded-md border bg-card p-5 text-card-foreground">
-          <h3 className="text-sm font-semibold">Cenario</h3>
-          <div className="mt-4 grid gap-3">
-            {scenarioOptions.map((option) => (
-              <SelectionButton
-                isActive={selectedScenarioKey === option.key}
-                key={option.key}
-                onClick={() => onScenarioChange(option.key)}
-              >
-                {option.label}
-              </SelectionButton>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-md border bg-card p-5 text-card-foreground">
-          <h3 className="text-sm font-semibold">Seguro</h3>
-          {selectedAdministrator?.insuranceRequired ? (
-            <p className="mt-2 text-xs font-medium text-primary">
-              Seguro obrigatorio nesta administradora.
-            </p>
-          ) : null}
-          <div className="mt-4 grid gap-3">
-            {insuranceOptions.map((option) => (
-              <SelectionButton
-                disabled={isInsuranceOptionDisabled(option.key)}
-                isActive={insuranceOption === option.key}
-                key={option.key}
-                onClick={() => onInsuranceOptionChange(option.key)}
-              >
-                {option.label}
-              </SelectionButton>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-md border bg-card p-5 text-card-foreground">
-          <h3 className="text-sm font-semibold">Lance</h3>
-          <div className="mt-4 grid gap-3">
-            {bidOptions.map((option) => (
-              <SelectionButton
-                isActive={bidType === option.key}
-                key={option.key}
-                onClick={() => onSetBidType(option.key)}
-              >
-                {option.label}
-              </SelectionButton>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-md border bg-card p-5 text-card-foreground">
-          <h3 className="text-sm font-semibold">Mes de contemplacao</h3>
-          <div className="mt-5 flex items-center justify-between gap-3">
-            <IconButton
-              label="Diminuir mes"
-              onClick={() =>
-                onContemplationMonthChange(presentation.contemplationMonth - 1)
-              }
-            >
-              <Minus className="h-4 w-4" aria-hidden="true" />
-            </IconButton>
-            <div className="min-w-28 text-center">
-              <div className="text-4xl font-semibold text-foreground">
-                {presentation.contemplationMonth}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                de {simulatorInput.termMonths} meses
-              </div>
-            </div>
-            <IconButton
-              label="Aumentar mes"
-              onClick={() =>
-                onContemplationMonthChange(presentation.contemplationMonth + 1)
-              }
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-            </IconButton>
-          </div>
-          <input
-            className="mt-7 w-full accent-primary"
-            max={simulatorInput.termMonths}
-            min={1}
-            onChange={(event) =>
-              onContemplationMonthChange(Number(event.target.value))
-            }
-            type="range"
-            value={presentation.contemplationMonth}
-          />
-        </section>
-
         <section className="rounded-md border bg-primary/[0.03] p-5 text-card-foreground">
           <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
             Resumo EVOLV
@@ -1142,13 +1158,28 @@ function SimulationOperationPanel({
         </section>
 
         <section className="rounded-md border bg-card p-5 text-card-foreground">
-          <SimulatorInputField
-            label="Credito"
-            value={formState.credit}
-            onChange={(credit) => onFormStateChange({ credit })}
-          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Dados tecnicos</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Parametros operacionais ficam recolhidos para preservar a
+                leitura comercial.
+              </p>
+            </div>
+            <SecondaryActionButton onClick={onToggleTechnicalData}>
+              {isTechnicalDataOpen ? "Ocultar dados tecnicos" : "Dados tecnicos"}
+            </SecondaryActionButton>
+          </div>
+          {isTechnicalDataOpen ? (
+            <div className="mt-5">
+              <TechnicalSettingsPanel
+                formState={formState}
+                onChange={onFormStateChange}
+              />
+            </div>
+          ) : null}
         </section>
-      </aside>
+      </div>
     </section>
   );
 }
@@ -1180,10 +1211,10 @@ function AnchoredProposalsSection({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Ancoragem comercial
+            Alternativas patrimoniais
           </p>
           <h2 className="mt-2 text-base font-semibold">
-            Gerador de propostas
+            Possibilidades para seu objetivo
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Informe a parcela confortavel do cliente para comparar opcoes

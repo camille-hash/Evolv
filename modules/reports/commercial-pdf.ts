@@ -55,7 +55,7 @@ const colors = {
 };
 
 const finalDisclaimer =
-  "Simulacao estimativa, sujeita as regras da administradora, disponibilidade de grupo, criterios de contemplacao e condicoes vigentes na data da proposta.";
+  "Esta simulacao representa um cenario estimativo elaborado em tempo real, considerando os parametros selecionados durante a reuniao consultiva. Os resultados apresentados possuem carater exclusivamente ilustrativo e educacional, nao constituindo promessa de contemplacao, garantia de rentabilidade, oferta vinculante ou compromisso de desempenho futuro. A efetiva contemplacao esta sujeita as regras da administradora, disponibilidade dos grupos, criterios aplicaveis e condicoes vigentes na data da contratacao.";
 
 export function generateSimulatorCommercialPdf({
   presentation,
@@ -190,11 +190,11 @@ function drawReportPage(
   let y = 42;
   y = drawHighlight(doc, y, [
     {
-      label: "Lucro estimado",
+      label: "Potencial patrimonial",
       value: currencyFormatter.format(presentation.estimatedCardSaleProfit),
     },
     {
-      label: "Percentual de ganho",
+      label: "Retorno estimado",
       value: percentFormatter.format(presentation.estimatedCardSaleGainRate),
     },
     {
@@ -282,11 +282,11 @@ function drawReportPage(
       value: currencyFormatter.format(presentation.estimatedCardSaleValue),
     },
     {
-      label: "Lucro estimado",
+      label: "Potencial estimado de ganho patrimonial",
       value: currencyFormatter.format(presentation.estimatedCardSaleProfit),
     },
     {
-      label: "Percentual de ganho",
+      label: "Retorno estimado sobre o capital investido",
       value: percentFormatter.format(presentation.estimatedCardSaleGainRate),
     },
   ]);
@@ -614,9 +614,13 @@ function drawFooterNote(doc: jsPDF) {
   doc.setTextColor(colors.ink);
   doc.text("Patrion Asset | EVOLV", page.margin, 279);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(6.8);
   doc.setTextColor(colors.muted);
-  doc.text(doc.splitTextToSize(finalDisclaimer, page.width - page.margin * 2), page.margin, 286);
+  doc.text(
+    doc.splitTextToSize(finalDisclaimer, page.width - page.margin * 2),
+    page.margin,
+    284,
+  );
 }
 
 function drawHighlight(doc: jsPDF, y: number, metrics: PdfMetric[]) {
@@ -687,8 +691,8 @@ function drawCoverFooter(doc: jsPDF) {
   doc.line(page.margin + 4, 276, page.width - page.margin, 276);
   doc.setTextColor(colors.soft);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(doc.splitTextToSize(finalDisclaimer, 160), page.margin + 4, 282);
+  doc.setFontSize(6.8);
+  doc.text(doc.splitTextToSize(finalDisclaimer, 160), page.margin + 4, 281);
 }
 
 function buildFileName(
