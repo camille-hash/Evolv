@@ -67,6 +67,50 @@ export const crmStageLabels = Object.fromEntries(
   ),
 ) as Record<CrmStage, string>;
 
+const CRM_PIPELINE_ALIASES: Record<string, CrmPipeline> = {
+  administrativo: "administrative",
+  administrative: "administrative",
+  lost: "lost",
+  perdidos: "lost",
+  prospeccao: "prospecting",
+  prospecting: "prospecting",
+  sales: "sales",
+  vendas: "sales",
+};
+
+const CRM_STAGE_ALIASES: Record<string, CrmStage> = {
+  abertura: "abertura",
+  agendamento: "agendamento",
+  "aguardando-assinatura": "aguardando-assinatura",
+  "apresentacao-nao-comprou": "apresentou-nao-comprou",
+  "apresentou-mas-nao-comprou": "apresentou-nao-comprou",
+  "apresentou-nao-comprou": "apresentou-nao-comprou",
+  "aprovacao-administradora": "aprovacao-administradora",
+  "aprovacao-da-administradora": "aprovacao-administradora",
+  "cliente-nao-compareceu": "cliente-nao-compareceu",
+  conexao: "conexao",
+  "contorno-de-objecoes": "contorno-objecoes",
+  "contorno-objecoes": "contorno-objecoes",
+  documentacao: "documentacao",
+  "emissao-contrato": "emissao-contrato",
+  "emissao-do-contrato": "emissao-contrato",
+  "etapa-de-pagamento": "etapa-pagamento",
+  "etapa-pagamento": "etapa-pagamento",
+  "fechou-com-concorrente": "fechou-concorrente",
+  "fechou-concorrente": "fechou-concorrente",
+  "green-flag": "green-flag",
+  "nao-esta-no-momento": "nao-esta-no-momento",
+  "no-show": "no-show",
+  novos: "novos",
+  "primeira-reuniao": "primeira-reuniao",
+  qualificados: "qualificados",
+  "segunda-reuniao": "segunda-reuniao",
+  "tentativas-contato": "tentativas-contato",
+  "tentativas-de-contato": "tentativas-contato",
+  "1a-reuniao": "primeira-reuniao",
+  "2a-reuniao": "segunda-reuniao",
+};
+
 export const emptyCrmLeadInput: CrmLeadInput = {
   nome: "",
   telefone: "",
@@ -408,9 +452,11 @@ function getPipelineDefinition(
 }
 
 function normalizePipeline(pipeline: unknown): CrmPipeline {
-  return typeof pipeline === "string" && pipeline.trim()
-    ? pipeline.trim()
-    : "prospecting";
+  if (typeof pipeline !== "string" || !pipeline.trim()) {
+    return "prospecting";
+  }
+
+  return CRM_PIPELINE_ALIASES[normalizeCrmImportedKey(pipeline)] ?? "prospecting";
 }
 
 function normalizeStageForPipeline(
@@ -419,10 +465,27 @@ function normalizeStageForPipeline(
   pipelineDefinitions = crmPipelines,
 ): CrmStage {
   if (typeof stage === "string" && stage.trim()) {
-    return stage.trim();
+    const normalizedStage =
+      CRM_STAGE_ALIASES[normalizeCrmImportedKey(stage)] ?? stage.trim();
+
+    return isStageInPipeline(pipeline, normalizedStage, pipelineDefinitions)
+      ? normalizedStage
+      : getDefaultStageForPipeline(pipeline, pipelineDefinitions);
   }
 
   return getDefaultStageForPipeline(pipeline, pipelineDefinitions);
+}
+
+function normalizeCrmImportedKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/ª/g, "a")
+    .replace(/º/g, "o")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function normalizeLeadInput(input: CrmLeadInput): CrmLeadInput {
