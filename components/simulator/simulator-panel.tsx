@@ -227,6 +227,7 @@ export function SimulatorPanel({
   const [formState, setFormState] =
     useState<SimulatorFormState>(initialFormState);
   const appliedOperationIdRef = useRef<string | null>(null);
+  const appliedLeadCreditContextRef = useRef<string | null>(null);
   const lastOperationSignatureRef = useRef<string>("");
 
   const simulatorInput = useMemo(
@@ -390,6 +391,37 @@ export function SimulatorPanel({
     setContemplationMonth(operation.contemplationMonth);
     setBidType(operation.bidType);
   }, [operation]);
+
+  useEffect(() => {
+    if (!leadProposalContext) {
+      appliedLeadCreditContextRef.current = null;
+      return;
+    }
+
+    const desiredCredit = leadProposalContext.leadDesiredCredit;
+    const contextSignature = `${leadProposalContext.leadId}:${leadProposalContext.createdAt}`;
+
+    if (
+      appliedLeadCreditContextRef.current === contextSignature ||
+      typeof desiredCredit !== "number" ||
+      !Number.isFinite(desiredCredit) ||
+      desiredCredit <= 0
+    ) {
+      return;
+    }
+
+    appliedLeadCreditContextRef.current = contextSignature;
+    setAnchoredProposals([]);
+    setFormState((currentFormState) => ({
+      ...currentFormState,
+      credit: String(desiredCredit),
+    }));
+  }, [
+    leadProposalContext,
+    leadProposalContext?.createdAt,
+    leadProposalContext?.leadDesiredCredit,
+    leadProposalContext?.leadId,
+  ]);
 
   useEffect(() => {
     if (!onOperationChange) {

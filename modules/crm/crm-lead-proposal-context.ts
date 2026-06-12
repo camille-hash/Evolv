@@ -4,6 +4,7 @@ export type CrmLeadProposalContext = {
   intent: "simulation" | "proposal";
   leadId: string;
   leadName: string;
+  leadDesiredCredit?: number;
   createdAt: string;
 };
 
@@ -11,11 +12,18 @@ export function saveCrmLeadProposalContext(input: {
   intent: "simulation" | "proposal";
   leadId: string;
   leadName: string;
+  leadDesiredCredit?: number;
 }): CrmLeadProposalContext {
   const context: CrmLeadProposalContext = {
     intent: input.intent,
     leadId: input.leadId,
     leadName: input.leadName,
+    leadDesiredCredit:
+      typeof input.leadDesiredCredit === "number" &&
+      Number.isFinite(input.leadDesiredCredit) &&
+      input.leadDesiredCredit > 0
+        ? input.leadDesiredCredit
+        : undefined,
     createdAt: new Date().toISOString(),
   };
 
@@ -74,6 +82,12 @@ function normalizeCrmLeadProposalContext(
     intent: candidate.intent === "simulation" ? "simulation" : "proposal",
     leadId: candidate.leadId,
     leadName: candidate.leadName,
+    leadDesiredCredit:
+      typeof candidate.leadDesiredCredit === "number" &&
+      Number.isFinite(candidate.leadDesiredCredit) &&
+      candidate.leadDesiredCredit > 0
+        ? candidate.leadDesiredCredit
+        : undefined,
     createdAt: candidate.createdAt ?? new Date().toISOString(),
   };
 }

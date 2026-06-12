@@ -163,6 +163,7 @@ export default function Home() {
       intent,
       leadId: lead.id,
       leadName: lead.nome,
+      leadDesiredCredit: lead.valorPretendido,
     });
 
     setLeadProposalContext(nextContext);
