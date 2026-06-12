@@ -6,6 +6,7 @@ export * from "./crm-lead-simulation-storage";
 export * from "./crm-lead-proposal-context";
 export * from "./crm-pipeline-engine";
 export * from "./crm-pipeline-storage";
+export * from "./crm-phone";
 export * from "./crm-storage";
 export * from "./crm-types";
 export * from "./import";

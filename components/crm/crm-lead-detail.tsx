@@ -1,56 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  CalendarClock,
-  Check,
-  MessageCircle,
-  Pencil,
-  Phone,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { type FormEvent } from "react";
+import { ArrowLeft, Phone, Plus, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  addCrmActivity,
-  addCrmNote,
-  buildCrmTimeline,
-  completeCrmActivity,
-  crmActivityStatusLabels,
-  crmActivityTypeLabels,
-  crmOpportunityStatusLabels,
   crmPipelineLabels,
+  crmPipelines,
   crmStageLabels,
-  crmTemperatureLabels,
-  deleteCrmActivity,
-  deleteCrmNote,
-  addCrmLeadSimulation,
-  loadCrmLeadSimulations,
-  loadCrmActivities,
-  loadCrmNotes,
-  loadCrmStageChanges,
-  updateCrmLeadSimulationStatus,
-  type CrmActivity,
-  type CrmActivityStatus,
-  type CrmActivityType,
+  buildWhatsappUrl,
+  getDefaultStageForPipeline,
+  getStagesForPipeline,
+  isStageInPipeline,
   type CrmLead,
-  type CrmLeadSimulationRecord,
-  type CrmLeadSimulationStatus,
-  type CrmNote,
-  type CrmStageChange,
-  type CrmTemperature,
+  type CrmLeadInput,
+  type CrmPipeline,
+  type CrmStage,
 } from "@/modules/crm";
-import {
-  loadSavedSimulations,
-  type SimulatorSavedSimulation,
-} from "@/modules/simulator";
+import type { GeneratedProposalRecord } from "@/modules/proposal/proposal-history";
 import { cn } from "@/lib/utils";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
   style: "currency",
+});
+
+const percentFormatter = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+  style: "percent",
 });
 
 const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -61,829 +38,365 @@ const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
 const fieldInputClass =
   "w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15";
 
-const activityTypes: CrmActivityType[] = [
-  "ligacao",
-  "whatsapp",
-  "reuniao",
-  "proposta",
-  "retorno",
-  "outro",
-];
-
-const activityStatuses: CrmActivityStatus[] = ["pending", "completed"];
-const simulationStatuses: CrmLeadSimulationStatus[] = [
-  "apresentada",
-  "descartada",
-  "escolhida",
-];
-const simulationStatusLabels: Record<CrmLeadSimulationStatus, string> = {
-  apresentada: "Apresentada ao cliente",
-  descartada: "Descartada",
-  escolhida: "Proposta escolhida",
+type CrmLeadDetailProps = {
+  draft: CrmLeadInput;
+  lead: CrmLead;
+  onCancel: () => void;
+  onDraftChange: (draft: CrmLeadInput) => void;
+  onGenerateSimulation?: (lead: CrmLead) => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  proposals: GeneratedProposalRecord[];
 };
 
 export function CrmLeadDetail({
+  draft,
   lead,
-  onBack,
-  onEdit,
+  onCancel,
+  onDraftChange,
   onGenerateSimulation,
-  onGenerateProposal,
-  pipelineLabel,
-  stageLabel,
-}: {
-  lead: CrmLead;
-  onBack: () => void;
-  onEdit: () => void;
-  onGenerateSimulation?: (lead: CrmLead) => void;
-  onGenerateProposal?: (lead: CrmLead) => void;
-  pipelineLabel?: string;
-  stageLabel?: string;
-}) {
-  const [notes, setNotes] = useState<CrmNote[]>([]);
-  const [activities, setActivities] = useState<CrmActivity[]>([]);
-  const [stageChanges, setStageChanges] = useState<CrmStageChange[]>([]);
-  const [savedSimulations, setSavedSimulations] = useState<
-    SimulatorSavedSimulation[]
-  >([]);
-  const [leadSimulations, setLeadSimulations] = useState<
-    CrmLeadSimulationRecord[]
-  >([]);
-  const [noteContent, setNoteContent] = useState("");
-  const [simulationDraft, setSimulationDraft] = useState({
-    notes: "",
-    simulationId: "",
-    status: "apresentada" as CrmLeadSimulationStatus,
-  });
-  const [activityDraft, setActivityDraft] = useState({
-    titulo: "",
-    tipo: "ligacao" as CrmActivityType,
-    data: "",
-    hora: "",
-    status: "pending" as CrmActivityStatus,
-  });
+  onSave,
+  proposals,
+}: CrmLeadDetailProps) {
+  const whatsappUrl = buildWhatsappUrl(lead.telefone);
 
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setNotes(loadCrmNotes(lead.id));
-      setActivities(loadCrmActivities(lead.id));
-      setStageChanges(loadCrmStageChanges(lead.id));
-      setSavedSimulations(loadSavedSimulations());
-      setLeadSimulations(loadCrmLeadSimulations(lead.id));
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [lead.id]);
-
-  const timeline = useMemo(
-    () =>
-      buildCrmTimeline({
-        activities,
-        lead,
-        notes,
-        stageChanges,
-      }),
-    [activities, lead, notes, stageChanges],
-  );
-  const pipelineName = pipelineLabel ?? crmPipelineLabels[lead.pipeline];
-  const stageName = stageLabel ?? crmStageLabels[lead.etapa];
-  const phoneDigits = lead.telefone.replace(/\D/g, "");
-  const canUsePhone = phoneDigits.length > 0;
-  const nextActionText = lead.proximaAcao
-    ? `${lead.proximaAcao}${lead.dataProximaAcao ? ` - ${lead.dataProximaAcao}` : ""}`
-    : "";
-
-  function handleAddNote(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setNotes(addCrmNote(lead.id, noteContent));
-    setNoteContent("");
-  }
-
-  function handleAddActivity(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setActivities(
-      addCrmActivity({
-        leadId: lead.id,
-        ...activityDraft,
-      }),
-    );
-    setActivityDraft({
-      titulo: "",
-      tipo: "ligacao",
-      data: "",
-      hora: "",
-      status: "pending",
+  function updateDraft(patch: Partial<CrmLeadInput>) {
+    onDraftChange({
+      ...draft,
+      ...patch,
     });
   }
 
-  function handleAddSimulation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handlePipelineChange(pipeline: CrmPipeline) {
+    updateDraft({
+      pipeline,
+      etapa: isStageInPipeline(pipeline, draft.etapa)
+        ? draft.etapa
+        : getDefaultStageForPipeline(pipeline),
+    });
+  }
 
-    const selectedSimulation = savedSimulations.find(
-      (simulation) => simulation.id === simulationDraft.simulationId,
-    );
-
-    if (!selectedSimulation) {
+  function handleOpenWhatsapp() {
+    if (!whatsappUrl) {
       return;
     }
 
-    setLeadSimulations(
-      addCrmLeadSimulation({
-        leadId: lead.id,
-        notes: simulationDraft.notes,
-        simulation: selectedSimulation,
-        status: simulationDraft.status,
-      }),
-    );
-    setSimulationDraft({
-      notes: "",
-      simulationId: "",
-      status: "apresentada",
-    });
-  }
-
-  function handleSimulationStatusChange(
-    recordId: string,
-    status: CrmLeadSimulationStatus,
-  ) {
-    setLeadSimulations(
-      updateCrmLeadSimulationStatus({
-        leadId: lead.id,
-        recordId,
-        status,
-      }),
-    );
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
-    <section className="grid gap-6">
-      <section className="executive-surface rounded-md p-5 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <Button onClick={onBack} type="button" variant="ghost">
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-              Voltar ao CRM
-            </Button>
-            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Oportunidade comercial
-            </p>
-            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-3">
-              <h2 className="min-w-0 truncate text-3xl font-semibold text-foreground">
-                {lead.nome}
-              </h2>
-              <TemperatureBadge temperature={lead.temperatura} />
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-              <OperationalPill label={pipelineName} />
-              <OperationalPill label={stageName} />
-              <OperationalPill label={crmOpportunityStatusLabels[lead.status]} />
-            </div>
-          </div>
-          <div className="rounded-md border bg-background/70 p-4 lg:min-w-[260px]">
-            <p className="text-xs text-muted-foreground">Valor potencial P&S</p>
-            <p className="mt-2 text-2xl font-semibold text-primary">
+    <section className="executive-surface rounded-md p-5 sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Dossie operacional
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-foreground">
+            {lead.nome}
+          </h2>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+            <span className="rounded-full border bg-background px-2 py-1 text-muted-foreground">
+              {crmPipelineLabels[lead.pipeline]}
+            </span>
+            <span className="rounded-full border bg-background px-2 py-1 text-muted-foreground">
+              {crmStageLabels[lead.etapa]}
+            </span>
+            <span className="rounded-full border bg-background px-2 py-1 text-muted-foreground">
               {currencyFormatter.format(lead.valorPretendido)}
-            </p>
+            </span>
           </div>
         </div>
 
-        {(onGenerateSimulation || onGenerateProposal) ? (
-          <div className="mt-5 rounded-md border bg-background/80 p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Propostas comerciais
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Inicie uma simulacao ou uma proposta por ancoragem com este
-                  lead ja vinculado.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {onGenerateSimulation ? (
-                  <Button
-                    onClick={() => onGenerateSimulation(lead)}
-                    type="button"
-                    variant="secondary"
-                  >
-                    <Plus className="h-4 w-4" aria-hidden />
-                    Gerar simulação
-                  </Button>
-                ) : null}
-                {onGenerateProposal ? (
-                  <Button onClick={() => onGenerateProposal(lead)} type="button">
-                    <Plus className="h-4 w-4" aria-hidden />
-                    Gerar proposta
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <Button onClick={onCancel} type="button" variant="ghost">
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Voltar ao pipeline
+        </Button>
+      </div>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.9fr]">
-          <article
-            className={cn(
-              "rounded-md border p-4",
-              lead.proximaAcao
-                ? "border-primary/20 bg-primary/5"
-                : "border-[#d9a184] bg-[#f5e8df]",
-            )}
-          >
-            <div className="flex items-start gap-3">
-              {lead.proximaAcao ? (
-                <CalendarClock
-                  className="mt-0.5 h-4 w-4 text-primary"
-                  aria-hidden
+      <div className="mt-5 grid gap-3 rounded-md border bg-background/72 p-4 text-sm sm:grid-cols-3">
+        <LeadInfo label="Telefone" value={lead.telefone || "-"} />
+        <LeadInfo label="E-mail" value={lead.email || "-"} />
+        <LeadInfo label="Origem" value={lead.origem || "-"} />
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <form className="grid gap-4" onSubmit={onSave}>
+          <article className="rounded-md border bg-background/70 p-4">
+            <SectionHeader
+              description="Informacoes editaveis usadas na rotina comercial."
+              title="Dados do lead"
+            />
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <Field label="Nome">
+                <input
+                  className={fieldInputClass}
+                  onChange={(event) => updateDraft({ nome: event.target.value })}
+                  placeholder="Nome do lead"
+                  required
+                  value={draft.nome}
                 />
-              ) : (
-                <AlertTriangle
-                  className="mt-0.5 h-4 w-4 text-[#9a4f32]"
-                  aria-hidden
+              </Field>
+
+              <Field label="Telefone">
+                <input
+                  className={fieldInputClass}
+                  onChange={(event) =>
+                    updateDraft({ telefone: event.target.value })
+                  }
+                  placeholder="(00) 00000-0000"
+                  value={draft.telefone}
                 />
-              )}
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Proxima acao
-                </p>
-                <p className="mt-2 text-sm font-semibold text-foreground">
-                  {nextActionText || "Sem proxima acao definida"}
-                </p>
-              </div>
+              </Field>
+
+              <Field label="E-mail">
+                <input
+                  className={fieldInputClass}
+                  onChange={(event) => updateDraft({ email: event.target.value })}
+                  placeholder="cliente@email.com"
+                  type="email"
+                  value={draft.email}
+                />
+              </Field>
+
+              <Field label="Origem">
+                <input
+                  className={fieldInputClass}
+                  onChange={(event) => updateDraft({ origem: event.target.value })}
+                  placeholder="Indicacao, trafego, evento..."
+                  value={draft.origem}
+                />
+              </Field>
+
+              <Field label="Consultor">
+                <input
+                  className={fieldInputClass}
+                  onChange={(event) =>
+                    updateDraft({ consultor: event.target.value })
+                  }
+                  placeholder="Responsavel"
+                  value={draft.consultor}
+                />
+              </Field>
+
+              <Field label="Valor / credito desejado">
+                <input
+                  className={fieldInputClass}
+                  min={0}
+                  onChange={(event) =>
+                    updateDraft({ valorPretendido: Number(event.target.value) })
+                  }
+                  type="number"
+                  value={draft.valorPretendido}
+                />
+              </Field>
+
+              <Field label="Funil">
+                <select
+                  className={fieldInputClass}
+                  onChange={(event) =>
+                    handlePipelineChange(event.target.value as CrmPipeline)
+                  }
+                  value={draft.pipeline}
+                >
+                  {crmPipelines.map((pipeline) => (
+                    <option key={pipeline.key} value={pipeline.key}>
+                      {pipeline.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Etapa">
+                <select
+                  className={fieldInputClass}
+                  onChange={(event) =>
+                    updateDraft({ etapa: event.target.value as CrmStage })
+                  }
+                  value={draft.etapa}
+                >
+                  {getStagesForPipeline(draft.pipeline).map((stage) => (
+                    <option key={stage.key} value={stage.key}>
+                      {stage.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
           </article>
 
           <article className="rounded-md border bg-background/70 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Acoes rapidas
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {canUsePhone ? (
-                <Button asChild size="sm" type="button" variant="secondary">
-                  <a href={`tel:${phoneDigits}`}>
-                    <Phone className="h-3.5 w-3.5" aria-hidden />
-                    Ligar
-                  </a>
-                </Button>
-              ) : (
-                <Button disabled size="sm" type="button" variant="secondary">
-                  <Phone className="h-3.5 w-3.5" aria-hidden />
-                  Ligar
-                </Button>
-              )}
-              {canUsePhone ? (
-                <Button asChild size="sm" type="button" variant="secondary">
-                  <a
-                    href={`https://wa.me/${phoneDigits}`}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    <MessageCircle className="h-3.5 w-3.5" aria-hidden />
-                    WhatsApp
-                  </a>
-                </Button>
-              ) : (
-                <Button disabled size="sm" type="button" variant="secondary">
-                  <MessageCircle className="h-3.5 w-3.5" aria-hidden />
-                  WhatsApp
-                </Button>
-              )}
-              <Button onClick={onEdit} size="sm" type="button">
-                <Pencil className="h-3.5 w-3.5" aria-hidden />
-                Editar
-              </Button>
-              {onGenerateSimulation ? (
-                <Button
-                  onClick={() => onGenerateSimulation(lead)}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden />
-                  Gerar simulação
-                </Button>
-              ) : null}
-              {onGenerateProposal ? (
-                <Button
-                  onClick={() => onGenerateProposal(lead)}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden />
-                  Gerar proposta
-                </Button>
-              ) : null}
+            <SectionHeader
+              description="Contexto registrado para apoiar o proximo contato."
+              title="Historico e observacoes"
+            />
+
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <LeadInfo
+                label="Criado em"
+                value={dateFormatter.format(new Date(lead.createdAt))}
+              />
+              <LeadInfo
+                label="Atualizado em"
+                value={dateFormatter.format(new Date(lead.updatedAt))}
+              />
+            </div>
+
+            <div className="mt-4">
+              <Field label="Observacoes">
+                <textarea
+                  className={cn(fieldInputClass, "min-h-28 resize-y")}
+                  onChange={(event) =>
+                    updateDraft({ observacoes: event.target.value })
+                  }
+                  placeholder="Contexto comercial, objecoes e combinados."
+                  value={draft.observacoes}
+                />
+              </Field>
             </div>
           </article>
-        </div>
 
-        <div className="mt-4 rounded-md border bg-background/70 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Historico operacional
-          </p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <OperationalHistoryItem
-              label="Lead criado"
-              value={formatDateTime(lead.createdAt)}
-            />
-            <OperationalHistoryItem
-              label="Etapa atual"
-              value={`${pipelineName} / ${stageName}`}
-            />
-            <OperationalHistoryItem
-              label="Ultima atualizacao"
-              value={formatDateTime(lead.updatedAt)}
-            />
-          </div>
-        </div>
-
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <LeadDetailItem label="Telefone" value={lead.telefone || "-"} />
-          <LeadDetailItem label="E-mail" value={lead.email || "-"} />
-          <LeadDetailItem label="Origem" value={lead.origem || "-"} />
-          <LeadDetailItem label="Responsavel" value={lead.consultor || "-"} />
-          <LeadDetailItem label="Pipeline" value={pipelineName} />
-          <LeadDetailItem label="Etapa" value={stageName} />
-          <LeadDetailItem
-            label="Situacao"
-            value={crmOpportunityStatusLabels[lead.status]}
-          />
-          <LeadDetailItem
-            label="Criado em"
-            value={dateFormatter.format(new Date(lead.createdAt))}
-          />
-          <LeadDetailItem
-            label="Atualizado em"
-            value={dateFormatter.format(new Date(lead.updatedAt))}
-          />
-        </div>
-
-        <div className="mt-5 rounded-md border bg-background/70 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Observacoes gerais
-          </p>
-          <p className="mt-3 text-sm leading-6 text-foreground">
-            {lead.observacoes || "Nenhuma observacao registrada."}
-          </p>
-        </div>
-      </section>
-
-      <section className="executive-surface rounded-md p-5 sm:p-6">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Simulacoes
-            </p>
-            <h3 className="mt-2 text-lg font-semibold text-foreground">
-              Historico comercial do lead
-            </h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Registre propostas apresentadas, descartadas ou escolhidas.
-          </p>
-        </div>
-
-        <form
-          className="mt-5 grid gap-4 rounded-md border bg-background/70 p-4 lg:grid-cols-[1fr_0.7fr_1fr_auto]"
-          onSubmit={handleAddSimulation}
-        >
-          <Field label="Simulacao existente">
-            <select
-              className={fieldInputClass}
-              onChange={(event) =>
-                setSimulationDraft((currentDraft) => ({
-                  ...currentDraft,
-                  simulationId: event.target.value,
-                }))
-              }
-              required
-              value={simulationDraft.simulationId}
-            >
-              <option value="">Selecionar simulacao</option>
-              {savedSimulations.map((simulation) => (
-                <option key={simulation.id} value={simulation.id}>
-                  {simulation.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Status">
-            <select
-              className={fieldInputClass}
-              onChange={(event) =>
-                setSimulationDraft((currentDraft) => ({
-                  ...currentDraft,
-                  status: event.target.value as CrmLeadSimulationStatus,
-                }))
-              }
-              value={simulationDraft.status}
-            >
-              {simulationStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {simulationStatusLabels[status]}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Observacoes">
-            <input
-              className={fieldInputClass}
-              onChange={(event) =>
-                setSimulationDraft((currentDraft) => ({
-                  ...currentDraft,
-                  notes: event.target.value,
-                }))
-              }
-              placeholder="Contexto da proposta"
-              value={simulationDraft.notes}
-            />
-          </Field>
-
-          <div className="flex items-end">
-            <Button
-              className="w-full lg:w-fit"
-              disabled={!savedSimulations.length}
-              type="submit"
-            >
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit">
               <Plus className="h-4 w-4" aria-hidden />
-              Registrar
+              Salvar lead
+            </Button>
+            <Button onClick={onCancel} type="button" variant="ghost">
+              Cancelar edicao
             </Button>
           </div>
         </form>
 
-        {!savedSimulations.length ? (
-          <p className="mt-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            Nenhuma simulacao salva encontrada. Salve uma simulacao antes de
-            vincular ao lead.
-          </p>
-        ) : null}
-
-        <div className="mt-5 grid gap-3">
-          {leadSimulations.length ? (
-            leadSimulations.map((simulation, index) => (
-              <article
-                className="rounded-md border bg-background/70 p-4"
-                key={simulation.id}
-              >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      Simulacao {String(index + 1).padStart(2, "0")}
-                    </p>
-                    <h4 className="mt-2 text-base font-semibold text-foreground">
-                      {simulation.simulationName}
-                    </h4>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Data: {formatDateTime(simulation.simulationDate)}
-                    </p>
-                  </div>
-                  <SimulationStatusBadge status={simulation.status} />
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <LeadDetailItem
-                    label="Credito"
-                    value={currencyFormatter.format(simulation.credit)}
-                  />
-                  <LeadDetailItem
-                    label="Parcela"
-                    value={currencyFormatter.format(simulation.installment)}
-                  />
-                  <LeadDetailItem label="Cenario" value={simulation.scenario} />
-                  <LeadDetailItem
-                    label="Administradora"
-                    value={simulation.administrator}
-                  />
-                </div>
-
-                {simulation.notes ? (
-                  <p className="mt-4 rounded-md border bg-card p-3 text-sm leading-6 text-foreground">
-                    {simulation.notes}
-                  </p>
-                ) : null}
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {simulationStatuses.map((status) => (
-                    <Button
-                      key={status}
-                      onClick={() =>
-                        handleSimulationStatusChange(simulation.id, status)
-                      }
-                      size="sm"
-                      type="button"
-                      variant={
-                        simulation.status === status ? "default" : "secondary"
-                      }
-                    >
-                      {simulationStatusLabels[status]}
-                    </Button>
-                  ))}
-                </div>
-              </article>
-            ))
-          ) : (
-            <EmptyState text="Nenhuma simulacao vinculada a este lead." />
-          )}
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <article className="executive-surface rounded-md p-5 sm:p-6">
-          <h3 className="text-lg font-semibold text-foreground">Notas</h3>
-          <form className="mt-4 grid gap-3" onSubmit={handleAddNote}>
-            <textarea
-              className={cn(fieldInputClass, "min-h-24 resize-y")}
-              onChange={(event) => setNoteContent(event.target.value)}
-              placeholder="Registrar nota comercial."
-              required
-              value={noteContent}
+        <aside className="grid content-start gap-4">
+          <article className="rounded-md border bg-background/70 p-4">
+            <SectionHeader
+              description="Espaco preparado para os proximos passos comerciais."
+              title="Acoes comerciais"
             />
-            <Button className="w-fit" type="submit">
-              <Plus className="h-4 w-4" aria-hidden />
-              Adicionar nota
-            </Button>
-          </form>
 
-          <div className="mt-5 grid gap-3">
-            {notes.length ? (
-              notes.map((note) => (
-                <article className="rounded-md border bg-background/70 p-4" key={note.id}>
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">
-                      {dateFormatter.format(new Date(note.createdAt))}
-                    </p>
-                    <Button
-                      onClick={() => setNotes(deleteCrmNote(note.id, lead.id))}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                      Excluir
-                    </Button>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-foreground">
-                    {note.content}
-                  </p>
-                </article>
-              ))
-            ) : (
-              <EmptyState text="Nenhuma nota registrada." />
-            )}
-          </div>
-        </article>
-
-        <article className="executive-surface rounded-md p-5 sm:p-6">
-          <h3 className="text-lg font-semibold text-foreground">Atividades</h3>
-          <form className="mt-4 grid gap-4" onSubmit={handleAddActivity}>
-            <Field label="Titulo">
-              <input
-                className={fieldInputClass}
-                onChange={(event) =>
-                  setActivityDraft((currentDraft) => ({
-                    ...currentDraft,
-                    titulo: event.target.value,
-                  }))
-                }
-                placeholder="Enviar proposta, ligar, retorno..."
-                required
-                value={activityDraft.titulo}
-              />
-            </Field>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Tipo">
-                <select
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    setActivityDraft((currentDraft) => ({
-                      ...currentDraft,
-                      tipo: event.target.value as CrmActivityType,
-                    }))
-                  }
-                  value={activityDraft.tipo}
-                >
-                  {activityTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {crmActivityTypeLabels[type]}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Status">
-                <select
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    setActivityDraft((currentDraft) => ({
-                      ...currentDraft,
-                      status: event.target.value as CrmActivityStatus,
-                    }))
-                  }
-                  value={activityDraft.status}
-                >
-                  {activityStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {crmActivityStatusLabels[status]}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Data">
-                <input
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    setActivityDraft((currentDraft) => ({
-                      ...currentDraft,
-                      data: event.target.value,
-                    }))
-                  }
-                  type="date"
-                  value={activityDraft.data}
-                />
-              </Field>
-
-              <Field label="Hora">
-                <input
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    setActivityDraft((currentDraft) => ({
-                      ...currentDraft,
-                      hora: event.target.value,
-                    }))
-                  }
-                  type="time"
-                  value={activityDraft.hora}
-                />
-              </Field>
+            <div className="mt-4 grid gap-2">
+              <Button
+                disabled={!onGenerateSimulation}
+                onClick={() => onGenerateSimulation?.(lead)}
+                type="button"
+                variant="secondary"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Gerar simulacao
+              </Button>
+              <Button disabled type="button" variant="secondary">
+                <Plus className="h-4 w-4" aria-hidden />
+                Gerar proposta
+              </Button>
+              <Button disabled type="button" variant="ghost">
+                <Phone className="h-4 w-4" aria-hidden />
+                Ligar
+              </Button>
+              <Button
+                disabled={!whatsappUrl}
+                onClick={handleOpenWhatsapp}
+                type="button"
+                variant="ghost"
+              >
+                <Send className="h-4 w-4" aria-hidden />
+                WhatsApp
+              </Button>
             </div>
 
-            <Button className="w-fit" type="submit">
-              <Plus className="h-4 w-4" aria-hidden />
-              Criar atividade
-            </Button>
-          </form>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              CTAs reservados para integracao futura. Nenhuma acao automatica
+              foi ativada nesta etapa.
+            </p>
+          </article>
 
-          <div className="mt-5 grid gap-3">
-            {activities.length ? (
-              activities.map((activity) => (
-                <article
-                  className="rounded-md border bg-background/70 p-4"
-                  key={activity.id}
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="font-semibold text-foreground">
-                          {activity.titulo}
-                        </h4>
-                        <span className="rounded-full border bg-card px-2 py-0.5 text-xs text-muted-foreground">
-                          {crmActivityTypeLabels[activity.tipo]}
-                        </span>
-                        <span
-                          className={cn(
-                            "rounded-full border px-2 py-0.5 text-xs font-medium",
-                            activity.status === "completed"
-                              ? "border-primary/20 text-primary"
-                              : "text-muted-foreground",
-                          )}
-                        >
-                          {crmActivityStatusLabels[activity.status]}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {formatActivitySchedule(activity)}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      {activity.status === "pending" ? (
-                        <Button
-                          onClick={() =>
-                            setActivities(
-                              completeCrmActivity(activity.id, lead.id),
-                            )
-                          }
-                          size="sm"
-                          type="button"
-                          variant="secondary"
-                        >
-                          <Check className="h-3.5 w-3.5" aria-hidden />
-                          Concluir
-                        </Button>
-                      ) : null}
-                      <Button
-                        onClick={() =>
-                          setActivities(deleteCrmActivity(activity.id, lead.id))
-                        }
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                        Excluir
-                      </Button>
-                    </div>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <EmptyState text="Nenhuma atividade registrada." />
-            )}
-          </div>
-        </article>
-      </section>
+          <article className="rounded-md border bg-background/70 p-4">
+            <SectionHeader
+              description="Leitura rapida da oportunidade atual."
+              title="Resumo operacional"
+            />
 
-      <section className="executive-surface rounded-md p-5 sm:p-6">
-        <h3 className="text-lg font-semibold text-foreground">Timeline</h3>
-        <div className="mt-5 grid gap-3">
-          {timeline.map((event) => (
-            <article className="rounded-md border bg-background/70 p-4" key={event.id}>
-              <p className="text-xs text-muted-foreground">
-                {dateFormatter.format(new Date(event.timestamp))}
-              </p>
-              <p className="mt-2 text-sm font-medium text-foreground">
-                {event.description}
-              </p>
-            </article>
-          ))}
-        </div>
-      </section>
+            <div className="mt-4 grid gap-3 text-sm">
+              <LeadInfo label="Funil" value={crmPipelineLabels[lead.pipeline]} />
+              <LeadInfo label="Etapa" value={crmStageLabels[lead.etapa]} />
+              <LeadInfo
+                label="Valor desejado"
+                value={currencyFormatter.format(lead.valorPretendido)}
+              />
+              <LeadInfo label="Consultor" value={lead.consultor || "-"} />
+            </div>
+          </article>
+
+          <article className="rounded-md border bg-background/70 p-4">
+            <SectionHeader
+              description="Memoria local das propostas geradas nesta sessao."
+              title="Propostas geradas"
+            />
+
+            <div className="mt-4 grid gap-3">
+              {proposals.length ? (
+                proposals.map((proposal) => (
+                  <GeneratedProposalItem
+                    key={`${proposal.generatedAt}-${proposal.fileName ?? "pdf"}`}
+                    proposal={proposal}
+                  />
+                ))
+              ) : (
+                <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  Nenhuma proposta gerada nesta sessao.
+                </p>
+              )}
+            </div>
+          </article>
+        </aside>
+      </div>
     </section>
   );
 }
 
-function LeadDetailItem({ label, value }: { label: string; value: string }) {
+function GeneratedProposalItem({
+  proposal,
+}: {
+  proposal: GeneratedProposalRecord;
+}) {
   return (
-    <div className="rounded-md border bg-background/70 p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-2 font-medium text-foreground">{value}</p>
+    <div className="rounded-md border bg-card p-3 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-foreground">
+            {proposal.recommendedScenario}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {dateFormatter.format(new Date(proposal.generatedAt))}
+          </p>
+        </div>
+        <span className="text-xs font-medium text-muted-foreground">
+          {percentFormatter.format(proposal.roiPercent)}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2">
+        <LeadInfo
+          label="Credito"
+          value={currencyFormatter.format(proposal.commercialCredit)}
+        />
+        <LeadInfo label="Arquivo" value={proposal.fileName || "-"} />
+      </div>
     </div>
   );
 }
 
-function OperationalPill({ label }: { label: string }) {
-  return (
-    <span className="rounded-full border bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-      {label}
-    </span>
-  );
-}
-
-function OperationalHistoryItem({
-  label,
-  value,
+function SectionHeader({
+  description,
+  title,
 }: {
-  label: string;
-  value: string;
+  description: string;
+  title: string;
 }) {
   return (
-    <div className="rounded-md border bg-card px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium text-foreground">
-        {value}
+    <div>
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        {description}
       </p>
     </div>
-  );
-}
-
-function TemperatureBadge({ temperature }: { temperature: CrmTemperature }) {
-  return (
-    <span
-      className={cn(
-        "rounded-full border px-2 py-0.5 text-xs font-semibold",
-        temperature === "quente"
-          ? "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]"
-          : temperature === "fria"
-            ? "border-[#c8d4dc] bg-[#edf3f6] text-[#546977]"
-            : "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]",
-      )}
-    >
-      {crmTemperatureLabels[temperature]}
-    </span>
-  );
-}
-
-function SimulationStatusBadge({
-  status,
-}: {
-  status: CrmLeadSimulationStatus;
-}) {
-  return (
-    <span
-      className={cn(
-        "w-fit rounded-full border px-2.5 py-1 text-xs font-semibold",
-        status === "escolhida"
-          ? "border-primary/25 bg-primary/5 text-primary"
-          : status === "descartada"
-            ? "border-[#c8d4dc] bg-[#edf3f6] text-[#546977]"
-            : "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]",
-      )}
-    >
-      {simulationStatusLabels[status]}
-    </span>
   );
 }
 
@@ -902,32 +415,13 @@ function Field({
   );
 }
 
-function EmptyState({ text }: { text: string }) {
+function LeadInfo({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-      {text}
+    <div className="grid gap-1">
+      <span className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </span>
+      <span className="font-medium text-foreground">{value}</span>
     </div>
   );
-}
-
-function formatActivitySchedule(activity: CrmActivity) {
-  if (activity.data && activity.hora) {
-    return `${activity.data} as ${activity.hora}`;
-  }
-
-  if (activity.data) {
-    return activity.data;
-  }
-
-  if (activity.hora) {
-    return activity.hora;
-  }
-
-  return "Sem data definida";
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime()) ? "-" : dateFormatter.format(date);
 }
