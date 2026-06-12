@@ -227,17 +227,18 @@ export function CrmPage({
     activeTab === "sales" ||
     activeTab === "administrative";
 
-  if (selectedLead) {
+  if (selectedLead && activeTab !== "settings") {
     return (
       <CrmLeadDetail
         draft={draft}
         lead={selectedLead}
         onCancel={() => {
           setSelectedLeadId(null);
+          setDraft(emptyCrmLeadInput);
         }}
         onDraftChange={setDraft}
         onGenerateSimulation={(lead: CrmLead) => onGenerateSimulation?.(lead)}
-        onSave={handleSubmit}
+        onSave={handleSaveSelectedLead}
         proposals={[]}
       />
     );
@@ -274,31 +275,41 @@ export function CrmPage({
     setEditingLeadId(null);
   }
 
-  function handleEditLead(lead: CrmLead) {
-    setActiveTab("settings");
-    setEditingLeadId(lead.id);
-    setDraft({
-      nome: lead.nome,
-      telefone: lead.telefone,
-      email: lead.email,
-      origem: lead.origem,
-      consultor: lead.consultor,
-      valorPretendido: lead.valorPretendido,
-      observacoes: lead.observacoes,
-      pipeline: lead.pipeline,
-      etapa: lead.etapa,
-      tags: lead.tags,
-      produtoInteresse: lead.produtoInteresse,
-      temperatura: lead.temperatura,
-      status: lead.status,
-      proximaAcao: lead.proximaAcao,
-      dataProximaAcao: lead.dataProximaAcao,
-      pais: lead.pais ?? "",
+  async function handleSaveSelectedLead(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedLead) {
+      return;
+    }
+
+    const nextLead = updateCrmLead(selectedLead, draft);
+    console.info("[EVOLV CRM] Salvando dossie operacional do lead.", {
+      externalId: nextLead.externalId,
+      id: selectedLead.id,
     });
+    const savedLead =
+      (await updateCrmLeadInRepository(selectedLead.id, nextLead)) ?? nextLead;
+
+    setLeads((currentLeads) =>
+      currentLeads.map((lead) =>
+        lead.id === selectedLead.id ? savedLead : lead,
+      ),
+    );
+    setDraft(mapLeadToInput(savedLead));
+  }
+
+  function handleEditLead(lead: CrmLead) {
+    setActiveTab((currentTab) =>
+      currentTab === "settings" ? "my-day" : currentTab,
+    );
+    setEditingLeadId(null);
+    setSelectedLeadId(lead.id);
+    setDraft(mapLeadToInput(lead));
   }
 
   function handleCancelEdit() {
     setEditingLeadId(null);
+    setSelectedLeadId(null);
     setDraft(emptyCrmLeadInput);
   }
 
@@ -458,7 +469,15 @@ export function CrmPage({
                     : "border-border bg-background/70 text-foreground hover:border-primary/25",
               )}
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key);
+
+                if (tab.key === "settings") {
+                  setEditingLeadId(null);
+                  setSelectedLeadId(null);
+                  setDraft(emptyCrmLeadInput);
+                }
+              }}
               type="button"
             >
               {tab.label}
@@ -524,15 +543,6 @@ export function CrmPage({
 
       {activeTab === "settings" ? (
         <section className="grid min-w-0 gap-6">
-          <LeadForm
-            draft={draft}
-            editingLeadId={editingLeadId}
-            kanbanPipelineDefinitions={kanbanPipelineDefinitions}
-            onCancel={handleCancelEdit}
-            onChange={setDraft}
-            onPipelineChange={handlePipelineChange}
-            onSubmit={handleSubmit}
-          />
           <PipelineSettingsPanel
             newStageNames={newStageNames}
             onNewStageNamesChange={setNewStageNames}
@@ -1477,6 +1487,30 @@ function BasePanel({
       </div>
     </section>
   );
+}
+
+function mapLeadToInput(lead: CrmLead): CrmLeadInput {
+  return {
+    closedAt: lead.closedAt,
+    email: lead.email,
+    etapa: lead.etapa,
+    externalId: lead.externalId,
+    nome: lead.nome,
+    observacoes: lead.observacoes,
+    origem: lead.origem,
+    pais: lead.pais ?? "",
+    pipeline: lead.pipeline,
+    produtoInteresse: lead.produtoInteresse,
+    consultor: lead.consultor,
+    status: lead.status,
+    tags: lead.tags,
+    telefone: lead.telefone,
+    temperatura: lead.temperatura,
+    tituloOportunidade: lead.tituloOportunidade,
+    valorPretendido: lead.valorPretendido,
+    dataProximaAcao: lead.dataProximaAcao,
+    proximaAcao: lead.proximaAcao,
+  };
 }
 
 function LeadForm({
