@@ -242,8 +242,8 @@ export function normalizeUser(value: unknown): User | null {
         : true,
     mustChangePassword:
       typeof candidate.mustChangePassword === "boolean"
-        ? candidate.mustChangePassword
-        : isDefaultAdmin && candidate.senha === "123456",
+        ? candidate.mustChangePassword || hasKnownTemporaryPassword(candidate)
+        : hasKnownTemporaryPassword(candidate),
     createdAt,
     updatedAt:
       typeof candidate.updatedAt === "string" ? candidate.updatedAt : createdAt,
@@ -279,7 +279,11 @@ function normalizeRole(role: unknown): UserRole {
 
 function shouldRequirePasswordChange(input: UserInput) {
   return (
-    (input.role === "admin" && input.usuario === "admin" && input.senha === "123456") ||
+    hasKnownTemporaryPassword(input) ||
     input.role === "sdr"
   );
+}
+
+function hasKnownTemporaryPassword(input: { senha?: unknown }) {
+  return input.senha === "123456";
 }

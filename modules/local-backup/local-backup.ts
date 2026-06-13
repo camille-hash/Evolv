@@ -6,7 +6,6 @@ export const EVOLV_LOCAL_BACKUP_KEYS = [
   "evolv.crm.activities.v1",
   "evolv.crm.stage-changes.v1",
   "evolv.crm.backup.before-piperun-import.v1",
-  "evolv.users.v1",
   "evolv.client-context.v1",
   "evolv.portfolio.v1",
   "evolv.simulations.v1",

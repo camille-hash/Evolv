@@ -119,12 +119,11 @@ export class SupabaseCrmRepository implements CrmRepository {
       id,
       lookup: "id",
     });
-    console.info("[EVOLV CRM] Campos de data normalizados no PATCH", {
-      normalizedDates,
-    });
-    console.info("[EVOLV CRM] Payload final enviado ao Supabase", {
-      updatePayload,
-    });
+    if (normalizedDates.length) {
+      console.info("[EVOLV CRM] Campos de data normalizados no PATCH", {
+        fields: normalizedDates.map((item) => item.field),
+      });
+    }
 
     const { data, error } = await this.supabase
       .from("crm_leads")
@@ -350,7 +349,6 @@ function normalizeDateValue(
     if (Number.isNaN(value.getTime())) {
       console.warn("[EVOLV CRM] Campo de data invalido removido do PATCH", {
         field,
-        value,
       });
 
       return { changed: true, value: undefined };
@@ -368,7 +366,6 @@ function normalizeDateValue(
     console.warn("[EVOLV CRM] Campo de data com tipo inesperado removido do PATCH", {
       field,
       type: typeof value,
-      value,
     });
 
     return { changed: true, value: undefined };
@@ -415,7 +412,6 @@ function normalizeDateValue(
 
   console.warn("[EVOLV CRM] Campo de data invalido removido do PATCH", {
     field,
-    value,
   });
 
   return { changed: true, value: undefined };

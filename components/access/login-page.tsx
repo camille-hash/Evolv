@@ -13,6 +13,8 @@ import {
 const fieldInputClass =
   "h-11 rounded-md border bg-background px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15";
 
+const securePasswordPattern = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+
 export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [usuario, setUsuario] = useState("");
   const [senha, setSenha] = useState("");
@@ -121,8 +123,10 @@ export function RequiredPasswordChangePage({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (newPassword.length < 6) {
-      setError("A nova senha deve ter no minimo 6 caracteres.");
+    if (!securePasswordPattern.test(newPassword)) {
+      setError(
+        "A nova senha deve ter no minimo 8 caracteres, pelo menos uma letra e pelo menos um numero.",
+      );
       return;
     }
 
