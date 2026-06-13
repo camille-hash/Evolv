@@ -40,7 +40,10 @@ import {
 import {
   canAccessSection,
   clearCurrentUser,
+  isSupabaseAuthEnabled,
   loadCurrentUser,
+  loadSupabaseCurrentUser,
+  signOutFromSupabaseAuth,
   type AccessSection,
   type User,
 } from "@/modules/access";
@@ -139,11 +142,18 @@ export default function Home() {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      const storedUser = loadCurrentUser();
-      setCurrentUser(storedUser);
-      setClientContext(loadClientContext());
-      setLeadProposalContext(loadCrmLeadProposalContext());
-      setAccessReady(true);
+      async function loadAccessState() {
+        const storedUser = isSupabaseAuthEnabled()
+          ? await loadSupabaseCurrentUser()
+          : loadCurrentUser();
+
+        setCurrentUser(storedUser);
+        setClientContext(loadClientContext());
+        setLeadProposalContext(loadCrmLeadProposalContext());
+        setAccessReady(true);
+      }
+
+      void loadAccessState();
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -166,6 +176,9 @@ export default function Home() {
   const handleLogout = useCallback(() => {
     clearInactivityTimeout();
     clearLogoutTimeout();
+    if (isSupabaseAuthEnabled()) {
+      void signOutFromSupabaseAuth();
+    }
     clearCurrentUser();
     setCurrentUser(null);
     setActiveSection("dashboard");

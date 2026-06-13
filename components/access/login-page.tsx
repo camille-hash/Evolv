@@ -7,9 +7,12 @@ import {
   changeUserPassword,
   clearLoginAttempts,
   getLoginAttemptBlockStatus,
+  isSupabaseAuthEnabled,
   isUsingDefaultAdminPassword,
   registerFailedLoginAttempt,
+  requestSupabasePasswordReset,
   saveCurrentUser,
+  signInWithSupabaseAuth,
   type User,
 } from "@/modules/access";
 
@@ -25,9 +28,35 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [usuario, setUsuario] = useState("");
   const [senha, setSenha] = useState("");
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const usingSupabaseAuth = isSupabaseAuthEnabled();
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSuccessMessage("");
+
+    if (usingSupabaseAuth) {
+      setIsSubmitting(true);
+
+      try {
+        const result = await signInWithSupabaseAuth(usuario, senha);
+
+        if (!result.user) {
+          setError(result.error ?? invalidLoginMessage);
+          return;
+        }
+
+        setError("");
+        onLogin(result.user);
+      } catch {
+        setError("Nao foi possivel acessar agora. Tente novamente em instantes.");
+      } finally {
+        setIsSubmitting(false);
+      }
+
+      return;
+    }
 
     const blockStatus = getLoginAttemptBlockStatus(usuario);
 
@@ -55,6 +84,31 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
     onLogin(user);
   }
 
+  async function handlePasswordReset() {
+    setError("");
+    setSuccessMessage("");
+
+    if (!usuario.trim()) {
+      setError("Informe seu e-mail para solicitar a recuperacao de senha.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      await requestSupabasePasswordReset(usuario);
+      setSuccessMessage(
+        "Se o e-mail estiver cadastrado, voce recebera instrucoes para redefinir sua senha.",
+      );
+    } catch {
+      setSuccessMessage(
+        "Se o e-mail estiver cadastrado, voce recebera instrucoes para redefinir sua senha.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <main className="grid min-h-screen place-items-center p-5">
       <section className="executive-surface w-full max-w-md rounded-md p-7 text-card-foreground sm:p-8">
@@ -73,21 +127,24 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
         </div>
 
         <p className="mt-5 text-sm leading-6 text-muted-foreground">
-          Entre com seu usuario para acessar a plataforma operacional.
+          {usingSupabaseAuth
+            ? "Entre com seu e-mail para acessar a plataforma operacional."
+            : "Entre com seu usuario para acessar a plataforma operacional."}
         </p>
 
         <form className="mt-7 grid gap-4" onSubmit={handleSubmit}>
           <label className="grid gap-2">
             <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              Usuario
+              {usingSupabaseAuth ? "E-mail" : "Usuario"}
             </span>
             <input
-              autoComplete="username"
+              autoComplete={usingSupabaseAuth ? "email" : "username"}
               className={fieldInputClass}
               onChange={(event) => {
                 setUsuario(event.target.value);
                 setError("");
               }}
+              type={usingSupabaseAuth ? "email" : "text"}
               value={usuario}
             />
           </label>
@@ -114,16 +171,39 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
             </p>
           ) : null}
 
-          <Button className="h-11" type="submit">
-            Entrar
+          {successMessage ? (
+            <p className="rounded-md border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-muted-foreground">
+              {successMessage}
+            </p>
+          ) : null}
+
+          <Button className="h-11" disabled={isSubmitting} type="submit">
+            {isSubmitting ? "Entrando..." : "Entrar"}
           </Button>
         </form>
 
-        <p className="mt-5 rounded-md border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
-          Acesso local provisorio. Usuarios iniciais: Camille (admin), Bruno
-          (bruno) e SDRs (sdr1 a sdr5). Altere a senha inicial imediatamente
-          apos entrar.
-        </p>
+        {usingSupabaseAuth ? (
+          <div className="mt-5 grid gap-3">
+            <button
+              className="text-left text-xs font-medium text-primary underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isSubmitting}
+              onClick={handlePasswordReset}
+              type="button"
+            >
+              Esqueci minha senha
+            </button>
+            <p className="rounded-md border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
+              Acesso protegido por Supabase Auth. A recuperacao de senha envia
+              instrucoes apenas se o e-mail estiver cadastrado.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-5 rounded-md border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
+            Acesso local provisorio. Usuarios iniciais: Camille (admin), Bruno
+            (bruno) e SDRs (sdr1 a sdr5). Altere a senha inicial imediatamente
+            apos entrar.
+          </p>
+        )}
       </section>
     </main>
   );
