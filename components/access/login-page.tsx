@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import {
   authenticateUser,
   changeUserPassword,
+  clearLoginAttempts,
+  getLoginAttemptBlockStatus,
   isUsingDefaultAdminPassword,
+  registerFailedLoginAttempt,
   saveCurrentUser,
   type User,
 } from "@/modules/access";
@@ -14,6 +17,9 @@ const fieldInputClass =
   "h-11 rounded-md border bg-background px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15";
 
 const securePasswordPattern = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+const invalidLoginMessage = "Usuario ou senha invalidos.";
+const blockedLoginMessage =
+  "Muitas tentativas invalidas. Tente novamente em alguns minutos.";
 
 export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [usuario, setUsuario] = useState("");
@@ -23,13 +29,27 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const user = authenticateUser(usuario, senha);
+    const blockStatus = getLoginAttemptBlockStatus(usuario);
 
-    if (!user) {
-      setError("Usuario ou senha invalidos.");
+    if (blockStatus.blocked) {
+      setError(formatBlockedLoginMessage(blockStatus.remainingMinutes));
       return;
     }
 
+    const user = authenticateUser(usuario, senha);
+
+    if (!user) {
+      const nextBlockStatus = registerFailedLoginAttempt(usuario);
+
+      setError(
+        nextBlockStatus.blocked
+          ? formatBlockedLoginMessage(nextBlockStatus.remainingMinutes)
+          : invalidLoginMessage,
+      );
+      return;
+    }
+
+    clearLoginAttempts(usuario);
     saveCurrentUser(user);
     setError("");
     onLogin(user);
@@ -231,4 +251,8 @@ export function DefaultPasswordAlert({ user }: { user: User }) {
       interno da equipe.
     </div>
   );
+}
+
+function formatBlockedLoginMessage(remainingMinutes: number) {
+  return `${blockedLoginMessage} Tempo aproximado: ${remainingMinutes} min.`;
 }

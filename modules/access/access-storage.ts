@@ -12,6 +12,14 @@ import type { User, UserInput } from "./access-types";
 
 const USERS_STORAGE_KEY = "evolv.users.v1";
 const CURRENT_USER_STORAGE_KEY = "evolv.current-user.v1";
+const LOGIN_ATTEMPTS_STORAGE_KEY = "evolv.login-attempts.v1";
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_BLOCK_DURATION_MS = 15 * 60 * 1000;
+
+export type LoginAttemptBlockStatus = {
+  blocked: boolean;
+  remainingMinutes: number;
+};
 
 export function loadUsers(): User[] {
   if (typeof window === "undefined") {
@@ -48,6 +56,61 @@ export function authenticateUser(usuario: string, senha: string): User | null {
         user.senha === normalizedSenha,
     ) ?? null
   );
+}
+
+export function getLoginAttemptBlockStatus(
+  identifier: string,
+): LoginAttemptBlockStatus {
+  const attempts = readLoginAttempts();
+  const attempt = attempts[normalizeLoginIdentifier(identifier)];
+  const now = Date.now();
+
+  if (!attempt?.blockedUntil || attempt.blockedUntil <= now) {
+    return { blocked: false, remainingMinutes: 0 };
+  }
+
+  return {
+    blocked: true,
+    remainingMinutes: Math.max(1, Math.ceil((attempt.blockedUntil - now) / 60000)),
+  };
+}
+
+export function registerFailedLoginAttempt(
+  identifier: string,
+): LoginAttemptBlockStatus {
+  const attempts = readLoginAttempts();
+  const key = normalizeLoginIdentifier(identifier);
+  const now = Date.now();
+  const currentAttempt = attempts[key];
+
+  if (currentAttempt?.blockedUntil && currentAttempt.blockedUntil > now) {
+    return getLoginAttemptBlockStatus(identifier);
+  }
+
+  const failedAttempts = (currentAttempt?.failedAttempts ?? 0) + 1;
+  const blockedUntil =
+    failedAttempts >= MAX_LOGIN_ATTEMPTS
+      ? now + LOGIN_BLOCK_DURATION_MS
+      : undefined;
+
+  attempts[key] = {
+    blockedUntil,
+    failedAttempts,
+    updatedAt: now,
+  };
+  saveLoginAttempts(attempts);
+
+  return getLoginAttemptBlockStatus(identifier);
+}
+
+export function clearLoginAttempts(identifier: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const attempts = readLoginAttempts();
+  delete attempts[normalizeLoginIdentifier(identifier)];
+  saveLoginAttempts(attempts);
 }
 
 export function loadCurrentUser(): User | null {
@@ -217,4 +280,73 @@ function readStoredUsers(): User[] {
   } catch {
     return [];
   }
+}
+
+type LoginAttemptRecord = {
+  blockedUntil?: number;
+  failedAttempts: number;
+  updatedAt: number;
+};
+
+function readLoginAttempts(): Record<string, LoginAttemptRecord> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(LOGIN_ATTEMPTS_STORAGE_KEY);
+
+    if (!rawValue) {
+      return {};
+    }
+
+    const parsedValue = JSON.parse(rawValue);
+
+    if (!parsedValue || typeof parsedValue !== "object" || Array.isArray(parsedValue)) {
+      return {};
+    }
+
+    return Object.entries(parsedValue).reduce<Record<string, LoginAttemptRecord>>(
+      (attempts, [key, value]) => {
+        if (!value || typeof value !== "object") {
+          return attempts;
+        }
+
+        const candidate = value as Partial<LoginAttemptRecord>;
+
+        if (
+          typeof candidate.failedAttempts !== "number" ||
+          typeof candidate.updatedAt !== "number"
+        ) {
+          return attempts;
+        }
+
+        attempts[key] = {
+          blockedUntil:
+            typeof candidate.blockedUntil === "number"
+              ? candidate.blockedUntil
+              : undefined,
+          failedAttempts: candidate.failedAttempts,
+          updatedAt: candidate.updatedAt,
+        };
+
+        return attempts;
+      },
+      {},
+    );
+  } catch {
+    return {};
+  }
+}
+
+function saveLoginAttempts(attempts: Record<string, LoginAttemptRecord>) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(LOGIN_ATTEMPTS_STORAGE_KEY, JSON.stringify(attempts));
+}
+
+function normalizeLoginIdentifier(identifier: string) {
+  return identifier.trim().toLowerCase() || "__empty__";
 }
