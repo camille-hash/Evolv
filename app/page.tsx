@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppSidebar,
   type PlatformSection,
 } from "@/components/layout/app-sidebar";
 import { AccessSettingsPage } from "@/components/access/access-settings-page";
+import { Button } from "@/components/ui/button";
 import {
   DefaultPasswordAlert,
   LoginPage,
@@ -49,6 +50,10 @@ const simulatorPageBySection: Partial<Record<PlatformSection, SimulatorPanelPage
   intelligence: "intelligence",
   history: "saved",
 };
+
+const inactivityTimeoutMs = 60 * 60 * 1000;
+const sessionExpirationWarningMs = 60 * 1000;
+const activityEvents = ["click", "mousemove", "scroll", "keydown", "touchstart"];
 
 const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> = {
   dashboard: {
@@ -114,6 +119,10 @@ export default function Home() {
   const [leadProposalContext, setLeadProposalContext] =
     useState<CrmLeadProposalContext | null>(null);
   const [accessReady, setAccessReady] = useState(false);
+  const [isSessionExpirationWarningOpen, setIsSessionExpirationWarningOpen] =
+    useState(false);
+  const inactivityTimeoutRef = useRef<number | null>(null);
+  const logoutTimeoutRef = useRef<number | null>(null);
   const visibleActiveSection =
     currentUser &&
     canAccessSection(currentUser.role, activeSection as AccessSection)
@@ -140,10 +149,77 @@ export default function Home() {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  function handleLogout() {
+  const clearInactivityTimeout = useCallback(() => {
+    if (inactivityTimeoutRef.current) {
+      window.clearTimeout(inactivityTimeoutRef.current);
+      inactivityTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearLogoutTimeout = useCallback(() => {
+    if (logoutTimeoutRef.current) {
+      window.clearTimeout(logoutTimeoutRef.current);
+      logoutTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    clearInactivityTimeout();
+    clearLogoutTimeout();
     clearCurrentUser();
     setCurrentUser(null);
     setActiveSection("dashboard");
+    setIsSessionExpirationWarningOpen(false);
+  }, [clearInactivityTimeout, clearLogoutTimeout]);
+
+  useEffect(() => {
+    if (!currentUser || currentUser.mustChangePassword || isSessionExpirationWarningOpen) {
+      clearInactivityTimeout();
+      return;
+    }
+
+    function resetInactivityTimer() {
+      clearInactivityTimeout();
+      inactivityTimeoutRef.current = window.setTimeout(() => {
+        setIsSessionExpirationWarningOpen(true);
+      }, inactivityTimeoutMs);
+    }
+
+    resetInactivityTimer();
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, resetInactivityTimer, {
+        passive: true,
+      });
+    });
+
+    return () => {
+      clearInactivityTimeout();
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, resetInactivityTimer);
+      });
+    };
+  }, [
+    clearInactivityTimeout,
+    currentUser,
+    isSessionExpirationWarningOpen,
+  ]);
+
+  useEffect(() => {
+    if (!isSessionExpirationWarningOpen) {
+      clearLogoutTimeout();
+      return;
+    }
+
+    logoutTimeoutRef.current = window.setTimeout(() => {
+      handleLogout();
+    }, sessionExpirationWarningMs);
+
+    return clearLogoutTimeout;
+  }, [clearLogoutTimeout, handleLogout, isSessionExpirationWarningOpen]);
+
+  function handleContinueSession() {
+    setIsSessionExpirationWarningOpen(false);
   }
 
   function handleNavigate(section: PlatformSection) {
@@ -273,6 +349,34 @@ export default function Home() {
           />
         ) : null}
       </main>
+
+      {isSessionExpirationWarningOpen ? (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-5 backdrop-blur-sm"
+          role="dialog"
+        >
+          <section className="executive-surface w-full max-w-md rounded-md p-6 text-card-foreground shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Sessao inativa
+            </p>
+            <h2 className="mt-3 text-xl font-semibold text-foreground">
+              Sua sessao expirara em 60 segundos por inatividade.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Continue a sessao se ainda estiver usando o EVOLV nesta maquina.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Button onClick={handleContinueSession} type="button">
+                Continuar sessao
+              </Button>
+              <Button onClick={handleLogout} type="button" variant="secondary">
+                Encerrar agora
+              </Button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
