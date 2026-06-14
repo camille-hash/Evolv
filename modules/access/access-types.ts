@@ -23,6 +23,8 @@ export type User = {
   role: UserRole;
   ativo: boolean;
   mustChangePassword: boolean;
+  organizationId?: string;
+  email?: string;
   createdAt: string;
   updatedAt: string;
 };
