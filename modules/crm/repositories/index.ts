@@ -1,5 +1,6 @@
 export * from "./crm-repository";
 export * from "./authenticated-supabase-crm-repository";
+export * from "./crm-lead-notes-repository";
 export * from "./local-crm-repository";
 export * from "./supabase-crm-repository";
 
