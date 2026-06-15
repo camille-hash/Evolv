@@ -10,6 +10,7 @@ import {
 import { AlertTriangle, Clock3, Flame, Pencil, Plus } from "lucide-react";
 import { AccessSettingsPage } from "@/components/access/access-settings-page";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
+import { CrmSourceIndicator } from "@/components/crm/crm-source-indicator";
 import { Button } from "@/components/ui/button";
 import {
   addCrmStageToPipeline,
@@ -435,6 +436,7 @@ export function CrmPage({
               excesso de informacao visual.
             </p>
           </div>
+          <CrmSourceIndicator />
         </div>
 
         <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">

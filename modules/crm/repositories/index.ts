@@ -1,8 +1,14 @@
 export * from "./crm-repository";
+export * from "./authenticated-supabase-crm-repository";
 export * from "./local-crm-repository";
 export * from "./supabase-crm-repository";
 
 import type { CrmLead } from "../crm-types";
+import { setCrmRepositorySource } from "../crm-source-observability";
+import {
+  canCreateAuthenticatedSupabaseCrmRepository,
+  createAuthenticatedSupabaseCrmRepository,
+} from "./authenticated-supabase-crm-repository";
 import { LocalCrmRepository } from "./local-crm-repository";
 import {
   canUseSupabaseCrmRepository,
@@ -10,21 +16,54 @@ import {
 } from "./supabase-crm-repository";
 
 const localCrmRepository = new LocalCrmRepository();
+const shouldUseAuthenticatedCrmShadow =
+  process.env.NEXT_PUBLIC_USE_SUPABASE_CRM_AUTH_SHADOW === "true";
 
 export async function listCrmLeadsFromRepository(): Promise<CrmLead[]> {
   if (!canUseSupabaseCrmRepository()) {
     console.info("[EVOLV CRM] Fonte ativa: localStorage.");
+    setCrmRepositorySource("localStorage");
     return localCrmRepository.list();
   }
 
+  const isAuthenticatedShadowEnabled = canUseAuthenticatedCrmShadowRepository();
+
+  if (isAuthenticatedShadowEnabled) {
+    try {
+      console.info("[EVOLV CRM] Fonte ativa: Supabase authenticated shadow.");
+      const leads = await createAuthenticatedSupabaseCrmRepository().list();
+
+      setCrmRepositorySource("authenticated");
+
+      return leads;
+    } catch (error) {
+      console.warn(
+        "[EVOLV CRM] Authenticated shadow falhou. Usando fallback Supabase anon.",
+        error,
+      );
+    }
+  }
+
   try {
-    console.info("[EVOLV CRM] Fonte ativa: Supabase.");
-    return await createSupabaseCrmRepository().list();
+    console.info(
+      isAuthenticatedShadowEnabled
+        ? "[EVOLV CRM] Fonte ativa: Supabase anon."
+        : "[EVOLV CRM] Fonte ativa: Supabase.",
+    );
+    const leads = await createSupabaseCrmRepository().list();
+
+    setCrmRepositorySource("anon");
+
+    return leads;
   } catch (error) {
     console.warn(
-      "Falha ao ler CRM no Supabase. Usando fallback localStorage.",
+      isAuthenticatedShadowEnabled
+        ? "Falha ao ler CRM no Supabase anon. Usando fallback localStorage."
+        : "Falha ao ler CRM no Supabase. Usando fallback localStorage.",
       error,
     );
+
+    setCrmRepositorySource("localStorage");
 
     return localCrmRepository.list();
   }
@@ -35,17 +74,51 @@ export async function getCrmLeadByIdFromRepository(
 ): Promise<CrmLead | null> {
   if (!canUseSupabaseCrmRepository()) {
     console.info("[EVOLV CRM] Busca de lead usando localStorage.", { id });
+    setCrmRepositorySource("localStorage");
     return localCrmRepository.getById(id);
   }
 
+  const isAuthenticatedShadowEnabled = canUseAuthenticatedCrmShadowRepository();
+
+  if (isAuthenticatedShadowEnabled) {
+    try {
+      console.info("[EVOLV CRM] Busca de lead usando Supabase authenticated shadow.", {
+        id,
+      });
+      const lead = await createAuthenticatedSupabaseCrmRepository().getById(id);
+
+      setCrmRepositorySource("authenticated");
+
+      return lead;
+    } catch (error) {
+      console.warn(
+        "[EVOLV CRM] Busca authenticated shadow falhou. Usando fallback Supabase anon.",
+        error,
+      );
+    }
+  }
+
   try {
-    console.info("[EVOLV CRM] Busca de lead usando Supabase.", { id });
-    return await createSupabaseCrmRepository().getById(id);
+    console.info(
+      isAuthenticatedShadowEnabled
+        ? "[EVOLV CRM] Busca de lead usando Supabase anon."
+        : "[EVOLV CRM] Busca de lead usando Supabase.",
+      { id },
+    );
+    const lead = await createSupabaseCrmRepository().getById(id);
+
+    setCrmRepositorySource("anon");
+
+    return lead;
   } catch (error) {
     console.warn(
-      "Falha ao buscar lead no Supabase. Usando fallback localStorage.",
+      isAuthenticatedShadowEnabled
+        ? "Falha ao buscar lead no Supabase anon. Usando fallback localStorage."
+        : "Falha ao buscar lead no Supabase. Usando fallback localStorage.",
       error,
     );
+
+    setCrmRepositorySource("localStorage");
 
     return localCrmRepository.getById(id);
   }
@@ -59,15 +132,51 @@ export async function updateCrmLeadInRepository(
 
   if (!canUseSupabaseCrmRepository()) {
     console.info("[EVOLV CRM] Update usando localStorage.", { fields, id });
+    setCrmRepositorySource("localStorage");
     return localCrmRepository.updateLead(id, patch);
   }
 
+  const isAuthenticatedShadowEnabled = canUseAuthenticatedCrmShadowRepository();
+
+  if (isAuthenticatedShadowEnabled) {
+    try {
+      console.info("[EVOLV CRM] Update usando Supabase authenticated shadow.", {
+        fields,
+        id,
+      });
+
+      const authenticatedUpdatedLead =
+        await createAuthenticatedSupabaseCrmRepository().updateLead(id, patch);
+
+      if (authenticatedUpdatedLead) {
+        setCrmRepositorySource("authenticated");
+        return authenticatedUpdatedLead;
+      }
+
+      console.warn(
+        "[EVOLV CRM] Authenticated shadow nao retornou lead atualizado. Usando fallback Supabase anon.",
+        { externalId: patch.externalId, id },
+      );
+    } catch (error) {
+      console.warn(
+        "[EVOLV CRM] Update authenticated shadow falhou. Usando fallback Supabase anon.",
+        error,
+      );
+    }
+  }
+
   try {
-    console.info("[EVOLV CRM] Update usando Supabase.", { fields, id });
+    console.info(
+      isAuthenticatedShadowEnabled
+        ? "[EVOLV CRM] Update usando Supabase anon."
+        : "[EVOLV CRM] Update usando Supabase.",
+      { fields, id },
+    );
 
     const updatedLead = await createSupabaseCrmRepository().updateLead(id, patch);
 
     if (updatedLead) {
+      setCrmRepositorySource("anon");
       return updatedLead;
     }
 
@@ -82,5 +191,15 @@ export async function updateCrmLeadInRepository(
     );
   }
 
+  setCrmRepositorySource("localStorage");
+
   return localCrmRepository.updateLead(id, patch);
+}
+
+function canUseAuthenticatedCrmShadowRepository() {
+  return (
+    shouldUseAuthenticatedCrmShadow &&
+    canUseSupabaseCrmRepository() &&
+    canCreateAuthenticatedSupabaseCrmRepository()
+  );
 }
