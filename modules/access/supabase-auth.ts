@@ -1,4 +1,4 @@
-import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+﻿import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import type { User, UserRole } from "./access-types";
 
 const profileAccessErrorMessage =
@@ -81,10 +81,71 @@ export async function signOutFromSupabaseAuth() {
 export async function requestSupabasePasswordReset(email: string) {
   const supabase = createSupabaseAuthClient();
   await supabase.auth.resetPasswordForEmail(email.trim(), {
-    redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+    redirectTo: typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined,
   });
 }
 
+const recoverySessionUnavailableMessage =
+  "Nao foi possivel validar sua sessao de recuperacao. Solicite um novo link e tente novamente.";
+
+export async function ensureSupabaseRecoverySession() {
+  const supabase = createSupabaseAuthClient();
+
+  if (typeof window !== "undefined") {
+    const searchParams = new URLSearchParams(window.location.search);
+    const code = searchParams.get("code");
+
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (error) {
+        return {
+          error: recoverySessionUnavailableMessage,
+          ok: false as const,
+        };
+      }
+
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error || !data.session?.user) {
+    return {
+      error: recoverySessionUnavailableMessage,
+      ok: false as const,
+    };
+  }
+
+  return {
+    error: null,
+    ok: true as const,
+  };
+}
+
+export async function updateSupabasePasswordForRecovery(password: string) {
+  const sessionResult = await ensureSupabaseRecoverySession();
+
+  if (!sessionResult.ok) {
+    return sessionResult;
+  }
+
+  const supabase = createSupabaseAuthClient();
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) {
+    return {
+      error: "Nao foi possivel redefinir sua senha. Solicite um novo link e tente novamente.",
+      ok: false as const,
+    };
+  }
+
+  return {
+    error: null,
+    ok: true as const,
+  };
+}
 function createSupabaseAuthClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey =
@@ -170,3 +231,5 @@ function mapSupabaseUserToAccessUser(
 function readMetadataText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
+
+
