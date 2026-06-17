@@ -2011,11 +2011,11 @@ function getOperationalPriorityClassName(priority: CrmOperationalPriority) {
 
 function getOperationalAgingCardClassName(aging: CrmOperationalAging) {
   if (aging === "attention") {
-    return "border-[#e6d7a8] bg-[#fbf7e8]";
+    return "border-[#dfbf7a] bg-[#fff1d6] shadow-[0_8px_22px_rgba(128,102,47,0.10)]";
   }
 
   if (aging === "stale") {
-    return "border-[#e3bcbc] bg-[#fbefef]";
+    return "border-[#d99b8f] bg-[#fde7e1] shadow-[0_8px_22px_rgba(138,75,75,0.12)]";
   }
 
   if (aging === "unknown") {
