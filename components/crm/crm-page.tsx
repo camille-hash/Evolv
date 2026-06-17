@@ -31,6 +31,7 @@ import {
   removeCrmStage,
   resetCrmPipelineConfig,
   resolveCrmLeadMovement,
+  resolveCrmLeadOperationalAging,
   resolveCrmLeadCommercialSignal,
   resolveCrmLeadOperationalPriority,
   saveCrmLead,
@@ -45,6 +46,7 @@ import {
   type CrmCommercialSignal,
   type CrmLead,
   type CrmLeadInput,
+  type CrmOperationalAging,
   type CrmOperationalPriority,
   type CrmPipeline,
   type CrmStage,
@@ -1325,14 +1327,17 @@ function CompactLeadCard({
   readOnly?: boolean;
 }) {
   const hasRelevantValue = lead.valorPretendido > 0;
+  const aging = resolveCrmLeadOperationalAging(lead);
 
   return (
     <article
       className={cn(
-        "min-w-0 overflow-hidden rounded-md border bg-card px-2 py-1.5 shadow-sm transition hover:border-primary/30",
+        "min-w-0 overflow-hidden rounded-md border px-2 py-1.5 shadow-sm transition hover:border-primary/30",
+        getOperationalAgingCardClassName(aging.aging),
         readOnly ? "cursor-default" : "cursor-grab active:cursor-grabbing",
       )}
       draggable={!readOnly}
+      title={aging.summary}
       onDragEnd={onDragEnd}
       onDragStart={(event) => {
         if (readOnly) {
@@ -1350,8 +1355,6 @@ function CompactLeadCard({
         </h4>
         <div className="flex shrink-0 flex-wrap justify-end gap-1 overflow-hidden">
           <TemperatureBadge temperature={lead.temperatura} />
-          <CommercialSignalBadge lead={lead} />
-          <OperationalPriorityBadge lead={lead} />
         </div>
       </div>
       <div className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 overflow-hidden text-xs">
@@ -1395,8 +1398,16 @@ function DailyLeadCard({
   onEdit: (lead: CrmLead) => void;
   onOpen: (leadId: string) => void;
 }) {
+  const aging = resolveCrmLeadOperationalAging(lead);
+
   return (
-    <article className="rounded-md border bg-card p-3">
+    <article
+      className={cn(
+        "rounded-md border p-3",
+        getOperationalAgingCardClassName(aging.aging),
+      )}
+      title={aging.summary}
+    >
       <button
         className="block w-full text-left"
         onClick={() => onOpen(lead.id)}
@@ -1411,8 +1422,6 @@ function DailyLeadCard({
           </div>
           <div className="flex flex-wrap justify-end gap-1">
             <TemperatureBadge temperature={lead.temperatura} />
-            <CommercialSignalBadge lead={lead} />
-            <OperationalPriorityBadge lead={lead} />
           </div>
         </div>
         <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
@@ -1553,8 +1562,18 @@ function BasePanel({
             </tr>
           </thead>
           <tbody>
-            {leads.map((lead) => (
-              <tr className="border-b last:border-b-0" key={lead.id}>
+            {leads.map((lead) => {
+              const aging = resolveCrmLeadOperationalAging(lead);
+
+              return (
+              <tr
+                className={cn(
+                  "border-b last:border-b-0",
+                  getOperationalAgingRowClassName(aging.aging),
+                )}
+                key={lead.id}
+                title={aging.summary}
+              >
                 <td className="px-3 py-3">
                   <button
                     className="font-medium text-foreground hover:text-primary"
@@ -1599,7 +1618,8 @@ function BasePanel({
                   </Button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1987,6 +2007,34 @@ function getOperationalPriorityClassName(priority: CrmOperationalPriority) {
   }
 
   return "border-border bg-background text-muted-foreground";
+}
+
+function getOperationalAgingCardClassName(aging: CrmOperationalAging) {
+  if (aging === "attention") {
+    return "border-[#e6d7a8] bg-[#fbf7e8]";
+  }
+
+  if (aging === "stale") {
+    return "border-[#e3bcbc] bg-[#fbefef]";
+  }
+
+  if (aging === "unknown") {
+    return "border-border bg-background/80";
+  }
+
+  return "border-border bg-card";
+}
+
+function getOperationalAgingRowClassName(aging: CrmOperationalAging) {
+  if (aging === "attention") {
+    return "bg-[#fffaf0]";
+  }
+
+  if (aging === "stale") {
+    return "bg-[#fff3f3]";
+  }
+
+  return "";
 }
 
 function LeadLine({ label, value }: { label: string; value: string }) {
