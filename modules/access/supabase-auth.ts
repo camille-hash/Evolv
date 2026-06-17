@@ -80,8 +80,13 @@ export async function signOutFromSupabaseAuth() {
 
 export async function requestSupabasePasswordReset(email: string) {
   const supabase = createSupabaseAuthClient();
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (typeof window !== "undefined" ? window.location.origin : "");
+
   await supabase.auth.resetPasswordForEmail(email.trim(), {
-    redirectTo: typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined,
+    redirectTo: `${appUrl.replace(/\/$/, "")}/reset-password`,
   });
 }
 
