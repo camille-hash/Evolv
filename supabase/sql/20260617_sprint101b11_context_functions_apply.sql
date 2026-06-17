@@ -18,7 +18,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public, auth
+set search_path = public, pg_temp
 as $$
   select p.organization_id
   from public.profiles p
@@ -39,7 +39,7 @@ returns text
 language sql
 stable
 security definer
-set search_path = public, auth
+set search_path = public, pg_temp
 as $$
   select p.role
   from public.profiles p
