@@ -1,0 +1,87 @@
+-- Sprint 101B.14
+-- CRM Leads RLS Hardening Design
+-- PLANNING ONLY. DO NOT EXECUTE.
+--
+-- This file is intentionally a pseudo-migration document.
+-- It must not be applied directly.
+
+-- CURRENT STATE CONFIRMED
+-- table: public.crm_leads
+-- RLS: enabled
+--
+-- Current policies:
+-- 1. Allow public read crm_leads
+--    role: anon
+--    command: SELECT
+--    using: true
+--
+-- 2. Allow public update crm_leads
+--    role: anon
+--    command: UPDATE
+--    with check: true
+--
+-- 3. Authenticated bridge read crm_leads
+--    role: authenticated
+--    command: SELECT
+--    using: true
+--
+-- 4. Authenticated bridge update crm_leads
+--    role: authenticated
+--    command: UPDATE
+--    with check: true
+
+-- TARGET POLICY DESIGN
+--
+-- Pseudo-DDL:
+--
+-- create policy "crm_leads authenticated read same organization"
+-- on public.crm_leads
+-- for select
+-- to authenticated
+-- using (
+--   organization_id = public.evolv_current_organization_id()
+-- );
+--
+-- create policy "crm_leads authenticated update same organization"
+-- on public.crm_leads
+-- for update
+-- to authenticated
+-- using (
+--   organization_id = public.evolv_current_organization_id()
+-- )
+-- with check (
+--   organization_id = public.evolv_current_organization_id()
+-- );
+
+-- CONTROLLED COEXISTENCE DESIGN
+--
+-- Phase 1:
+-- Add organization-scoped policies.
+-- Keep all bridge policies.
+--
+-- Phase 2:
+-- Validate CRM/Auth/Recovery/Lead Notes.
+--
+-- Phase 3:
+-- Remove anon policies first, only after validation.
+--
+-- Phase 4:
+-- Remove authenticated bridge policies after second validation.
+--
+-- Phase 5:
+-- Record final policy baseline.
+
+-- REMOVAL CANDIDATES AFTER VALIDATION ONLY
+--
+-- drop policy "Allow public read crm_leads" on public.crm_leads;
+-- drop policy "Allow public update crm_leads" on public.crm_leads;
+-- drop policy "Authenticated bridge read crm_leads" on public.crm_leads;
+-- drop policy "Authenticated bridge update crm_leads" on public.crm_leads;
+
+-- ROLLBACK CONCEPT
+--
+-- If failure occurs before bridge removal:
+-- remove only the new organization-scoped policies.
+--
+-- If failure occurs after bridge removal:
+-- restore the minimum bridge policy needed to recover CRM operation.
