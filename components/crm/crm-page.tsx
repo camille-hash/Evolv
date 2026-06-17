@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import {
   addCrmStageToPipeline,
   buildCrmAdvancedSearchOptions,
+  crmStageLabels,
   crmTemperatureLabels,
   emptyCrmLeadInput,
   filterCrmLeadsAdvanced,
@@ -156,6 +157,7 @@ export function CrmPage({
     pipeline: CrmPipeline;
     stage: CrmStage;
   } | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -174,6 +176,18 @@ export function CrmPage({
       window.clearTimeout(timeoutId);
     };
   }, []);
+
+  useEffect(() => {
+    if (!successMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [successMessage]);
 
   const configuredPipelineDefinitions = useMemo(
     () => toCrmPipelineDefinitions(pipelineConfig),
@@ -232,11 +246,13 @@ export function CrmPage({
     return (
       <CrmLeadDetail
         draft={draft}
+        feedbackMessage={successMessage}
         lead={selectedLead}
         onCancel={() => {
           setSelectedLeadId(null);
           setDraft(emptyCrmLeadInput);
         }}
+        onClearFeedbackMessage={() => setSuccessMessage(null)}
         onDraftChange={setDraft}
         onGenerateSimulation={(lead: CrmLead) => onGenerateSimulation?.(lead)}
         onSave={handleSaveSelectedLead}
@@ -297,6 +313,7 @@ export function CrmPage({
       ),
     );
     setDraft(mapLeadToInput(savedLead));
+    setSuccessMessage("Lead atualizado com sucesso.");
   }
 
   function handleEditLead(lead: CrmLead) {
@@ -340,6 +357,10 @@ export function CrmPage({
       stage: etapa,
     });
 
+    if (!movement.changed) {
+      return;
+    }
+
     recordCrmStageChange({
       leadId: lead.id,
       fromPipeline: movement.fromPipeline,
@@ -369,6 +390,11 @@ export function CrmPage({
       currentLeads.map((currentLead) =>
         currentLead.id === lead.id ? savedLead : currentLead,
       ),
+    );
+    setSuccessMessage(
+      crmStageLabels[movement.toStage]
+        ? `Lead movido para ${crmStageLabels[movement.toStage]}.`
+        : "Lead movido com sucesso.",
     );
   }
 
@@ -487,6 +513,8 @@ export function CrmPage({
           ))}
         </nav>
       </section>
+
+      {successMessage ? <SuccessFeedback message={successMessage} /> : null}
 
       {activePipelineGroup ? (
         <div className="grid min-w-0 gap-4 overflow-x-hidden">
@@ -1244,7 +1272,7 @@ function CompactLeadCard({
     >
       <div className="flex min-w-0 items-center justify-between gap-1.5 overflow-hidden">
         <h4 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
-          {lead.nome}
+          {getLeadDisplayName(lead)}
         </h4>
         <div className="shrink-0 overflow-hidden">
           <TemperatureBadge temperature={lead.temperatura} />
@@ -1267,7 +1295,7 @@ function CompactLeadCard({
       </div>
       <div className="mt-1 flex justify-end">
         <Button
-          aria-label={`Editar ${lead.nome}`}
+          aria-label={`Editar ${getLeadDisplayName(lead)}`}
           className="h-6 w-6 px-0"
           onClick={() => onEdit(lead)}
           size="sm"
@@ -1300,7 +1328,7 @@ function DailyLeadCard({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h4 className="truncate text-sm font-semibold">{lead.nome}</h4>
+            <h4 className="truncate text-sm font-semibold">{getLeadDisplayName(lead)}</h4>
             <p className="mt-1 truncate text-xs text-muted-foreground">
               {lead.telefone || "Sem telefone"}
             </p>
@@ -1361,7 +1389,7 @@ function LostLeadsPanel({
               {leads.map((lead) => (
                 <tr className="border-b last:border-b-0" key={lead.id}>
                   <td className="truncate px-3 py-3 font-medium">
-                    {lead.nome}
+                    {getLeadDisplayName(lead)}
                   </td>
                   <td className="truncate px-3 py-3 text-muted-foreground">
                     {lead.telefone || "-"}
@@ -1451,7 +1479,7 @@ function BasePanel({
                     onClick={() => onOpen(lead.id)}
                     type="button"
                   >
-                    {lead.nome}
+                    {getLeadDisplayName(lead)}
                   </button>
                 </td>
                 <td className="px-3 py-3 text-muted-foreground">
@@ -1984,6 +2012,7 @@ function filterBaseLeads(leads: CrmLead[], search: string) {
   return leads.filter((lead) =>
     [
       lead.nome,
+      getLeadDisplayName(lead),
       lead.telefone,
       lead.email,
       lead.pais ?? "",
@@ -2054,6 +2083,33 @@ function formatDate(value: string) {
   const date = new Date(value);
 
   return Number.isNaN(date.getTime()) ? "-" : dateOnlyFormatter.format(date);
+}
+
+function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) {
+  const normalizedName =
+    typeof lead.nome === "string" ? lead.nome.trim() : "";
+
+  if (
+    normalizedName &&
+    normalizedName.toLowerCase() !== "undefined" &&
+    normalizedName.toLowerCase() !== "null"
+  ) {
+    return normalizedName;
+  }
+
+  const fallbackReference = lead.telefone?.trim() || lead.email?.trim() || "";
+
+  return fallbackReference
+    ? `Lead sem nome (${fallbackReference})`
+    : "Lead sem nome";
+}
+
+function SuccessFeedback({ message }: { message: string }) {
+  return (
+    <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+      {message}
+    </p>
+  );
 }
 
 function normalizeKey(value: string) {

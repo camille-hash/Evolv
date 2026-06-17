@@ -27,6 +27,8 @@ export function buildTemporaryStructuredNotesFromLead(
   lead: CrmLead,
 ): CrmStructuredNoteGroups {
   const author = lead.consultor || "EVOLV";
+  const pipelineLabel = resolvePipelineLabel(lead.pipeline);
+  const stageLabel = resolveStageLabel(lead.etapa);
   const strategicContext = lead.observacoes.trim()
     ? [
         {
@@ -42,9 +44,7 @@ export function buildTemporaryStructuredNotesFromLead(
   const latestMovements: CrmStructuredNote[] = [
     {
       author: "EVOLV",
-      content: `Lead esta em ${crmPipelineLabels[lead.pipeline]} / ${
-        crmStageLabels[lead.etapa]
-      }.`,
+      content: `Lead esta em ${pipelineLabel} / ${stageLabel}.`,
       id: `current-stage-${lead.id}`,
       kind: "latest-movement",
       timestamp: lead.updatedAt,
@@ -72,4 +72,20 @@ export function buildTemporaryStructuredNotesFromLead(
     latestMovements,
     strategicContext,
   };
+}
+
+function resolvePipelineLabel(pipeline: CrmLead["pipeline"]) {
+  const label = crmPipelineLabels[pipeline];
+
+  return typeof label === "string" && label.trim()
+    ? label
+    : "Funil nao informado";
+}
+
+function resolveStageLabel(stage: CrmLead["etapa"]) {
+  const label = crmStageLabels[stage];
+
+  return typeof label === "string" && label.trim()
+    ? label
+    : "Etapa nao informada";
 }

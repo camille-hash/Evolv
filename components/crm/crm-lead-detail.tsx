@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ArrowLeft, ChevronDown, ChevronUp, Phone, Plus, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,8 +45,10 @@ const fieldInputClass =
 
 type CrmLeadDetailProps = {
   draft: CrmLeadInput;
+  feedbackMessage?: string | null;
   lead: CrmLead;
   onCancel: () => void;
+  onClearFeedbackMessage?: () => void;
   onDraftChange: (draft: CrmLeadInput) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
@@ -55,8 +57,10 @@ type CrmLeadDetailProps = {
 
 export function CrmLeadDetail({
   draft,
+  feedbackMessage,
   lead,
   onCancel,
+  onClearFeedbackMessage,
   onDraftChange,
   onGenerateSimulation,
   onSave,
@@ -67,10 +71,12 @@ export function CrmLeadDetail({
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [noteError, setNoteError] = useState<string | null>(null);
+  const [noteSuccessMessage, setNoteSuccessMessage] = useState<string | null>(null);
   const [notesState, setNotesState] = useState<{
     leadId: string;
     notes: CrmLeadNote[];
   } | null>(null);
+  const leadDisplayName = useMemo(() => getLeadDisplayName(lead), [lead]);
   const whatsappUrl = buildWhatsappUrl(lead.telefone);
   const structuredNotes = buildTemporaryStructuredNotesFromLead(lead);
   const persistedNotes =
@@ -127,6 +133,30 @@ export function CrmLeadDetail({
     };
   }, [lead.id]);
 
+  useEffect(() => {
+    if (!noteSuccessMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setNoteSuccessMessage(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [noteSuccessMessage]);
+
+  useEffect(() => {
+    if (!feedbackMessage || !onClearFeedbackMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      onClearFeedbackMessage();
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [feedbackMessage, onClearFeedbackMessage]);
+
   function updateDraft(patch: Partial<CrmLeadInput>) {
     onDraftChange({
       ...draft,
@@ -153,6 +183,7 @@ export function CrmLeadDetail({
 
   function handleOpenNoteModal() {
     setNoteError(null);
+    setNoteSuccessMessage(null);
     setIsNoteModalOpen(true);
   }
 
@@ -211,6 +242,7 @@ export function CrmLeadDetail({
       setNoteContent("");
       setIsHistoryOpen(true);
       setIsNoteModalOpen(false);
+      setNoteSuccessMessage("Nota adicionada com sucesso.");
     } catch (error) {
       setNoteError(
         error instanceof Error
@@ -231,7 +263,7 @@ export function CrmLeadDetail({
               Dossie executivo
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-foreground">
-              {lead.nome}
+              {leadDisplayName}
             </h2>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
               <span className="rounded-full border bg-background px-2 py-1 text-muted-foreground">
@@ -254,11 +286,19 @@ export function CrmLeadDetail({
       </section>
 
       <form className="grid gap-4" onSubmit={onSave}>
+        {feedbackMessage ? (
+          <SuccessFeedback message={feedbackMessage} />
+        ) : null}
+
+        {noteSuccessMessage ? (
+          <SuccessFeedback message={noteSuccessMessage} />
+        ) : null}
+
         <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <ExecutiveDossierCard
             description="Dados estaveis para entender rapidamente quem esta do outro lado."
             eyebrow="Quem e"
-            title={lead.nome}
+            title={leadDisplayName}
           >
             <div className="grid gap-3 text-sm md:grid-cols-2">
               <LeadInfo label="Telefone" value={lead.telefone || "-"} />
@@ -649,6 +689,33 @@ function mapLeadNoteToStructuredNote(note: CrmLeadNote): CrmStructuredNote {
     kind: "history",
     timestamp: note.createdAt,
   };
+}
+
+function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) {
+  const normalizedName =
+    typeof lead.nome === "string" ? lead.nome.trim() : "";
+
+  if (
+    normalizedName &&
+    normalizedName.toLowerCase() !== "undefined" &&
+    normalizedName.toLowerCase() !== "null"
+  ) {
+    return normalizedName;
+  }
+
+  const fallbackReference = lead.telefone?.trim() || lead.email?.trim() || "";
+
+  return fallbackReference
+    ? `Lead sem nome (${fallbackReference})`
+    : "Lead sem nome";
+}
+
+function SuccessFeedback({ message }: { message: string }) {
+  return (
+    <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+      {message}
+    </p>
+  );
 }
 
 function ExecutiveDossierCard({
