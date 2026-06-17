@@ -12,6 +12,31 @@ do $$
 begin
   if not exists (
     select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'evolv_current_organization_id'
+  ) then
+    raise exception 'Missing public.evolv_current_organization_id()';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'crm_leads'
+      and c.relrowsecurity = true
+  ) then
+    raise exception 'RLS is not enabled on public.crm_leads';
+  end if;
+end
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
     from pg_policies
     where schemaname = 'public'
       and tablename = 'crm_leads'
