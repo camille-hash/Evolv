@@ -15,10 +15,12 @@ import {
   getStagesForPipeline,
   isStageInPipeline,
   resolveCrmLeadCommercialSignal,
+  resolveCrmLeadOperationalPriority,
   type CrmCommercialSignal,
   type CrmLead,
   type CrmLeadInput,
   type CrmLeadNote,
+  type CrmOperationalPriority,
   type CrmPipeline,
   type CrmStage,
   type CrmStructuredNote,
@@ -92,6 +94,7 @@ export function CrmLeadDetail({
   const latestMovement =
     persistedStructuredNotes[0] ?? structuredNotes.latestMovements[0];
   const commercialSignal = resolveCrmLeadCommercialSignal(lead);
+  const operationalPriority = resolveCrmLeadOperationalPriority(lead);
   const leadObjective =
     lead.produtoInteresse ||
     lead.tituloOportunidade ||
@@ -284,9 +287,15 @@ export function CrmLeadDetail({
               >
                 Sinal comercial: {commercialSignal.label}
               </CommercialSignalBadge>
+              <OperationalPriorityBadge
+                priority={operationalPriority.priority}
+                summary={operationalPriority.summary}
+              >
+                Prioridade operacional: {operationalPriority.label}
+              </OperationalPriorityBadge>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              {commercialSignal.summary}
+              {commercialSignal.summary} - {operationalPriority.summary}
             </p>
           </div>
 
@@ -365,6 +374,14 @@ export function CrmLeadDetail({
             title="Proxima Acao"
           >
             <div className="rounded-md border bg-background/70 p-4 text-sm">
+              <div className="mb-3 flex flex-wrap gap-2">
+                <OperationalPriorityBadge
+                  priority={operationalPriority.priority}
+                  summary={operationalPriority.summary}
+                >
+                  {operationalPriority.label}
+                </OperationalPriorityBadge>
+              </div>
               <p className="font-medium text-foreground">
                 {lead.proximaAcao || "Nenhuma acao programada."}
               </p>
@@ -848,6 +865,28 @@ function CommercialSignalBadge({
   );
 }
 
+function OperationalPriorityBadge({
+  children,
+  priority,
+  summary,
+}: {
+  children: React.ReactNode;
+  priority: CrmOperationalPriority;
+  summary: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-1 text-muted-foreground",
+        getOperationalPriorityClassName(priority),
+      )}
+      title={summary}
+    >
+      {children}
+    </span>
+  );
+}
+
 function getCommercialSignalClassName(signal: CrmCommercialSignal) {
   if (signal === "hot") {
     return "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]";
@@ -863,6 +902,30 @@ function getCommercialSignalClassName(signal: CrmCommercialSignal) {
 
   if (signal === "abandoned") {
     return "border-[#d2b2b2] bg-[#f6eeee] text-[#8a4b4b]";
+  }
+
+  return "border-border bg-background text-muted-foreground";
+}
+
+function getOperationalPriorityClassName(priority: CrmOperationalPriority) {
+  if (priority === "overdue") {
+    return "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]";
+  }
+
+  if (priority === "today") {
+    return "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]";
+  }
+
+  if (
+    priority === "missing_action" ||
+    priority === "missing_date" ||
+    priority === "missing_description"
+  ) {
+    return "border-[#d2b2b2] bg-[#f6eeee] text-[#8a4b4b]";
+  }
+
+  if (priority === "soon") {
+    return "border-[#b7c8bd] bg-[#edf5ef] text-[#3f6d4e]";
   }
 
   return "border-border bg-background text-muted-foreground";

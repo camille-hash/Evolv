@@ -1,5 +1,6 @@
 export * from "./crm-engine";
 export * from "./crm-intelligence";
+export * from "./crm-operational-priority";
 export * from "./crm-dashboard-engine";
 export * from "./crm-detail-engine";
 export * from "./crm-detail-storage";

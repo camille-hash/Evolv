@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import {
   addCrmStageToPipeline,
   buildCrmCommercialSignalSummary,
+  buildCrmOperationalPrioritySummary,
   buildCrmAdvancedSearchOptions,
   crmStageLabels,
   crmTemperatureLabels,
@@ -31,6 +32,7 @@ import {
   resetCrmPipelineConfig,
   resolveCrmLeadMovement,
   resolveCrmLeadCommercialSignal,
+  resolveCrmLeadOperationalPriority,
   saveCrmLead,
   summarizeCrmAdvancedSearch,
   toCrmPipelineDefinitions,
@@ -43,6 +45,7 @@ import {
   type CrmCommercialSignal,
   type CrmLead,
   type CrmLeadInput,
+  type CrmOperationalPriority,
   type CrmPipeline,
   type CrmStage,
   type CrmTemperature,
@@ -151,6 +154,7 @@ export function CrmPage({
       commercialSignal: "all",
       consultor: "all",
       freeText: "",
+      operationalPriority: "all",
       origem: "all",
       pipeline: "all",
       status: "all",
@@ -222,6 +226,10 @@ export function CrmPage({
   );
   const commercialSignalSummary = useMemo(
     () => buildCrmCommercialSignalSummary(filteredLeads),
+    [filteredLeads],
+  );
+  const operationalPrioritySummary = useMemo(
+    () => buildCrmOperationalPrioritySummary(filteredLeads),
     [filteredLeads],
   );
   const myDayGroups = useMemo(
@@ -473,12 +481,24 @@ export function CrmPage({
           <CrmSourceIndicator />
         </div>
 
-        <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-7">
+        <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-10">
           <CrmCompactMetric label="Ativas" value={searchSummary.active} />
           <CrmCompactMetric label="Quentes" value={commercialSignalSummary.hot} />
           <CrmCompactMetric
             label="Abandonados"
             value={commercialSignalSummary.abandoned}
+          />
+          <CrmCompactMetric
+            label="Acoes vencidas"
+            value={operationalPrioritySummary.overdue}
+          />
+          <CrmCompactMetric
+            label="Acoes hoje"
+            value={operationalPrioritySummary.today}
+          />
+          <CrmCompactMetric
+            label="Sem proxima acao"
+            value={operationalPrioritySummary.missingAction}
           />
           <CrmCompactMetric label="Ganhas" value={searchSummary.gained} />
           <CrmCompactMetric label="Perdidas" value={searchSummary.lost} />
@@ -619,6 +639,7 @@ function AdvancedSearchPanel({
       commercialSignal: "all",
       consultor: "all",
       freeText: "",
+      operationalPriority: "all",
       origem: "all",
       pipeline: "all",
       status: "all",
@@ -648,7 +669,7 @@ function AdvancedSearchPanel({
       </div>
 
       {isOpen ? (
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-8">
         <label className="grid gap-2 text-sm font-medium xl:col-span-2">
           <span>Busca livre</span>
           <input
@@ -748,6 +769,25 @@ function AdvancedSearchPanel({
             ["unknown", "Sem sinal"],
           ]}
           value={filters.commercialSignal}
+        />
+
+        <AdvancedSelect
+          label="Prioridade operacional"
+          onChange={(value) =>
+            onChange((currentFilters) => ({
+              ...currentFilters,
+              operationalPriority:
+                value as CrmAdvancedSearchFilters["operationalPriority"],
+            }))
+          }
+          options={[
+            ["all", "Todas"],
+            ["overdue", "Acoes vencidas"],
+            ["today", "Acoes hoje"],
+            ["missing_action", "Sem proxima acao"],
+            ["incomplete", "Planejamento incompleto"],
+          ]}
+          value={filters.operationalPriority}
         />
 
         <AdvancedSelect
@@ -1311,6 +1351,7 @@ function CompactLeadCard({
         <div className="flex shrink-0 flex-wrap justify-end gap-1 overflow-hidden">
           <TemperatureBadge temperature={lead.temperatura} />
           <CommercialSignalBadge lead={lead} />
+          <OperationalPriorityBadge lead={lead} />
         </div>
       </div>
       <div className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 overflow-hidden text-xs">
@@ -1371,6 +1412,7 @@ function DailyLeadCard({
           <div className="flex flex-wrap justify-end gap-1">
             <TemperatureBadge temperature={lead.temperatura} />
             <CommercialSignalBadge lead={lead} />
+            <OperationalPriorityBadge lead={lead} />
           </div>
         </div>
         <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
@@ -1495,7 +1537,7 @@ function BasePanel({
         />
       </div>
       <div className="mt-5 overflow-x-auto">
-        <table className="min-w-[900px] text-left text-sm">
+        <table className="min-w-[1040px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
             <tr className="border-b">
               <th className="px-3 py-3">Nome</th>
@@ -1506,6 +1548,7 @@ function BasePanel({
               <th className="px-3 py-3">Pipeline</th>
               <th className="px-3 py-3">Etapa</th>
               <th className="px-3 py-3">Sinal</th>
+              <th className="px-3 py-3">Prioridade</th>
               <th className="px-3 py-3">Acao</th>
             </tr>
           </thead>
@@ -1541,6 +1584,9 @@ function BasePanel({
                 </td>
                 <td className="px-3 py-3">
                   <CommercialSignalBadge lead={lead} />
+                </td>
+                <td className="px-3 py-3">
+                  <OperationalPriorityBadge lead={lead} />
                 </td>
                 <td className="px-3 py-3">
                   <Button
@@ -1883,6 +1929,22 @@ function CommercialSignalBadge({ lead }: { lead: CrmLead }) {
   );
 }
 
+function OperationalPriorityBadge({ lead }: { lead: CrmLead }) {
+  const priority = resolveCrmLeadOperationalPriority(lead);
+
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-1.5 py-0.5 text-[0.68rem] font-semibold leading-4",
+        getOperationalPriorityClassName(priority.priority),
+      )}
+      title={`Prioridade operacional: ${priority.label}. ${priority.summary}`}
+    >
+      {priority.label}
+    </span>
+  );
+}
+
 function getCommercialSignalClassName(signal: CrmCommercialSignal) {
   if (signal === "hot") {
     return "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]";
@@ -1898,6 +1960,30 @@ function getCommercialSignalClassName(signal: CrmCommercialSignal) {
 
   if (signal === "abandoned") {
     return "border-[#d2b2b2] bg-[#f6eeee] text-[#8a4b4b]";
+  }
+
+  return "border-border bg-background text-muted-foreground";
+}
+
+function getOperationalPriorityClassName(priority: CrmOperationalPriority) {
+  if (priority === "overdue") {
+    return "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]";
+  }
+
+  if (priority === "today") {
+    return "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]";
+  }
+
+  if (
+    priority === "missing_action" ||
+    priority === "missing_date" ||
+    priority === "missing_description"
+  ) {
+    return "border-[#d2b2b2] bg-[#f6eeee] text-[#8a4b4b]";
+  }
+
+  if (priority === "soon") {
+    return "border-[#b7c8bd] bg-[#edf5ef] text-[#3f6d4e]";
   }
 
   return "border-border bg-background text-muted-foreground";

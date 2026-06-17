@@ -13,6 +13,10 @@ import {
   resolveCrmLeadCommercialSignal,
   type CrmCommercialSignalFilter,
 } from "./crm-intelligence";
+import {
+  matchesCrmOperationalPriorityFilter,
+  type CrmOperationalPriorityFilter,
+} from "./crm-operational-priority";
 
 export const crmPipelines: CrmPipelineDefinition[] = [
   {
@@ -150,6 +154,7 @@ export const crmOpportunityStatusLabels: Record<CrmOpportunityStatus, string> =
 export type CrmAdvancedSearchFilters = {
   commercialSignal: CrmCommercialSignalFilter;
   freeText: string;
+  operationalPriority: CrmOperationalPriorityFilter;
   status: CrmOpportunityStatus | "all";
   pipeline: CrmPipeline | "all";
   consultor: string;
@@ -330,6 +335,12 @@ export function filterCrmLeadsAdvanced(
       filters.commercialSignal === "all" ||
       resolveCrmLeadCommercialSignal(lead).signal ===
         filters.commercialSignal;
+    const matchesOperationalPriority =
+      filters.operationalPriority === "all" ||
+      matchesCrmOperationalPriorityFilter(
+        lead,
+        filters.operationalPriority,
+      );
 
     return (
       matchesFreeText &&
@@ -338,7 +349,8 @@ export function filterCrmLeadsAdvanced(
       matchesConsultor &&
       matchesTemperature &&
       matchesOrigin &&
-      matchesCommercialSignal
+      matchesCommercialSignal &&
+      matchesOperationalPriority
     );
   });
 }
