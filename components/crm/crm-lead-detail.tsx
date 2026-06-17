@@ -14,6 +14,8 @@ import {
   getDefaultStageForPipeline,
   getStagesForPipeline,
   isStageInPipeline,
+  resolveCrmLeadCommercialSignal,
+  type CrmCommercialSignal,
   type CrmLead,
   type CrmLeadInput,
   type CrmLeadNote,
@@ -89,6 +91,7 @@ export function CrmLeadDetail({
       : structuredNotes.latestMovements;
   const latestMovement =
     persistedStructuredNotes[0] ?? structuredNotes.latestMovements[0];
+  const commercialSignal = resolveCrmLeadCommercialSignal(lead);
   const leadObjective =
     lead.produtoInteresse ||
     lead.tituloOportunidade ||
@@ -275,7 +278,16 @@ export function CrmLeadDetail({
               <span className="rounded-full border bg-background px-2 py-1 text-muted-foreground">
                 {currencyFormatter.format(lead.valorPretendido)}
               </span>
+              <CommercialSignalBadge
+                signal={commercialSignal.signal}
+                summary={commercialSignal.summary}
+              >
+                Sinal comercial: {commercialSignal.label}
+              </CommercialSignalBadge>
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {commercialSignal.summary}
+            </p>
           </div>
 
           <Button onClick={onCancel} type="button" variant="ghost">
@@ -812,4 +824,46 @@ function LeadInfo({ label, value }: { label: string; value: string }) {
       <span className="font-medium text-foreground">{value}</span>
     </div>
   );
+}
+
+function CommercialSignalBadge({
+  children,
+  signal,
+  summary,
+}: {
+  children: React.ReactNode;
+  signal: CrmCommercialSignal;
+  summary: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-1 text-muted-foreground",
+        getCommercialSignalClassName(signal),
+      )}
+      title={summary}
+    >
+      {children}
+    </span>
+  );
+}
+
+function getCommercialSignalClassName(signal: CrmCommercialSignal) {
+  if (signal === "hot") {
+    return "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]";
+  }
+
+  if (signal === "warm") {
+    return "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]";
+  }
+
+  if (signal === "cold") {
+    return "border-[#c8d4dc] bg-[#edf3f6] text-[#546977]";
+  }
+
+  if (signal === "abandoned") {
+    return "border-[#d2b2b2] bg-[#f6eeee] text-[#8a4b4b]";
+  }
+
+  return "border-border bg-background text-muted-foreground";
 }

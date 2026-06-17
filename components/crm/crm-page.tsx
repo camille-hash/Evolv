@@ -14,6 +14,7 @@ import { CrmSourceIndicator } from "@/components/crm/crm-source-indicator";
 import { Button } from "@/components/ui/button";
 import {
   addCrmStageToPipeline,
+  buildCrmCommercialSignalSummary,
   buildCrmAdvancedSearchOptions,
   crmStageLabels,
   crmTemperatureLabels,
@@ -29,6 +30,7 @@ import {
   removeCrmStage,
   resetCrmPipelineConfig,
   resolveCrmLeadMovement,
+  resolveCrmLeadCommercialSignal,
   saveCrmLead,
   summarizeCrmAdvancedSearch,
   toCrmPipelineDefinitions,
@@ -38,6 +40,7 @@ import {
   updateCrmStageName,
   type CrmConfigurablePipeline,
   type CrmAdvancedSearchFilters,
+  type CrmCommercialSignal,
   type CrmLead,
   type CrmLeadInput,
   type CrmPipeline,
@@ -145,6 +148,7 @@ export function CrmPage({
   const [newStageNames, setNewStageNames] = useState<Record<string, string>>({});
   const [advancedFilters, setAdvancedFilters] =
     useState<CrmAdvancedSearchFilters>({
+      commercialSignal: "all",
       consultor: "all",
       freeText: "",
       origem: "all",
@@ -214,6 +218,10 @@ export function CrmPage({
   );
   const searchSummary = useMemo(
     () => summarizeCrmAdvancedSearch(filteredLeads),
+    [filteredLeads],
+  );
+  const commercialSignalSummary = useMemo(
+    () => buildCrmCommercialSignalSummary(filteredLeads),
     [filteredLeads],
   );
   const myDayGroups = useMemo(
@@ -465,8 +473,13 @@ export function CrmPage({
           <CrmSourceIndicator />
         </div>
 
-        <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-7">
           <CrmCompactMetric label="Ativas" value={searchSummary.active} />
+          <CrmCompactMetric label="Quentes" value={commercialSignalSummary.hot} />
+          <CrmCompactMetric
+            label="Abandonados"
+            value={commercialSignalSummary.abandoned}
+          />
           <CrmCompactMetric label="Ganhas" value={searchSummary.gained} />
           <CrmCompactMetric label="Perdidas" value={searchSummary.lost} />
           <CrmCompactMetric
@@ -603,6 +616,7 @@ function AdvancedSearchPanel({
 }) {
   function clearFilters() {
     onChange({
+      commercialSignal: "all",
       consultor: "all",
       freeText: "",
       origem: "all",
@@ -634,7 +648,7 @@ function AdvancedSearchPanel({
       </div>
 
       {isOpen ? (
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
         <label className="grid gap-2 text-sm font-medium xl:col-span-2">
           <span>Busca livre</span>
           <input
@@ -714,6 +728,26 @@ function AdvancedSearchPanel({
             ["quente", "Quente"],
           ]}
           value={filters.temperatura}
+        />
+
+        <AdvancedSelect
+          label="Sinal comercial"
+          onChange={(value) =>
+            onChange((currentFilters) => ({
+              ...currentFilters,
+              commercialSignal:
+                value as CrmAdvancedSearchFilters["commercialSignal"],
+            }))
+          }
+          options={[
+            ["all", "Todos"],
+            ["hot", "Quentes"],
+            ["warm", "Mornos"],
+            ["cold", "Frios"],
+            ["abandoned", "Abandonados"],
+            ["unknown", "Sem sinal"],
+          ]}
+          value={filters.commercialSignal}
         />
 
         <AdvancedSelect
@@ -1274,8 +1308,9 @@ function CompactLeadCard({
         <h4 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
           {getLeadDisplayName(lead)}
         </h4>
-        <div className="shrink-0 overflow-hidden">
+        <div className="flex shrink-0 flex-wrap justify-end gap-1 overflow-hidden">
           <TemperatureBadge temperature={lead.temperatura} />
+          <CommercialSignalBadge lead={lead} />
         </div>
       </div>
       <div className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 overflow-hidden text-xs">
@@ -1333,7 +1368,10 @@ function DailyLeadCard({
               {lead.telefone || "Sem telefone"}
             </p>
           </div>
-          <TemperatureBadge temperature={lead.temperatura} />
+          <div className="flex flex-wrap justify-end gap-1">
+            <TemperatureBadge temperature={lead.temperatura} />
+            <CommercialSignalBadge lead={lead} />
+          </div>
         </div>
         <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
           <LeadLine
@@ -1467,6 +1505,7 @@ function BasePanel({
               <th className="px-3 py-3">Responsavel</th>
               <th className="px-3 py-3">Pipeline</th>
               <th className="px-3 py-3">Etapa</th>
+              <th className="px-3 py-3">Sinal</th>
               <th className="px-3 py-3">Acao</th>
             </tr>
           </thead>
@@ -1499,6 +1538,9 @@ function BasePanel({
                 </td>
                 <td className="px-3 py-3 text-muted-foreground">
                   {lead.etapa}
+                </td>
+                <td className="px-3 py-3">
+                  <CommercialSignalBadge lead={lead} />
                 </td>
                 <td className="px-3 py-3">
                   <Button
@@ -1823,6 +1865,42 @@ function TemperatureBadge({ temperature }: { temperature: CrmTemperature }) {
       {crmTemperatureLabels[temperature]}
     </span>
   );
+}
+
+function CommercialSignalBadge({ lead }: { lead: CrmLead }) {
+  const signal = resolveCrmLeadCommercialSignal(lead);
+
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-1.5 py-0.5 text-[0.68rem] font-semibold leading-4",
+        getCommercialSignalClassName(signal.signal),
+      )}
+      title={`Sinal comercial: ${signal.label}. ${signal.summary}.`}
+    >
+      {signal.label}
+    </span>
+  );
+}
+
+function getCommercialSignalClassName(signal: CrmCommercialSignal) {
+  if (signal === "hot") {
+    return "border-[#d9a184] bg-[#f5e8df] text-[#9a4f32]";
+  }
+
+  if (signal === "warm") {
+    return "border-[#d9c28a] bg-[#f7f0df] text-[#80662f]";
+  }
+
+  if (signal === "cold") {
+    return "border-[#c8d4dc] bg-[#edf3f6] text-[#546977]";
+  }
+
+  if (signal === "abandoned") {
+    return "border-[#d2b2b2] bg-[#f6eeee] text-[#8a4b4b]";
+  }
+
+  return "border-border bg-background text-muted-foreground";
 }
 
 function LeadLine({ label, value }: { label: string; value: string }) {

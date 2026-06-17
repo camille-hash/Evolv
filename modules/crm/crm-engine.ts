@@ -9,6 +9,10 @@ import type {
   CrmTemperature,
 } from "./crm-types";
 import { toCrmPipelineDefinitions } from "./crm-pipeline-engine";
+import {
+  resolveCrmLeadCommercialSignal,
+  type CrmCommercialSignalFilter,
+} from "./crm-intelligence";
 
 export const crmPipelines: CrmPipelineDefinition[] = [
   {
@@ -144,6 +148,7 @@ export const crmOpportunityStatusLabels: Record<CrmOpportunityStatus, string> =
   };
 
 export type CrmAdvancedSearchFilters = {
+  commercialSignal: CrmCommercialSignalFilter;
   freeText: string;
   status: CrmOpportunityStatus | "all";
   pipeline: CrmPipeline | "all";
@@ -321,6 +326,10 @@ export function filterCrmLeadsAdvanced(
       lead.temperatura === filters.temperatura;
     const matchesOrigin =
       filters.origem === "all" || lead.origem === filters.origem;
+    const matchesCommercialSignal =
+      filters.commercialSignal === "all" ||
+      resolveCrmLeadCommercialSignal(lead).signal ===
+        filters.commercialSignal;
 
     return (
       matchesFreeText &&
@@ -328,7 +337,8 @@ export function filterCrmLeadsAdvanced(
       matchesPipeline &&
       matchesConsultor &&
       matchesTemperature &&
-      matchesOrigin
+      matchesOrigin &&
+      matchesCommercialSignal
     );
   });
 }
