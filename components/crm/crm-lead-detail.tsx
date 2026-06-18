@@ -10,10 +10,12 @@ import {
   Phone,
   Plus,
   Send,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import {
+  cancelCrmTask,
   completeCrmTask,
   createCrmTaskForLead,
   fetchCrmTasksForLead,
@@ -103,6 +105,7 @@ export function CrmLeadDetail({
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [isCompletingTask, setIsCompletingTask] = useState(false);
+  const [isCancelingTask, setIsCancelingTask] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [taskDraft, setTaskDraft] = useState<TaskDraft>(() =>
     createDefaultTaskDraft(),
@@ -465,7 +468,7 @@ export function CrmLeadDetail({
   }
 
   async function handleCompleteTask(task: CrmTask) {
-    if (isCompletingTask) {
+    if (isCompletingTask || isCancelingTask) {
       return;
     }
 
@@ -498,6 +501,43 @@ export function CrmLeadDetail({
       );
     } finally {
       setIsCompletingTask(false);
+    }
+  }
+
+  async function handleCancelTask(task: CrmTask) {
+    if (isCompletingTask || isCancelingTask) {
+      return;
+    }
+
+    setIsCancelingTask(true);
+    setTaskActionError(null);
+    setTaskLoadError(null);
+    setTaskSuccessMessage(null);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      await cancelCrmTask(accessToken, task.id);
+
+      const tasks = await fetchCrmTasksForLead(accessToken, lead.id);
+
+      setTasksState({
+        leadId: lead.id,
+        tasks,
+      });
+      setTaskSuccessMessage("Acao cancelada.");
+    } catch (error) {
+      setTaskActionError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel cancelar a acao.",
+      );
+    } finally {
+      setIsCancelingTask(false);
     }
   }
 
@@ -634,7 +674,9 @@ export function CrmLeadDetail({
                 </>
               ) : nextPendingTask ? (
                 <TaskNextAction
+                  isCanceling={isCancelingTask}
                   isCompleting={isCompletingTask}
+                  onCancelTask={handleCancelTask}
                   onCompleteTask={handleCompleteTask}
                   onCreateTask={handleOpenTaskModal}
                   task={nextPendingTask}
@@ -1147,16 +1189,22 @@ function compareTasksByDueDate(first: CrmTask, second: CrmTask) {
 }
 
 function TaskNextAction({
+  isCanceling,
   isCompleting,
+  onCancelTask,
   onCompleteTask,
   onCreateTask,
   task,
 }: {
+  isCanceling: boolean;
   isCompleting: boolean;
+  onCancelTask: (task: CrmTask) => void;
   onCompleteTask: (task: CrmTask) => void;
   onCreateTask: () => void;
   task: CrmTask;
 }) {
+  const isMutating = isCompleting || isCanceling;
+
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap gap-2">
@@ -1183,14 +1231,28 @@ function TaskNextAction({
       ) : null}
       <div className="flex flex-wrap gap-2">
         <Button
-          disabled={isCompleting}
+          disabled={isMutating}
           onClick={() => onCompleteTask(task)}
           type="button"
         >
           <CheckCircle2 className="h-4 w-4" aria-hidden />
           {isCompleting ? "Concluindo..." : "Concluir acao"}
         </Button>
-        <Button onClick={onCreateTask} type="button" variant="secondary">
+        <Button
+          disabled={isMutating}
+          onClick={() => onCancelTask(task)}
+          type="button"
+          variant="ghost"
+        >
+          <XCircle className="h-4 w-4" aria-hidden />
+          {isCanceling ? "Cancelando..." : "Cancelar acao"}
+        </Button>
+        <Button
+          disabled={isMutating}
+          onClick={onCreateTask}
+          type="button"
+          variant="secondary"
+        >
           <Plus className="h-4 w-4" aria-hidden />
           Nova acao
         </Button>

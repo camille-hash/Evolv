@@ -73,3 +73,23 @@ export async function completeCrmTask(accessToken: string, taskId: string) {
 
   return payload.task;
 }
+
+export async function cancelCrmTask(accessToken: string, taskId: string) {
+  const response = await fetch(`/api/crm/tasks/${taskId}/cancel`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    method: "PATCH",
+  });
+
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    task?: CrmTask;
+  } | null;
+
+  if (!response.ok || !payload?.task) {
+    throw new Error(payload?.error ?? "Nao foi possivel cancelar a acao.");
+  }
+
+  return payload.task;
+}
