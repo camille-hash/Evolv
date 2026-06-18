@@ -1372,7 +1372,8 @@ function CompactLeadCard({
           {lead.proximaAcao || "-"}
         </span>
       </div>
-      <div className="mt-1 flex justify-end">
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <OperationalPriorityBadge lead={lead} />
         <Button
           aria-label={`Editar ${getLeadDisplayName(lead)}`}
           className="h-6 w-6 px-0"
@@ -1433,15 +1434,18 @@ function DailyLeadCard({
           <LeadLine label="Responsavel" value={lead.consultor || "-"} />
         </div>
       </button>
-      <Button
-        className="mt-3 w-full"
-        onClick={() => onEdit(lead)}
-        size="sm"
-        type="button"
-        variant="secondary"
-      >
-        Editar
-      </Button>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <OperationalPriorityBadge lead={lead} />
+        <Button
+          className="shrink-0"
+          onClick={() => onEdit(lead)}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          Editar
+        </Button>
+      </div>
     </article>
   );
 }
