@@ -1,7 +1,8 @@
-import type {
-  SimulatorCalculationResult,
-  SimulatorInput,
-  SimulatorScenarioKey,
+import {
+  calculateSimulatorScenarios,
+  type SimulatorCalculationResult,
+  type SimulatorInput,
+  type SimulatorScenarioKey,
 } from "@/modules/simulator/engine";
 import {
   buildSimulatorCommercialPresentation,
@@ -20,8 +21,10 @@ export type AnchoredProposal = {
   label: string;
   objective: string;
   referenceInstallment: number;
+  targetInstallment: number;
   distanceFromReference: number;
   scenarioKey: SimulatorScenarioKey;
+  input: SimulatorInput;
   presentation: SimulatorCommercialPresentation;
 };
 
@@ -32,27 +35,32 @@ export type AnchoredProposalInput = {
   insuranceOption: InsuranceOption;
   bidType: BidType;
   contemplationMonth: number;
+  selectedScenarioKey: SimulatorScenarioKey;
 };
 
 const proposalDefinitions: Array<{
   kind: AnchoredProposalKind;
   label: string;
   objective: string;
+  targetMultiplier: number;
 }> = [
   {
     kind: "conservative",
     label: "Conservadora",
-    objective: "Abaixo da parcela de referencia informada pelo cliente.",
+    objective: "Proxima da parcela confortavel informada pelo cliente.",
+    targetMultiplier: 1,
   },
   {
     kind: "recommended",
     label: "Recomendada",
-    objective: "Proxima da parcela de referencia para equilibrar conforto e credito.",
+    objective: "Pouco acima da referencia para equilibrar conforto e potencial.",
+    targetMultiplier: 1.15,
   },
   {
     kind: "patrimonial",
     label: "Patrimonial",
     objective: "Acima da referencia para ampliar potencial patrimonial.",
+    targetMultiplier: 1.3,
   },
 ];
 
@@ -63,6 +71,7 @@ export function buildAnchoredProposals({
   insuranceOption,
   bidType,
   contemplationMonth,
+  selectedScenarioKey,
 }: AnchoredProposalInput): AnchoredProposal[] {
   const safeReferenceInstallment = Math.max(0, referenceInstallment);
 
@@ -70,68 +79,71 @@ export function buildAnchoredProposals({
     return [];
   }
 
-  const candidates = (["half", "seventy", "full"] as SimulatorScenarioKey[])
-    .map((scenarioKey) => ({
-      scenarioKey,
-      presentation: buildSimulatorCommercialPresentation({
-        calculation,
-        input,
-        selectedScenarioKey: scenarioKey,
-        insuranceOption,
-        bidType,
-        contemplationMonth,
-      }),
-    }))
-    .sort(
-      (first, second) =>
-        first.presentation.installmentBeforeContemplation -
-        second.presentation.installmentBeforeContemplation,
-    );
-
-  const conservative =
-    [...candidates]
-      .reverse()
-      .find(
-        (candidate) =>
-          candidate.presentation.installmentBeforeContemplation <=
-          safeReferenceInstallment,
-      ) ?? candidates[0];
-  const recommended = candidates.reduce((closest, candidate) => {
-    const closestDistance = Math.abs(
-      closest.presentation.installmentBeforeContemplation -
-        safeReferenceInstallment,
-    );
-    const candidateDistance = Math.abs(
-      candidate.presentation.installmentBeforeContemplation -
-        safeReferenceInstallment,
-    );
-
-    return candidateDistance < closestDistance ? candidate : closest;
-  }, candidates[0]);
-  const patrimonial =
-    candidates.find(
-      (candidate) =>
-        candidate.presentation.installmentBeforeContemplation >=
-        safeReferenceInstallment,
-    ) ?? candidates[candidates.length - 1];
-
-  const selectedCandidates = {
-    conservative,
-    recommended,
-    patrimonial,
-  };
+  const basePresentation = buildSimulatorCommercialPresentation({
+    calculation,
+    input,
+    selectedScenarioKey,
+    insuranceOption,
+    bidType,
+    contemplationMonth,
+  });
+  const baseInstallment =
+    basePresentation.installmentBeforeContemplation > 0
+      ? basePresentation.installmentBeforeContemplation
+      : 0;
 
   return proposalDefinitions.map((definition) => {
-    const selectedCandidate = selectedCandidates[definition.kind];
+    const targetInstallment =
+      safeReferenceInstallment * definition.targetMultiplier;
+    const proposalInput = buildAnchoredProposalInput({
+      baseInstallment,
+      input,
+      targetInstallment,
+    });
+    const proposalCalculation = calculateSimulatorScenarios(proposalInput);
+    const presentation = buildSimulatorCommercialPresentation({
+      calculation: proposalCalculation,
+      input: proposalInput,
+      selectedScenarioKey,
+      insuranceOption,
+      bidType,
+      contemplationMonth,
+    });
 
     return {
       ...definition,
       referenceInstallment: safeReferenceInstallment,
+      targetInstallment,
       distanceFromReference:
-        selectedCandidate.presentation.installmentBeforeContemplation -
-        safeReferenceInstallment,
-      scenarioKey: selectedCandidate.scenarioKey,
-      presentation: selectedCandidate.presentation,
+        presentation.installmentBeforeContemplation - safeReferenceInstallment,
+      scenarioKey: selectedScenarioKey,
+      input: proposalInput,
+      presentation,
     };
   });
+}
+
+function buildAnchoredProposalInput({
+  baseInstallment,
+  input,
+  targetInstallment,
+}: {
+  baseInstallment: number;
+  input: SimulatorInput;
+  targetInstallment: number;
+}): SimulatorInput {
+  if (baseInstallment <= 0 || targetInstallment <= 0) {
+    return input;
+  }
+
+  return {
+    ...input,
+    credit: roundCurrencyValue(
+      input.credit * (targetInstallment / baseInstallment),
+    ),
+  };
+}
+
+function roundCurrencyValue(value: number) {
+  return Math.max(0.01, Math.round(value * 100) / 100);
 }

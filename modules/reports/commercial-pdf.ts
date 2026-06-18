@@ -136,8 +136,8 @@ function drawCover(
   });
 
   drawCoverMetric(doc, 130, {
-    label: "Credito contratado",
-    value: currencyFormatter.format(presentation.contractedCredit),
+    label: "Credito",
+    value: currencyFormatter.format(presentation.updatedCredit),
   });
   drawCoverMetric(doc, 158, {
     label: "Parcela antes da contemplacao",
@@ -212,12 +212,16 @@ function drawReportPage(
 
   y = drawSectionWithPageBreak(doc, y, "Resumo executivo", [
     {
-      label: "Credito contratado",
+      label: "Credito",
+      value: currencyFormatter.format(presentation.updatedCredit),
+    },
+    {
+      label: "Credito base",
       value: currencyFormatter.format(presentation.contractedCredit),
     },
     {
-      label: "Credito atualizado pelo INCC",
-      value: currencyFormatter.format(presentation.updatedCredit),
+      label: "INCC utilizado nesta projecao",
+      value: `${percentFormatter.format(presentation.inccRate)} ao ano`,
     },
     {
       label: "Cenario selecionado",

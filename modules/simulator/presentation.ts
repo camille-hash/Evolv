@@ -19,6 +19,7 @@ export type SimulatorCommercialPresentationInput = {
 
 export type SimulatorCommercialPresentation = {
   contractedCredit: number;
+  inccRate: number;
   inccAdjustmentCount: number;
   inccFactor: number;
   updatedCredit: number;
@@ -58,7 +59,8 @@ export function buildSimulatorCommercialPresentation({
   const inccAdjustmentCount = calculateInccAdjustmentCount(
     safeContemplationMonth,
   );
-  const inccFactor = Math.pow(1 + (input.inccRate ?? 0), inccAdjustmentCount);
+  const inccRate = input.inccRate ?? 0;
+  const inccFactor = Math.pow(1 + inccRate, inccAdjustmentCount);
   const updatedCredit = input.credit * inccFactor;
   const baseInstallment = getScenarioInstallment(
     baseScenario,
@@ -102,6 +104,7 @@ export function buildSimulatorCommercialPresentation({
 
   return {
     contractedCredit: input.credit,
+    inccRate,
     inccAdjustmentCount,
     inccFactor,
     updatedCredit,

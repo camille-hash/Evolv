@@ -28,6 +28,7 @@ export type SimulatorSavedResultSnapshot = {
   estimatedCardSaleGainRate: number;
   leverageMultiple: number;
   contractedCredit: number;
+  updatedCredit: number;
   selectedScenarioName: string;
 };
 
@@ -172,6 +173,7 @@ export function createResultSnapshot(
     estimatedCardSaleGainRate: presentation.estimatedCardSaleGainRate,
     leverageMultiple: presentation.leverageMultiple,
     contractedCredit: presentation.contractedCredit,
+    updatedCredit: presentation.updatedCredit,
     selectedScenarioName: presentation.selectedScenarioName,
   };
 }
@@ -251,11 +253,21 @@ function normalizeSavedSimulation(
 
   return {
     ...simulation,
+    results: normalizeResultSnapshot(simulation.results),
     commercialData: normalizeCommercialData(simulation.commercialData),
     administratorData: normalizeAdministratorData(
       simulation.administratorData,
     ),
   } as SimulatorSavedSimulation;
+}
+
+function normalizeResultSnapshot(
+  value: Partial<SimulatorSavedResultSnapshot>,
+): SimulatorSavedResultSnapshot {
+  return {
+    ...value,
+    updatedCredit: value.updatedCredit ?? value.contractedCredit ?? 0,
+  } as SimulatorSavedResultSnapshot;
 }
 
 function normalizeCommercialData(

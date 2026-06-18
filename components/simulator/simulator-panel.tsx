@@ -674,6 +674,7 @@ export function SimulatorPanel({
         insuranceOption,
         bidType,
         contemplationMonth: presentation.contemplationMonth,
+        selectedScenarioKey,
       }),
     );
   }
@@ -691,6 +692,10 @@ export function SimulatorPanel({
 
     setActiveSimulationId(null);
     setSimulationName(`${sourceSimulation.name} - Ajuste Comercial`);
+    setFormState((currentFormState) => ({
+      ...currentFormState,
+      credit: String(proposal.input.credit),
+    }));
     setSelectedScenarioKey(proposal.scenarioKey);
     setContemplationMonth(proposal.presentation.contemplationMonth);
     setPersonalizationSource({
@@ -710,7 +715,10 @@ export function SimulatorPanel({
       id: null,
       draft: {
         name: buildAnchoredProposalName(simulationName, proposal.label),
-        formState,
+        formState: {
+          ...formState,
+          credit: String(proposal.input.credit),
+        },
         commercialData,
         administratorData,
         selectedScenarioKey: proposal.scenarioKey,
@@ -1060,8 +1068,8 @@ function SimulationOperationPanel({
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <CommercialMetric
-            label="Credito contratado"
-            value={currencyFormatter.format(presentation.contractedCredit)}
+            label="Credito"
+            value={currencyFormatter.format(presentation.updatedCredit)}
             featured
           />
           <CommercialMetric
@@ -1256,7 +1264,7 @@ function AnchoredProposalsSection({
                 <AnchoredProposalValue
                   label="Credito"
                   value={currencyFormatter.format(
-                    proposal.presentation.contractedCredit,
+                    proposal.presentation.updatedCredit,
                   )}
                 />
                 <AnchoredProposalValue
@@ -1534,13 +1542,13 @@ function SimulationResults({
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <CommercialMetric
-          label="Credito contratado"
-          value={currencyFormatter.format(presentation.contractedCredit)}
+          label="Credito"
+          value={currencyFormatter.format(presentation.updatedCredit)}
           featured
         />
         <CommercialMetric
-          label="Credito atualizado"
-          value={currencyFormatter.format(presentation.updatedCredit)}
+          label="Credito base"
+          value={currencyFormatter.format(presentation.contractedCredit)}
         />
         <CommercialMetric
           label="Credito liquido"
@@ -1651,7 +1659,7 @@ function SavedSimulationsPanel({
                 <SavedValue
                   label="Credito"
                   value={currencyFormatter.format(
-                    simulation.results.contractedCredit,
+                    simulation.results.updatedCredit,
                   )}
                 />
                 <SavedValue

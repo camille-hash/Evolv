@@ -931,7 +931,7 @@ export function ExecutiveDashboard({
             <DashboardDetail
               label="Credito"
               value={currencyFormatter.format(
-                latestSimulation.results.contractedCredit,
+                latestSimulation.results.updatedCredit,
               )}
             />
             <DashboardDetail
