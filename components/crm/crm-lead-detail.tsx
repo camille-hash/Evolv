@@ -2,10 +2,19 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ArrowLeft, ChevronDown, ChevronUp, Phone, Plus, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Phone,
+  Plus,
+  Send,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import {
+  completeCrmTask,
   createCrmTaskForLead,
   fetchCrmTasksForLead,
 } from "@/modules/crm/client/crm-tasks-client";
@@ -93,6 +102,7 @@ export function CrmLeadDetail({
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [isCompletingTask, setIsCompletingTask] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [taskDraft, setTaskDraft] = useState<TaskDraft>(() =>
     createDefaultTaskDraft(),
@@ -111,6 +121,7 @@ export function CrmLeadDetail({
   } | null>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [taskLoadError, setTaskLoadError] = useState<string | null>(null);
+  const [taskActionError, setTaskActionError] = useState<string | null>(null);
   const leadDisplayName = useMemo(() => getLeadDisplayName(lead), [lead]);
   const whatsappUrl = buildWhatsappUrl(lead.telefone);
   const structuredNotes = buildTemporaryStructuredNotesFromLead(lead);
@@ -183,6 +194,7 @@ export function CrmLeadDetail({
     async function loadTasks() {
       setIsLoadingTasks(true);
       setTaskLoadError(null);
+      setTaskActionError(null);
 
       const accessToken = await readSupabaseAccessToken();
 
@@ -289,6 +301,7 @@ export function CrmLeadDetail({
   function handleOpenTaskModal() {
     setTaskDraft(createDefaultTaskDraft());
     setTaskError(null);
+    setTaskActionError(null);
     setTaskSuccessMessage(null);
     setIsTaskModalOpen(true);
   }
@@ -438,6 +451,7 @@ export function CrmLeadDetail({
       }));
       setIsTaskModalOpen(false);
       setTaskDraft(createDefaultTaskDraft());
+      setTaskActionError(null);
       setTaskSuccessMessage("Acao criada com sucesso.");
     } catch (error) {
       setTaskError(
@@ -447,6 +461,43 @@ export function CrmLeadDetail({
       );
     } finally {
       setIsCreatingTask(false);
+    }
+  }
+
+  async function handleCompleteTask(task: CrmTask) {
+    if (isCompletingTask) {
+      return;
+    }
+
+    setIsCompletingTask(true);
+    setTaskActionError(null);
+    setTaskLoadError(null);
+    setTaskSuccessMessage(null);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      await completeCrmTask(accessToken, task.id);
+
+      const tasks = await fetchCrmTasksForLead(accessToken, lead.id);
+
+      setTasksState({
+        leadId: lead.id,
+        tasks,
+      });
+      setTaskSuccessMessage("Acao concluida.");
+    } catch (error) {
+      setTaskActionError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel concluir a acao.",
+      );
+    } finally {
+      setIsCompletingTask(false);
     }
   }
 
@@ -582,7 +633,12 @@ export function CrmLeadDetail({
                   </p>
                 </>
               ) : nextPendingTask ? (
-                <TaskNextAction onCreateTask={handleOpenTaskModal} task={nextPendingTask} />
+                <TaskNextAction
+                  isCompleting={isCompletingTask}
+                  onCompleteTask={handleCompleteTask}
+                  onCreateTask={handleOpenTaskModal}
+                  task={nextPendingTask}
+                />
               ) : (
                 <>
                   <p className="font-medium text-foreground">
@@ -603,6 +659,11 @@ export function CrmLeadDetail({
                   </div>
                 </>
               )}
+              {taskActionError ? (
+                <p className="mt-3 text-xs leading-5 text-destructive">
+                  {taskActionError}
+                </p>
+              ) : null}
             </div>
             <div className="mt-4 grid gap-3 text-sm">
               <LeadInfo label="Responsavel" value={lead.consultor || "-"} />
@@ -1086,9 +1147,13 @@ function compareTasksByDueDate(first: CrmTask, second: CrmTask) {
 }
 
 function TaskNextAction({
+  isCompleting,
+  onCompleteTask,
   onCreateTask,
   task,
 }: {
+  isCompleting: boolean;
+  onCompleteTask: (task: CrmTask) => void;
   onCreateTask: () => void;
   task: CrmTask;
 }) {
@@ -1116,7 +1181,15 @@ function TaskNextAction({
           {task.notes}
         </p>
       ) : null}
-      <div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          disabled={isCompleting}
+          onClick={() => onCompleteTask(task)}
+          type="button"
+        >
+          <CheckCircle2 className="h-4 w-4" aria-hidden />
+          {isCompleting ? "Concluindo..." : "Concluir acao"}
+        </Button>
         <Button onClick={onCreateTask} type="button" variant="secondary">
           <Plus className="h-4 w-4" aria-hidden />
           Nova acao

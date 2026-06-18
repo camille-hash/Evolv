@@ -53,3 +53,23 @@ export async function createCrmTaskForLead(
 
   return payload.task;
 }
+
+export async function completeCrmTask(accessToken: string, taskId: string) {
+  const response = await fetch(`/api/crm/tasks/${taskId}/complete`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    method: "PATCH",
+  });
+
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    task?: CrmTask;
+  } | null;
+
+  if (!response.ok || !payload?.task) {
+    throw new Error(payload?.error ?? "Nao foi possivel concluir a acao.");
+  }
+
+  return payload.task;
+}
