@@ -38,6 +38,8 @@ import {
   type CrmTask,
   type CrmTaskType,
   type CrmOperationalPriority,
+  type CrmOperationalTimelineEvent,
+  type CrmTimelineReadModel,
   type CrmPipeline,
   type CrmStage,
   type CrmStructuredNote,
@@ -122,9 +124,15 @@ export function CrmLeadDetail({
     leadId: string;
     tasks: CrmTask[];
   } | null>(null);
+  const [timelineState, setTimelineState] = useState<{
+    leadId: string;
+    timeline: CrmTimelineReadModel;
+  } | null>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [taskLoadError, setTaskLoadError] = useState<string | null>(null);
   const [taskActionError, setTaskActionError] = useState<string | null>(null);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
   const leadDisplayName = useMemo(() => getLeadDisplayName(lead), [lead]);
   const whatsappUrl = buildWhatsappUrl(lead.telefone);
   const structuredNotes = buildTemporaryStructuredNotesFromLead(lead);
@@ -138,11 +146,8 @@ export function CrmLeadDetail({
     [lead.id, tasksState],
   );
   const persistedStructuredNotes = persistedNotes.map(mapLeadNoteToStructuredNote);
-  const visibleHistoryNotes = persistedStructuredNotes.length
-    ? persistedStructuredNotes
-    : structuredNotes.history.length
-      ? structuredNotes.history
-      : structuredNotes.latestMovements;
+  const timelineEvents =
+    timelineState?.leadId === lead.id ? timelineState.timeline.events : [];
   const latestMovement =
     persistedStructuredNotes[0] ?? structuredNotes.latestMovements[0];
   const commercialSignal = resolveCrmLeadCommercialSignal(lead);
@@ -185,6 +190,50 @@ export function CrmLeadDetail({
     }
 
     void loadNotes();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadTimeline() {
+      setIsLoadingTimeline(true);
+      setTimelineError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setIsLoadingTimeline(false);
+          setTimelineError("Nao foi possivel carregar a timeline agora.");
+        }
+        return;
+      }
+
+      try {
+        const timeline = await fetchLeadTimeline(accessToken, lead.id);
+
+        if (isActive) {
+          setTimelineState({
+            leadId: lead.id,
+            timeline,
+          });
+        }
+      } catch {
+        if (isActive) {
+          setTimelineError("Nao foi possivel carregar a timeline agora.");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingTimeline(false);
+        }
+      }
+    }
+
+    void loadTimeline();
 
     return () => {
       isActive = false;
@@ -350,6 +399,20 @@ export function CrmLeadDetail({
     });
   }
 
+  async function refreshLeadTimeline(accessToken: string, leadId: string) {
+    try {
+      const timeline = await fetchLeadTimeline(accessToken, leadId);
+
+      setTimelineState({
+        leadId,
+        timeline,
+      });
+      setTimelineError(null);
+    } catch {
+      setTimelineError("Nao foi possivel carregar a timeline agora.");
+    }
+  }
+
   async function handleSaveNote() {
     const content = noteContent.trim();
 
@@ -393,6 +456,7 @@ export function CrmLeadDetail({
         leadId: lead.id,
         notes: [payload.note, ...persistedNotes],
       });
+      await refreshLeadTimeline(accessToken, lead.id);
       setNoteContent("");
       setIsHistoryOpen(true);
       setIsNoteModalOpen(false);
@@ -452,6 +516,7 @@ export function CrmLeadDetail({
             ? [task, ...current.tasks.filter((item) => item.id !== task.id)]
             : [task],
       }));
+      await refreshLeadTimeline(accessToken, lead.id);
       setIsTaskModalOpen(false);
       setTaskDraft(createDefaultTaskDraft());
       setTaskActionError(null);
@@ -492,6 +557,7 @@ export function CrmLeadDetail({
         leadId: lead.id,
         tasks,
       });
+      await refreshLeadTimeline(accessToken, lead.id);
       setTaskSuccessMessage("Acao concluida.");
     } catch (error) {
       setTaskActionError(
@@ -529,6 +595,7 @@ export function CrmLeadDetail({
         leadId: lead.id,
         tasks,
       });
+      await refreshLeadTimeline(accessToken, lead.id);
       setTaskSuccessMessage("Acao cancelada.");
     } catch (error) {
       setTaskActionError(
@@ -761,14 +828,13 @@ export function CrmLeadDetail({
           >
             <span>
               <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Historico
+                Timeline
               </span>
               <span className="mt-1 block text-sm font-semibold text-foreground">
-                Historico Completo
+                Timeline Operacional
               </span>
               <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Secao recolhivel para consultar o contexto completo quando
-                necessario.
+                Notas e tarefas recentes deste lead, com autoria e horario.
               </span>
             </span>
             {isHistoryOpen ? (
@@ -785,9 +851,10 @@ export function CrmLeadDetail({
           </div>
           {isHistoryOpen ? (
             <div className="mt-4">
-              <CrmStructuredNotesList
-                emptyText="Historico estruturado sera conectado em sprint futura. Nesta versao, os dados existentes permanecem preservados nos campos atuais."
-                notes={visibleHistoryNotes}
+              <CrmOperationalTimelineList
+                error={timelineError}
+                events={timelineEvents}
+                isLoading={isLoadingTimeline}
               />
             </div>
           ) : null}
@@ -1152,6 +1219,25 @@ function mapLeadNoteToStructuredNote(note: CrmLeadNote): CrmStructuredNote {
   };
 }
 
+async function fetchLeadTimeline(accessToken: string, leadId: string) {
+  const response = await fetch(`/api/crm/lead-timeline?leadId=${leadId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    timeline?: CrmTimelineReadModel;
+  } | null;
+
+  if (!response.ok || !payload?.timeline) {
+    throw new Error(payload?.error ?? "Nao foi possivel carregar a timeline agora.");
+  }
+
+  return payload.timeline;
+}
+
 function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) {
   const normalizedName =
     typeof lead.nome === "string" ? lead.nome.trim() : "";
@@ -1352,6 +1438,96 @@ function SuccessFeedback({ message }: { message: string }) {
   );
 }
 
+function CrmOperationalTimelineList({
+  error,
+  events,
+  isLoading,
+}: {
+  error: string | null;
+  events: CrmOperationalTimelineEvent[];
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        Carregando timeline...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        {error}
+      </p>
+    );
+  }
+
+  if (!events.length) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        Nenhum evento operacional registrado ainda.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {events.map((event) => (
+        <article
+          className={cn(
+            "rounded-md border bg-background/70 p-4 text-sm",
+            timelineEventToneClassNames[event.type],
+          )}
+          key={event.id}
+        >
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {event.authorName}
+            </span>
+            <span aria-hidden>-</span>
+            <time dateTime={event.occurredAt}>
+              {dateFormatter.format(new Date(event.occurredAt))}
+            </time>
+            <span aria-hidden>-</span>
+            <span className="rounded-full border bg-background px-2 py-0.5 font-medium">
+              {timelineEventTypeLabels[event.type]}
+            </span>
+          </div>
+          <div className="mt-3">
+            <p className="font-medium text-foreground">{event.title}</p>
+            {event.description ? (
+              <p className="mt-1 leading-6 text-foreground/85">
+                {event.description}
+              </p>
+            ) : null}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+const timelineEventToneClassNames: Record<
+  CrmOperationalTimelineEvent["type"],
+  string
+> = {
+  note_created: "border-l-4 border-l-sky-200",
+  task_cancelled: "border-l-4 border-l-stone-300",
+  task_completed: "border-l-4 border-l-emerald-200",
+  task_created: "border-l-4 border-l-amber-200",
+};
+
+const timelineEventTypeLabels: Record<
+  CrmOperationalTimelineEvent["type"],
+  string
+> = {
+  note_created: "Nota adicionada",
+  task_cancelled: "Tarefa cancelada",
+  task_completed: "Tarefa concluida",
+  task_created: "Tarefa criada",
+};
+
 function ExecutiveDossierCard({
   children,
   description,
@@ -1422,6 +1598,17 @@ function SectionHeader({
   );
 }
 
+function LeadInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background/70 p-3">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 break-words text-sm text-foreground">{value}</p>
+    </div>
+  );
+}
+
 function Field({
   children,
   label,
@@ -1431,20 +1618,9 @@ function Field({
 }) {
   return (
     <label className="grid gap-2 text-sm font-medium text-foreground">
-      <span>{label}</span>
+      {label}
       {children}
     </label>
-  );
-}
-
-function LeadInfo({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-1">
-      <span className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </span>
-      <span className="font-medium text-foreground">{value}</span>
-    </div>
   );
 }
 

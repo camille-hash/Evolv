@@ -14,6 +14,7 @@ export * from "./crm-phone";
 export * from "./crm-source-observability";
 export * from "./crm-storage";
 export * from "./crm-structured-notes";
+export * from "./crm-timeline";
 export * from "./crm-tasks";
 export * from "./crm-types";
 export * from "./import";
