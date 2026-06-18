@@ -6,6 +6,10 @@ import { ArrowLeft, ChevronDown, ChevronUp, Phone, Plus, Send } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import {
+  createCrmTaskForLead,
+  fetchCrmTasksForLead,
+} from "@/modules/crm/client/crm-tasks-client";
+import {
   crmPipelineLabels,
   crmPipelines,
   crmStageLabels,
@@ -20,6 +24,8 @@ import {
   type CrmLead,
   type CrmLeadInput,
   type CrmLeadNote,
+  type CrmTask,
+  type CrmTaskType,
   type CrmOperationalPriority,
   type CrmPipeline,
   type CrmStage,
@@ -43,9 +49,21 @@ const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short",
 });
+const taskDateFormatter = new Intl.DateTimeFormat("pt-BR", {
+  dateStyle: "short",
+});
 
 const fieldInputClass =
   "w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15";
+const defaultTaskType: CrmTaskType = "follow_up";
+
+type TaskDraft = {
+  dueDate: string;
+  dueTime: string;
+  notes: string;
+  taskType: CrmTaskType;
+  title: string;
+};
 
 type CrmLeadDetailProps = {
   draft: CrmLeadInput;
@@ -72,19 +90,39 @@ export function CrmLeadDetail({
 }: CrmLeadDetailProps) {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [noteContent, setNoteContent] = useState("");
+  const [taskDraft, setTaskDraft] = useState<TaskDraft>(() =>
+    createDefaultTaskDraft(),
+  );
   const [noteError, setNoteError] = useState<string | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
   const [noteSuccessMessage, setNoteSuccessMessage] = useState<string | null>(null);
+  const [taskSuccessMessage, setTaskSuccessMessage] = useState<string | null>(null);
   const [notesState, setNotesState] = useState<{
     leadId: string;
     notes: CrmLeadNote[];
   } | null>(null);
+  const [tasksState, setTasksState] = useState<{
+    leadId: string;
+    tasks: CrmTask[];
+  } | null>(null);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [taskLoadError, setTaskLoadError] = useState<string | null>(null);
   const leadDisplayName = useMemo(() => getLeadDisplayName(lead), [lead]);
   const whatsappUrl = buildWhatsappUrl(lead.telefone);
   const structuredNotes = buildTemporaryStructuredNotesFromLead(lead);
   const persistedNotes =
     notesState?.leadId === lead.id ? notesState.notes : [];
+  const nextPendingTask = useMemo(
+    () =>
+      resolveNextPendingTask(
+        tasksState?.leadId === lead.id ? tasksState.tasks : [],
+      ),
+    [lead.id, tasksState],
+  );
   const persistedStructuredNotes = persistedNotes.map(mapLeadNoteToStructuredNote);
   const visibleHistoryNotes = persistedStructuredNotes.length
     ? persistedStructuredNotes
@@ -140,6 +178,49 @@ export function CrmLeadDetail({
   }, [lead.id]);
 
   useEffect(() => {
+    let isActive = true;
+
+    async function loadTasks() {
+      setIsLoadingTasks(true);
+      setTaskLoadError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setIsLoadingTasks(false);
+        }
+        return;
+      }
+
+      try {
+        const tasks = await fetchCrmTasksForLead(accessToken, lead.id);
+
+        if (isActive) {
+          setTasksState({
+            leadId: lead.id,
+            tasks,
+          });
+        }
+      } catch {
+        if (isActive) {
+          setTaskLoadError("Nao foi possivel carregar as tarefas.");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingTasks(false);
+        }
+      }
+    }
+
+    void loadTasks();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id]);
+
+  useEffect(() => {
     if (!noteSuccessMessage) {
       return;
     }
@@ -150,6 +231,18 @@ export function CrmLeadDetail({
 
     return () => window.clearTimeout(timeoutId);
   }, [noteSuccessMessage]);
+
+  useEffect(() => {
+    if (!taskSuccessMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setTaskSuccessMessage(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [taskSuccessMessage]);
 
   useEffect(() => {
     if (!feedbackMessage || !onClearFeedbackMessage) {
@@ -193,6 +286,13 @@ export function CrmLeadDetail({
     setIsNoteModalOpen(true);
   }
 
+  function handleOpenTaskModal() {
+    setTaskDraft(createDefaultTaskDraft());
+    setTaskError(null);
+    setTaskSuccessMessage(null);
+    setIsTaskModalOpen(true);
+  }
+
   function handleCloseNoteModal() {
     if (isSavingNote) {
       return;
@@ -200,6 +300,38 @@ export function CrmLeadDetail({
 
     setIsNoteModalOpen(false);
     setNoteError(null);
+  }
+
+  function handleCloseTaskModal() {
+    if (isCreatingTask) {
+      return;
+    }
+
+    setIsTaskModalOpen(false);
+    setTaskError(null);
+  }
+
+  function updateTaskDraft(patch: Partial<TaskDraft>) {
+    setTaskDraft((current) => ({
+      ...current,
+      ...patch,
+    }));
+  }
+
+  function handleTaskTypeChange(taskType: CrmTaskType) {
+    setTaskDraft((current) => {
+      const currentDefaultTitle = getDefaultTaskTitle(current.taskType);
+      const shouldReplaceTitle =
+        !current.title.trim() || current.title === currentDefaultTitle;
+
+      return {
+        ...current,
+        taskType,
+        title: shouldReplaceTitle
+          ? getDefaultTaskTitle(taskType)
+          : current.title,
+      };
+    });
   }
 
   async function handleSaveNote() {
@@ -260,6 +392,64 @@ export function CrmLeadDetail({
     }
   }
 
+  async function handleCreateTask() {
+    const title = taskDraft.title.trim();
+
+    if (!taskDraft.taskType) {
+      setTaskError("Tipo da acao e obrigatorio.");
+      return;
+    }
+
+    if (!title) {
+      setTaskError("Titulo e obrigatorio.");
+      return;
+    }
+
+    if (!taskDraft.dueDate) {
+      setTaskError("Data da acao e obrigatoria.");
+      return;
+    }
+
+    setIsCreatingTask(true);
+    setTaskError(null);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      const task = await createCrmTaskForLead(accessToken, {
+        dueDate: taskDraft.dueDate,
+        dueTime: taskDraft.dueTime || undefined,
+        leadId: lead.id,
+        notes: taskDraft.notes || undefined,
+        taskType: taskDraft.taskType,
+        title,
+      });
+
+      setTasksState((current) => ({
+        leadId: lead.id,
+        tasks:
+          current?.leadId === lead.id
+            ? [task, ...current.tasks.filter((item) => item.id !== task.id)]
+            : [task],
+      }));
+      setIsTaskModalOpen(false);
+      setTaskDraft(createDefaultTaskDraft());
+      setTaskSuccessMessage("Acao criada com sucesso.");
+    } catch (error) {
+      setTaskError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel criar a acao.",
+      );
+    } finally {
+      setIsCreatingTask(false);
+    }
+  }
+
   return (
     <section className="grid gap-4">
       <section className="executive-surface rounded-md p-5 sm:p-6">
@@ -313,6 +503,10 @@ export function CrmLeadDetail({
 
         {noteSuccessMessage ? (
           <SuccessFeedback message={noteSuccessMessage} />
+        ) : null}
+
+        {taskSuccessMessage ? (
+          <SuccessFeedback message={taskSuccessMessage} />
         ) : null}
 
         <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
@@ -369,26 +563,46 @@ export function CrmLeadDetail({
           </ExecutiveDossierCard>
 
           <ExecutiveDossierCard
-            description="Espaco reservado para evolucao futura de tarefas comerciais."
+            description="Primeira leitura da tarefa comercial pendente deste lead."
             eyebrow="Acao"
             title="Proxima Acao"
           >
             <div className="rounded-md border bg-background/70 p-4 text-sm">
-              <div className="mb-3 flex flex-wrap gap-2">
-                <OperationalPriorityBadge
-                  priority={operationalPriority.priority}
-                  summary={operationalPriority.summary}
-                >
-                  {operationalPriority.label}
-                </OperationalPriorityBadge>
-              </div>
-              <p className="font-medium text-foreground">
-                {lead.proximaAcao || "Nenhuma acao programada."}
-              </p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                Use este espaco para orientar o proximo contato quando houver uma
-                acao definida.
-              </p>
+              {isLoadingTasks ? (
+                <p className="text-sm text-muted-foreground">
+                  Carregando proxima acao...
+                </p>
+              ) : taskLoadError ? (
+                <>
+                  <p className="font-medium text-foreground">
+                    Sem proxima acao
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {taskLoadError}
+                  </p>
+                </>
+              ) : nextPendingTask ? (
+                <TaskNextAction onCreateTask={handleOpenTaskModal} task={nextPendingTask} />
+              ) : (
+                <>
+                  <p className="font-medium text-foreground">
+                    Sem proxima acao
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    Nenhuma acao programada.
+                  </p>
+                  <div className="mt-4">
+                    <Button
+                      onClick={handleOpenTaskModal}
+                      type="button"
+                      variant="secondary"
+                    >
+                      <Plus className="h-4 w-4" aria-hidden />
+                      Criar proxima acao
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
             <div className="mt-4 grid gap-3 text-sm">
               <LeadInfo label="Responsavel" value={lead.consultor || "-"} />
@@ -680,6 +894,121 @@ export function CrmLeadDetail({
           </div>
         </div>
       ) : null}
+
+      {isTaskModalOpen ? (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"
+          role="dialog"
+        >
+          <div className="w-full max-w-lg rounded-md border bg-background p-5 shadow-xl">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Tarefa comercial
+              </p>
+              <h3 className="mt-1 text-lg font-semibold text-foreground">
+                Criar proxima acao
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Defina uma tarefa comercial clara para este lead.
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              <Field label="Tipo da acao">
+                <select
+                  className={fieldInputClass}
+                  disabled={isCreatingTask}
+                  onChange={(event) =>
+                    handleTaskTypeChange(event.target.value as CrmTaskType)
+                  }
+                  value={taskDraft.taskType}
+                >
+                  {taskTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Titulo">
+                <input
+                  className={fieldInputClass}
+                  disabled={isCreatingTask}
+                  onChange={(event) =>
+                    updateTaskDraft({ title: event.target.value })
+                  }
+                  placeholder="Ex.: fazer follow-up"
+                  value={taskDraft.title}
+                />
+              </Field>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Data">
+                  <input
+                    className={fieldInputClass}
+                    disabled={isCreatingTask}
+                    onChange={(event) =>
+                      updateTaskDraft({ dueDate: event.target.value })
+                    }
+                    type="date"
+                    value={taskDraft.dueDate}
+                  />
+                </Field>
+
+                <Field label="Horario">
+                  <input
+                    className={fieldInputClass}
+                    disabled={isCreatingTask}
+                    onChange={(event) =>
+                      updateTaskDraft({ dueTime: event.target.value })
+                    }
+                    type="time"
+                    value={taskDraft.dueTime}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Observacao">
+                <textarea
+                  className={cn(fieldInputClass, "min-h-24 resize-y")}
+                  disabled={isCreatingTask}
+                  onChange={(event) =>
+                    updateTaskDraft({ notes: event.target.value })
+                  }
+                  placeholder="Contexto rapido para executar esta acao."
+                  value={taskDraft.notes}
+                />
+              </Field>
+            </div>
+
+            {taskError ? (
+              <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {taskError}
+              </p>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+              <Button
+                disabled={isCreatingTask}
+                onClick={handleCloseTaskModal}
+                type="button"
+                variant="ghost"
+              >
+                Cancelar
+              </Button>
+              <Button
+                disabled={isCreatingTask}
+                onClick={handleCreateTask}
+                type="button"
+              >
+                {isCreatingTask ? "Criando..." : "Criar acao"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -737,6 +1066,147 @@ function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) 
   return fallbackReference
     ? `Lead sem nome (${fallbackReference})`
     : "Lead sem nome";
+}
+
+function resolveNextPendingTask(tasks: CrmTask[]) {
+  return tasks
+    .filter((task) => task.status === "pending")
+    .sort(compareTasksByDueDate)[0] ?? null;
+}
+
+function compareTasksByDueDate(first: CrmTask, second: CrmTask) {
+  const firstDate = `${first.dueDate}T${first.dueTime ?? "23:59:59"}`;
+  const secondDate = `${second.dueDate}T${second.dueTime ?? "23:59:59"}`;
+
+  if (firstDate !== secondDate) {
+    return firstDate.localeCompare(secondDate);
+  }
+
+  return first.createdAt.localeCompare(second.createdAt);
+}
+
+function TaskNextAction({
+  onCreateTask,
+  task,
+}: {
+  onCreateTask: () => void;
+  task: CrmTask;
+}) {
+  return (
+    <div className="grid gap-3">
+      <div className="flex flex-wrap gap-2">
+        <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+          {getTaskDueStatusLabel(task)}
+        </span>
+        <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+          {getTaskTypeLabel(task.taskType)}
+        </span>
+        <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+          Pendente
+        </span>
+      </div>
+      <div>
+        <p className="font-medium text-foreground">{task.title}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {formatTaskDueDate(task)}
+        </p>
+      </div>
+      {task.notes ? (
+        <p className="rounded-md border border-dashed bg-background/60 p-3 text-xs leading-5 text-muted-foreground">
+          {task.notes}
+        </p>
+      ) : null}
+      <div>
+        <Button onClick={onCreateTask} type="button" variant="secondary">
+          <Plus className="h-4 w-4" aria-hidden />
+          Nova acao
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const taskTypeOptions: Array<{ label: string; value: CrmTaskType }> = [
+  { label: "Ligar", value: "call" },
+  { label: "WhatsApp", value: "whatsapp" },
+  { label: "Enviar simulacao", value: "send_simulation" },
+  { label: "Enviar proposta", value: "send_proposal" },
+  { label: "Agendar reuniao", value: "schedule_meeting" },
+  { label: "Solicitar documentacao", value: "request_documents" },
+  { label: "Follow-up", value: "follow_up" },
+  { label: "Outro", value: "other" },
+];
+
+function createDefaultTaskDraft(): TaskDraft {
+  return {
+    dueDate: getLocalDateKey(new Date()),
+    dueTime: "",
+    notes: "",
+    taskType: defaultTaskType,
+    title: getDefaultTaskTitle(defaultTaskType),
+  };
+}
+
+function getDefaultTaskTitle(taskType: CrmTaskType) {
+  const titles: Record<CrmTaskType, string> = {
+    call: "Entrar em contato",
+    follow_up: "Fazer follow-up",
+    other: "",
+    request_documents: "Solicitar documentacao",
+    schedule_meeting: "Agendar reuniao",
+    send_proposal: "Enviar proposta",
+    send_simulation: "Enviar simulacao",
+    whatsapp: "Enviar WhatsApp",
+  };
+
+  return titles[taskType];
+}
+
+function getTaskTypeLabel(taskType: CrmTaskType) {
+  const labels: Record<CrmTaskType, string> = {
+    call: "Ligar",
+    follow_up: "Follow-up",
+    other: "Outro",
+    request_documents: "Solicitar documentacao",
+    schedule_meeting: "Agendar reuniao",
+    send_proposal: "Enviar proposta",
+    send_simulation: "Enviar simulacao",
+    whatsapp: "WhatsApp",
+  };
+
+  return labels[taskType];
+}
+
+function getTaskDueStatusLabel(task: CrmTask) {
+  const today = getLocalDateKey(new Date());
+
+  if (task.dueDate < today) {
+    return "Atrasada";
+  }
+
+  if (task.dueDate === today) {
+    return "Hoje";
+  }
+
+  return "Agendada";
+}
+
+function formatTaskDueDate(task: CrmTask) {
+  const [year, month, day] = task.dueDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  const formattedDate = taskDateFormatter.format(date);
+
+  return task.dueTime
+    ? `${formattedDate} as ${task.dueTime.slice(0, 5)}`
+    : formattedDate;
+}
+
+function getLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function SuccessFeedback({ message }: { message: string }) {
