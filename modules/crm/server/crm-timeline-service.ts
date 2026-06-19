@@ -5,6 +5,7 @@ import type {
 } from "../crm-tasks";
 import type {
   CrmOperationalTimelineEvent,
+  CrmOperationalTimelineEventSource,
   CrmOperationalTimelineEventType,
   CrmTimelineReadModel,
 } from "../crm-timeline";
@@ -47,6 +48,16 @@ type CrmTimelineTaskRow = {
   organization_id: string;
   status: string | null;
   task_type: string | null;
+  title: string | null;
+};
+
+type CrmTimelineSimulationRow = {
+  created_at: string | null;
+  created_by: string | null;
+  id: string;
+  lead_id: string;
+  organization_id: string;
+  simulation_type: string | null;
   title: string | null;
 };
 
@@ -96,6 +107,16 @@ const crmTimelineTaskColumns = [
   "created_at",
 ].join(",");
 
+const crmTimelineSimulationColumns = [
+  "id",
+  "organization_id",
+  "lead_id",
+  "created_by",
+  "simulation_type",
+  "title",
+  "created_at",
+].join(",");
+
 const taskTypeLabels: Record<CrmTaskType, string> = {
   call: "Ligar",
   follow_up: "Follow-up",
@@ -108,10 +129,12 @@ const taskTypeLabels: Record<CrmTaskType, string> = {
 };
 
 const timelineTypePriority: Record<CrmOperationalTimelineEventType, number> = {
-  task_completed: 0,
-  task_cancelled: 1,
-  note_created: 2,
-  task_created: 3,
+  commercial_simulation_created: 0,
+  multi_cotas_created: 1,
+  task_completed: 2,
+  task_cancelled: 3,
+  note_created: 4,
+  task_created: 5,
 };
 
 export async function getLeadTimeline(
@@ -138,9 +161,10 @@ export async function getLeadTimeline(
     return leadValidation;
   }
 
-  const [notesResult, tasksResult] = await Promise.all([
+  const [notesResult, tasksResult, simulationsResult] = await Promise.all([
     listTimelineNotes(context, leadId),
     listTimelineTasks(context, leadId),
+    listTimelineSimulations(context, leadId),
   ]);
 
   if (!notesResult.ok) {
@@ -151,9 +175,14 @@ export async function getLeadTimeline(
     return tasksResult;
   }
 
+  if (!simulationsResult.ok) {
+    return simulationsResult;
+  }
+
   const events = [
     ...notesResult.notes.map(mapNoteEvent),
     ...tasksResult.tasks.flatMap(mapTaskEvents),
+    ...simulationsResult.simulations.flatMap(mapSimulationEvents),
   ];
   const authors = await resolveAuthorNames(context, events);
   const enrichedEvents = sortTimelineEvents(
@@ -322,6 +351,29 @@ async function listTimelineTasks(context: RequestContext, leadId: string) {
   };
 }
 
+async function listTimelineSimulations(
+  context: RequestContext,
+  leadId: string,
+) {
+  const { data, error } = await context.supabase
+    .from("crm_lead_simulations")
+    .select(crmTimelineSimulationColumns)
+    .eq("lead_id", leadId);
+
+  if (error) {
+    return {
+      error: genericAccessError,
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  return {
+    ok: true as const,
+    simulations: (data ?? []) as unknown as CrmTimelineSimulationRow[],
+  };
+}
+
 async function resolveAuthorNames(
   context: RequestContext,
   events: CrmOperationalTimelineEvent[],
@@ -426,6 +478,64 @@ function mapTaskEvents(task: CrmTimelineTaskRow): CrmOperationalTimelineEvent[] 
   return events;
 }
 
+function mapSimulationEvents(
+  simulation: CrmTimelineSimulationRow,
+): CrmOperationalTimelineEvent[] {
+  if (!simulation.created_at) {
+    return [];
+  }
+
+  if (simulation.simulation_type === "commercial") {
+    return [
+      {
+        authorName: unknownAuthorName,
+        authorProfileId: simulation.created_by,
+        description: normalizeText(simulation.title),
+        id: createTimelineEventId(
+          "commercial_simulation_created",
+          "crm_lead_simulations",
+          simulation.id,
+        ),
+        leadId: simulation.lead_id,
+        metadata: {
+          simulationType: "commercial",
+        },
+        occurredAt: simulation.created_at,
+        source: "crm_lead_simulations",
+        sourceId: simulation.id,
+        title: "Simulacao Comercial criada",
+        type: "commercial_simulation_created",
+      },
+    ];
+  }
+
+  if (simulation.simulation_type === "multi_cotas") {
+    return [
+      {
+        authorName: unknownAuthorName,
+        authorProfileId: simulation.created_by,
+        description: normalizeText(simulation.title),
+        id: createTimelineEventId(
+          "multi_cotas_created",
+          "crm_lead_simulations",
+          simulation.id,
+        ),
+        leadId: simulation.lead_id,
+        metadata: {
+          simulationType: "multi_cotas",
+        },
+        occurredAt: simulation.created_at,
+        source: "crm_lead_simulations",
+        sourceId: simulation.id,
+        title: "Estudo Multi-Cotas criado",
+        type: "multi_cotas_created",
+      },
+    ];
+  }
+
+  return [];
+}
+
 function sortTimelineEvents(events: CrmOperationalTimelineEvent[]) {
   return [...events].sort((left, right) => {
     const occurredDifference =
@@ -493,7 +603,7 @@ function createTaskMetadata(task: CrmTimelineTaskRow) {
 
 function createTimelineEventId(
   type: CrmOperationalTimelineEventType,
-  source: "crm_lead_notes" | "crm_tasks",
+  source: CrmOperationalTimelineEventSource,
   sourceId: string,
 ) {
   return `${type}:${source}:${sourceId}`;

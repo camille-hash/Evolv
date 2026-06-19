@@ -2194,6 +2194,8 @@ const timelineEventToneClassNames: Record<
   CrmOperationalTimelineEvent["type"],
   string
 > = {
+  commercial_simulation_created: "border-l-4 border-l-violet-200",
+  multi_cotas_created: "border-l-4 border-l-teal-200",
   note_created: "border-l-4 border-l-sky-200",
   task_cancelled: "border-l-4 border-l-stone-300",
   task_completed: "border-l-4 border-l-emerald-200",
@@ -2204,6 +2206,8 @@ const timelineEventTypeLabels: Record<
   CrmOperationalTimelineEvent["type"],
   string
 > = {
+  commercial_simulation_created: "Simulacao Comercial criada",
+  multi_cotas_created: "Estudo Multi-Cotas criado",
   note_created: "Nota adicionada",
   task_cancelled: "Tarefa cancelada",
   task_completed: "Tarefa concluida",
