@@ -29,9 +29,11 @@ import {
   getDefaultStageForPipeline,
   getStagesForPipeline,
   isStageInPipeline,
+  resolveCrmLeadGreenFlags,
   resolveCrmLeadCommercialSignal,
   resolveCrmLeadOperationalPriority,
   type CrmCommercialSignal,
+  type CrmLeadGreenFlag,
   type CrmLead,
   type CrmLeadInput,
   type CrmLeadNote,
@@ -156,10 +158,18 @@ export function CrmLeadDetail({
     [lead.id, tasksState],
   );
   const persistedStructuredNotes = persistedNotes.map(mapLeadNoteToStructuredNote);
-  const timelineEvents =
-    timelineState?.leadId === lead.id ? timelineState.timeline.events : [];
-  const leadSimulations =
-    simulationsState?.leadId === lead.id ? simulationsState.simulations : [];
+  const timelineEvents = useMemo(
+    () =>
+      timelineState?.leadId === lead.id ? timelineState.timeline.events : [],
+    [lead.id, timelineState],
+  );
+  const leadSimulations = useMemo(
+    () =>
+      simulationsState?.leadId === lead.id
+        ? simulationsState.simulations
+        : [],
+    [lead.id, simulationsState],
+  );
   const commercialSimulations = leadSimulations.filter(
     (simulation) => simulation.simulationType === "commercial",
   );
@@ -170,6 +180,15 @@ export function CrmLeadDetail({
     persistedStructuredNotes[0] ?? structuredNotes.latestMovements[0];
   const commercialSignal = resolveCrmLeadCommercialSignal(lead);
   const operationalPriority = resolveCrmLeadOperationalPriority(lead);
+  const greenFlags = useMemo(
+    () =>
+      resolveCrmLeadGreenFlags({
+        simulations: leadSimulations,
+        tasks: tasksState?.leadId === lead.id ? tasksState.tasks : null,
+        timelineEvents,
+      }),
+    [lead.id, leadSimulations, tasksState, timelineEvents],
+  );
   const leadObjective =
     lead.produtoInteresse ||
     lead.tituloOportunidade ||
@@ -889,6 +908,14 @@ export function CrmLeadDetail({
             </div>
           </ExecutiveDossierCard>
         </div>
+
+        <ExecutiveDossierCard
+          description="Sinais explicaveis derivados das atividades e artefatos ja registrados."
+          eyebrow="Inteligencia"
+          title="Green Flags"
+        >
+          <LeadGreenFlags flags={greenFlags} />
+        </ExecutiveDossierCard>
 
         <ExecutiveDossierCard
           description="Simulacoes comerciais vinculadas a este lead."
@@ -1763,6 +1790,33 @@ function LeadSimulationHistoryItem({
         </Button>
       </div>
     </article>
+  );
+}
+
+function LeadGreenFlags({ flags }: { flags: CrmLeadGreenFlag[] }) {
+  if (!flags.length) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        Nenhuma Green Flag identificada.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="grid gap-2">
+      {flags.map((flag) => (
+        <li
+          className="flex items-start gap-2 rounded-md border bg-background/70 px-3 py-2 text-sm text-foreground"
+          key={flag.type}
+        >
+          <CheckCircle2
+            aria-hidden
+            className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+          />
+          <span>{flag.description}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
