@@ -46,6 +46,7 @@ import {
   type CrmStructuredNote,
 } from "@/modules/crm";
 import type { GeneratedProposalRecord } from "@/modules/proposal/proposal-history";
+import { generateMultiCotasCommercialPdf } from "@/modules/reports";
 import { cn } from "@/lib/utils";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -909,6 +910,7 @@ export function CrmLeadDetail({
           <LeadMultiCotasSummary
             error={simulationsError}
             isLoading={isLoadingSimulations}
+            leadName={leadDisplayName}
             simulations={multiCotasSimulations}
           />
         </ExecutiveDossierCard>
@@ -1767,10 +1769,12 @@ function LeadSimulationHistoryItem({
 function LeadMultiCotasSummary({
   error,
   isLoading,
+  leadName,
   simulations,
 }: {
   error: string | null;
   isLoading: boolean;
+  leadName: string;
   simulations: CrmLeadSimulation[];
 }) {
   const [selectedSimulationId, setSelectedSimulationId] = useState<string | null>(
@@ -1810,6 +1814,7 @@ function LeadMultiCotasSummary({
       ))}
       {selectedSimulation ? (
         <LeadMultiCotasReadDetail
+          leadName={leadName}
           onClose={() => setSelectedSimulationId(null)}
           simulation={selectedSimulation}
         />
@@ -1854,9 +1859,11 @@ function LeadMultiCotasHistoryItem({
 }
 
 function LeadMultiCotasReadDetail({
+  leadName,
   onClose,
   simulation,
 }: {
+  leadName: string;
   onClose: () => void;
   simulation: CrmLeadSimulation;
 }) {
@@ -1887,9 +1894,27 @@ function LeadMultiCotasReadDetail({
             Multi-Cotas - {dateFormatter.format(new Date(simulation.createdAt))}
           </p>
         </div>
-        <Button onClick={onClose} type="button" variant="ghost">
-          Fechar detalhe
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {isSnapshotComplete ? (
+            <Button
+              onClick={() =>
+                generateMultiCotasCommercialPdf({
+                  leadName,
+                  simulationCreatedAt: simulation.createdAt,
+                  simulationTitle: simulation.title,
+                  snapshot,
+                })
+              }
+              type="button"
+              variant="secondary"
+            >
+              Gerar PDF
+            </Button>
+          ) : null}
+          <Button onClick={onClose} type="button" variant="ghost">
+            Fechar detalhe
+          </Button>
+        </div>
       </div>
 
       {!isSnapshotComplete ? (
