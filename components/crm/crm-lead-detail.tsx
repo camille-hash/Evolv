@@ -24,6 +24,7 @@ import {
   crmPipelineLabels,
   crmPipelines,
   crmStageLabels,
+  crmTemperatureLabels,
   buildWhatsappUrl,
   buildTemporaryStructuredNotesFromLead,
   getDefaultStageForPipeline,
@@ -1064,6 +1065,24 @@ export function CrmLeadDetail({
                   {crmPipelines.map((pipeline) => (
                     <option key={pipeline.key} value={pipeline.key}>
                       {pipeline.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Temperatura">
+                <select
+                  className={fieldInputClass}
+                  onChange={(event) =>
+                    updateDraft({
+                      temperatura: event.target.value as CrmLeadInput["temperatura"],
+                    })
+                  }
+                  value={draft.temperatura}
+                >
+                  {Object.entries(crmTemperatureLabels).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
                     </option>
                   ))}
                 </select>
