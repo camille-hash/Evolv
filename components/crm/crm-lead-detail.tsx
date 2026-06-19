@@ -35,6 +35,7 @@ import {
   type CrmLead,
   type CrmLeadInput,
   type CrmLeadNote,
+  type CrmLeadSimulation,
   type CrmTask,
   type CrmTaskType,
   type CrmOperationalPriority,
@@ -124,14 +125,20 @@ export function CrmLeadDetail({
     leadId: string;
     tasks: CrmTask[];
   } | null>(null);
+  const [simulationsState, setSimulationsState] = useState<{
+    leadId: string;
+    simulations: CrmLeadSimulation[];
+  } | null>(null);
   const [timelineState, setTimelineState] = useState<{
     leadId: string;
     timeline: CrmTimelineReadModel;
   } | null>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [isLoadingSimulations, setIsLoadingSimulations] = useState(false);
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [taskLoadError, setTaskLoadError] = useState<string | null>(null);
   const [taskActionError, setTaskActionError] = useState<string | null>(null);
+  const [simulationsError, setSimulationsError] = useState<string | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const leadDisplayName = useMemo(() => getLeadDisplayName(lead), [lead]);
   const whatsappUrl = buildWhatsappUrl(lead.telefone);
@@ -148,6 +155,8 @@ export function CrmLeadDetail({
   const persistedStructuredNotes = persistedNotes.map(mapLeadNoteToStructuredNote);
   const timelineEvents =
     timelineState?.leadId === lead.id ? timelineState.timeline.events : [];
+  const leadSimulations =
+    simulationsState?.leadId === lead.id ? simulationsState.simulations : [];
   const latestMovement =
     persistedStructuredNotes[0] ?? structuredNotes.latestMovements[0];
   const commercialSignal = resolveCrmLeadCommercialSignal(lead);
@@ -190,6 +199,50 @@ export function CrmLeadDetail({
     }
 
     void loadNotes();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadSimulations() {
+      setIsLoadingSimulations(true);
+      setSimulationsError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setIsLoadingSimulations(false);
+          setSimulationsError("Nao foi possivel carregar as simulacoes.");
+        }
+        return;
+      }
+
+      try {
+        const simulations = await fetchLeadSimulations(accessToken, lead.id);
+
+        if (isActive) {
+          setSimulationsState({
+            leadId: lead.id,
+            simulations,
+          });
+        }
+      } catch {
+        if (isActive) {
+          setSimulationsError("Nao foi possivel carregar as simulacoes.");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingSimulations(false);
+        }
+      }
+    }
+
+    void loadSimulations();
 
     return () => {
       isActive = false;
@@ -819,6 +872,18 @@ export function CrmLeadDetail({
           </ExecutiveDossierCard>
         </div>
 
+        <ExecutiveDossierCard
+          description="Simulacoes comerciais vinculadas a este lead."
+          eyebrow="Simulacoes"
+          title="Simulacoes Salvas"
+        >
+          <LeadSimulationHistoryList
+            error={simulationsError}
+            isLoading={isLoadingSimulations}
+            simulations={leadSimulations}
+          />
+        </ExecutiveDossierCard>
+
         <section className="executive-surface rounded-md p-5 text-card-foreground">
           <button
             aria-expanded={isHistoryOpen}
@@ -1238,6 +1303,28 @@ async function fetchLeadTimeline(accessToken: string, leadId: string) {
   return payload.timeline;
 }
 
+async function fetchLeadSimulations(accessToken: string, leadId: string) {
+  const response = await fetch(
+    `/api/crm/lead-simulations?leadId=${encodeURIComponent(leadId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    simulations?: CrmLeadSimulation[];
+  } | null;
+
+  if (!response.ok || !Array.isArray(payload?.simulations)) {
+    throw new Error(payload?.error ?? "Nao foi possivel carregar as simulacoes.");
+  }
+
+  return payload.simulations;
+}
+
 function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) {
   const normalizedName =
     typeof lead.nome === "string" ? lead.nome.trim() : "";
@@ -1508,6 +1595,107 @@ function CrmOperationalTimelineList({
   );
 }
 
+function LeadSimulationHistoryList({
+  error,
+  isLoading,
+  simulations,
+}: {
+  error: string | null;
+  isLoading: boolean;
+  simulations: CrmLeadSimulation[];
+}) {
+  if (isLoading) {
+    return (
+      <p className="rounded-md border bg-background/70 p-4 text-sm text-muted-foreground">
+        Carregando simulacoes...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        {error}
+      </p>
+    );
+  }
+
+  if (!simulations.length) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        Nenhuma simulacao salva neste lead.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {simulations.map((simulation) => (
+        <LeadSimulationHistoryItem
+          key={simulation.id}
+          simulation={simulation}
+        />
+      ))}
+    </div>
+  );
+}
+
+function LeadSimulationHistoryItem({
+  simulation,
+}: {
+  simulation: CrmLeadSimulation;
+}) {
+  const credit =
+    simulation.commercialCredit ??
+    simulation.updatedCredit ??
+    simulation.totalCredit;
+  const installment = simulation.monthlyPayment;
+
+  return (
+    <article className="rounded-md border bg-background/70 p-4 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-medium text-foreground">
+            {simulation.title}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {leadSimulationTypeLabels[simulation.simulationType]}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground">
+          {dateFormatter.format(new Date(simulation.createdAt))}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-2">
+        <LeadInfo
+          label="Credito"
+          value={typeof credit === "number" ? currencyFormatter.format(credit) : "-"}
+        />
+        <LeadInfo
+          label="Parcela"
+          value={
+            typeof installment === "number"
+              ? currencyFormatter.format(installment)
+              : "-"
+          }
+        />
+        <LeadInfo
+          label="Contemplacao"
+          value={
+            typeof simulation.contemplationMonth === "number"
+              ? `Mes ${simulation.contemplationMonth}`
+              : "-"
+          }
+        />
+        <LeadInfo
+          label="Criada em"
+          value={dateFormatter.format(new Date(simulation.createdAt))}
+        />
+      </div>
+    </article>
+  );
+}
+
 const timelineEventToneClassNames: Record<
   CrmOperationalTimelineEvent["type"],
   string
@@ -1526,6 +1714,14 @@ const timelineEventTypeLabels: Record<
   task_cancelled: "Tarefa cancelada",
   task_completed: "Tarefa concluida",
   task_created: "Tarefa criada",
+};
+
+const leadSimulationTypeLabels: Record<
+  CrmLeadSimulation["simulationType"],
+  string
+> = {
+  commercial: "Comercial",
+  multi_cotas: "Multi-Cotas",
 };
 
 function ExecutiveDossierCard({

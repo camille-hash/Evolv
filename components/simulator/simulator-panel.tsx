@@ -90,6 +90,13 @@ type AnchoredPersonalizationSource = {
   sourceSimulationId: string;
 };
 
+type LeadSimulationSaveStatus = "idle" | "saving" | "success" | "error";
+
+type LeadSimulationSaveState = {
+  message: string;
+  status: LeadSimulationSaveStatus;
+};
+
 export type SimulatorPanelPage =
   | "simulation"
   | "results"
@@ -220,6 +227,11 @@ export function SimulatorPanel({
   const [isTechnicalDataOpen, setIsTechnicalDataOpen] = useState(false);
   const [contemplationMonth, setContemplationMonth] = useState(1);
   const [comfortableInstallment, setComfortableInstallment] = useState("");
+  const [leadSimulationSaveState, setLeadSimulationSaveState] =
+    useState<LeadSimulationSaveState>({
+      message: "",
+      status: "idle",
+    });
   const [anchoredProposals, setAnchoredProposals] = useState<
     AnchoredProposal[]
   >([]);
@@ -503,6 +515,7 @@ export function SimulatorPanel({
           comfortableInstallment={comfortableInstallment}
           isTechnicalDataOpen={isTechnicalDataOpen}
           leadProposalContext={leadProposalContext}
+          leadSimulationSaveState={leadSimulationSaveState}
           personalizationSource={personalizationSource}
           onCommercialDataChange={updateCommercialData}
           onContemplationMonthChange={updateContemplationMonth}
@@ -512,6 +525,7 @@ export function SimulatorPanel({
           onGeneratePdf={handleGeneratePdf}
           onInsuranceOptionChange={handleSelectInsuranceOption}
           onSaveAnchoredProposal={handleSaveAnchoredProposal}
+          onSaveLeadSimulation={handleSaveLeadSimulation}
           onSaveSimulation={handleSaveSimulation}
           onScenarioChange={setSelectedScenarioKey}
           onSetComfortableInstallment={setComfortableInstallment}
@@ -660,6 +674,79 @@ export function SimulatorPanel({
     setPersonalizationSource(null);
     setSavedSimulations(loadSavedSimulations());
     linkSimulationToLeadContext(savedSimulation);
+  }
+
+  async function handleSaveLeadSimulation() {
+    if (!leadProposalContext?.leadId) {
+      setLeadSimulationSaveState({
+        message: "Abra a simulacao a partir de um lead antes de salvar.",
+        status: "error",
+      });
+      return;
+    }
+
+    setLeadSimulationSaveState({
+      message: "Salvando simulacao no lead...",
+      status: "saving",
+    });
+
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      setLeadSimulationSaveState({
+        message: "Sessao Supabase indisponivel. Faca login novamente.",
+        status: "error",
+      });
+      return;
+    }
+
+    const payload = buildLeadSimulationApiPayload({
+      bidType,
+      calculation,
+      commercialData,
+      formState,
+      insuranceOption,
+      leadProposalContext,
+      presentation,
+      selectedAdministrator,
+      selectedScenarioKey,
+      simulationName,
+      simulatorInput,
+    });
+
+    try {
+      const response = await fetch("/api/crm/lead-simulations", {
+        body: JSON.stringify(payload),
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        simulation?: { id?: string };
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Nao foi possivel salvar a simulacao.");
+      }
+
+      setLeadSimulationSaveState({
+        message: body?.simulation?.id
+          ? `Simulacao salva no lead. ID: ${body.simulation.id}`
+          : "Simulacao salva no lead.",
+        status: "success",
+      });
+    } catch (error) {
+      setLeadSimulationSaveState({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel salvar a simulacao.",
+        status: "error",
+      });
+    }
   }
 
   function handleGenerateAnchoredProposals() {
@@ -894,6 +981,7 @@ function SimulationOperationPanel({
   comfortableInstallment,
   isTechnicalDataOpen,
   leadProposalContext,
+  leadSimulationSaveState,
   personalizationSource,
   onCommercialDataChange,
   onContemplationMonthChange,
@@ -903,6 +991,7 @@ function SimulationOperationPanel({
   onGeneratePdf,
   onInsuranceOptionChange,
   onSaveAnchoredProposal,
+  onSaveLeadSimulation,
   onSaveSimulation,
   onScenarioChange,
   onSetComfortableInstallment,
@@ -926,6 +1015,7 @@ function SimulationOperationPanel({
   comfortableInstallment: string;
   isTechnicalDataOpen: boolean;
   leadProposalContext?: CrmLeadProposalContext | null;
+  leadSimulationSaveState: LeadSimulationSaveState;
   personalizationSource: AnchoredPersonalizationSource | null;
   onCommercialDataChange: (state: Partial<SimulatorCommercialData>) => void;
   onContemplationMonthChange: (month: number) => void;
@@ -935,6 +1025,7 @@ function SimulationOperationPanel({
   onGeneratePdf: () => void;
   onInsuranceOptionChange: (option: InsuranceOption) => void;
   onSaveAnchoredProposal: (proposal: AnchoredProposal) => void;
+  onSaveLeadSimulation: () => void;
   onSaveSimulation: () => void;
   onScenarioChange: (scenario: SimulatorScenarioKey) => void;
   onSetComfortableInstallment: (value: string) => void;
@@ -1008,12 +1099,35 @@ function SimulationOperationPanel({
                 <p className="mt-1 text-base font-semibold text-foreground">
                   {leadProposalContext.leadName}
                 </p>
+                {leadSimulationSaveState.message ? (
+                  <p
+                    className={cn(
+                      "mt-2 text-xs leading-5",
+                      leadSimulationSaveState.status === "error"
+                        ? "text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {leadSimulationSaveState.message}
+                  </p>
+                ) : null}
               </div>
-              {onClearLeadProposalContext ? (
-                <SecondaryActionButton onClick={onClearLeadProposalContext}>
-                  Encerrar contexto do lead
-                </SecondaryActionButton>
-              ) : null}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <PrimaryActionButton
+                  disabled={leadSimulationSaveState.status === "saving"}
+                  onClick={onSaveLeadSimulation}
+                >
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                  {leadSimulationSaveState.status === "saving"
+                    ? "Salvando..."
+                    : "Salvar simulacao no lead"}
+                </PrimaryActionButton>
+                {onClearLeadProposalContext ? (
+                  <SecondaryActionButton onClick={onClearLeadProposalContext}>
+                    Encerrar contexto do lead
+                  </SecondaryActionButton>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </section>
@@ -1879,14 +1993,17 @@ function IntelligenceList({
 
 function PrimaryActionButton({
   children,
+  disabled = false,
   onClick,
 }: {
   children: React.ReactNode;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
-      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={disabled}
       onClick={onClick}
       type="button"
     >
@@ -1897,14 +2014,17 @@ function PrimaryActionButton({
 
 function SecondaryActionButton({
   children,
+  disabled = false,
   onClick,
 }: {
   children: React.ReactNode;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
-      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent"
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={disabled}
       onClick={onClick}
       type="button"
     >
@@ -2160,6 +2280,85 @@ function parseCurrencyNumber(value: string) {
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
 }
 
+function buildLeadSimulationApiPayload({
+  bidType,
+  calculation,
+  commercialData,
+  formState,
+  insuranceOption,
+  leadProposalContext,
+  presentation,
+  selectedAdministrator,
+  selectedScenarioKey,
+  simulationName,
+  simulatorInput,
+}: {
+  bidType: BidType;
+  calculation: ReturnType<typeof calculateSimulatorScenarios>;
+  commercialData: SimulatorCommercialData;
+  formState: SimulatorFormState;
+  insuranceOption: InsuranceOption;
+  leadProposalContext: CrmLeadProposalContext;
+  presentation: SimulatorCommercialPresentation;
+  selectedAdministrator: SimulatorAdministrator | null;
+  selectedScenarioKey: SimulatorScenarioKey;
+  simulationName: string;
+  simulatorInput: SimulatorInput;
+}) {
+  const title =
+    simulationName.trim() ||
+    `Simulacao comercial - ${leadProposalContext.leadName}`;
+
+  return {
+    calculationSnapshot: {
+      calculation,
+      selectedScenario: presentation.selectedScenario,
+    },
+    leadId: leadProposalContext.leadId,
+    presentationSnapshot: {
+      commercialData,
+      leadContext: {
+        createdAt: leadProposalContext.createdAt,
+        intent: leadProposalContext.intent,
+        leadDesiredCredit: leadProposalContext.leadDesiredCredit ?? null,
+        leadName: leadProposalContext.leadName,
+      },
+      presentation,
+    },
+    simulationType: "commercial",
+    source: "lead_detail",
+    summary: {
+      commercialCredit: presentation.commercialCredit,
+      contemplationMonth: presentation.contemplationMonth,
+      estimatedGain: presentation.estimatedCardSaleProfit,
+      estimatedRoi: presentation.estimatedCardSaleGainRate,
+      estimatedSaleValue: presentation.estimatedCardSaleValue,
+      inccRate: presentation.inccRate,
+      monthlyPayment: presentation.installmentBeforeContemplation,
+      postContemplationPayment: presentation.installmentAfterContemplation,
+      quotaCount: 1,
+      totalCredit: presentation.contractedCredit,
+      updatedCredit: presentation.updatedCredit,
+    },
+    technicalInput: {
+      bidType,
+      formState,
+      insuranceOption,
+      selectedAdministrator: selectedAdministrator
+        ? {
+            id: selectedAdministrator.id,
+            insuranceRequired: selectedAdministrator.insuranceRequired,
+            name: selectedAdministrator.name,
+            parameters: selectedAdministrator.parameters,
+          }
+        : null,
+      selectedScenarioKey,
+      simulatorInput,
+    },
+    title,
+  };
+}
+
 function buildAnchoredProposalName(baseName: string, proposalLabel: string) {
   const trimmedBaseName = baseName.trim();
 
@@ -2181,4 +2380,31 @@ function percentFromRate(rate: number, maximumFractionDigits = 2) {
     maximumFractionDigits,
     minimumFractionDigits: 0,
   }).format(rate * 100);
+}
+
+async function readSupabaseAccessToken() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !publishableKey) {
+    return null;
+  }
+
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabase = createClient(supabaseUrl, publishableKey, {
+    auth: {
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  });
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error || !data.session?.access_token) {
+    return null;
+  }
+
+  return data.session.access_token;
 }
