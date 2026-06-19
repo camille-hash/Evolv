@@ -348,8 +348,12 @@ export function CrmPage({
     [leads, myDayView],
   );
   const focusGroups = useMemo(
-    () => buildCommercialFocusGroups(filteredLeads),
-    [filteredLeads],
+    () =>
+      buildCommercialFocusGroups(
+        filteredLeads,
+        myDayView?.pendingTasksByLeadId ?? {},
+      ),
+    [filteredLeads, myDayView],
   );
   const filteredBaseLeads = useMemo(
     () => filterBaseLeads(filteredLeads, baseSearch),
@@ -2549,16 +2553,23 @@ function matchesOptionalDateWindow(
   return value !== null && matchesDateWindow(value, filter);
 }
 
-function buildCommercialFocusGroups(leads: CrmLead[]) {
+function buildCommercialFocusGroups(
+  leads: CrmLead[],
+  pendingTasksByLeadId: Record<string, CrmTask[]>,
+) {
   const activeLeads = leads.filter((lead) => lead.status === "ativa");
+  const getNextPendingTask = (lead: CrmLead) =>
+    resolveNextPendingCrmTask(pendingTasksByLeadId[lead.id] ?? []);
 
   return {
     hotWithoutAction: activeLeads.filter(
-      (lead) => lead.temperatura === "quente" && !lead.proximaAcao.trim(),
+      (lead) =>
+        lead.temperatura === "quente" && getNextPendingTask(lead) === null,
     ),
-    overdueActions: activeLeads.filter((lead) =>
-      isBeforeToday(lead.dataProximaAcao),
-    ),
+    overdueActions: activeLeads.filter((lead) => {
+      const nextPendingTask = getNextPendingTask(lead);
+      return nextPendingTask !== null && isBeforeToday(nextPendingTask.dueDate);
+    }),
     staleLeads: activeLeads.filter((lead) =>
       isOlderThanDays(lead.updatedAt, 14),
     ),
