@@ -8,7 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { AlertTriangle, Clock3, Flame, Pencil, Plus } from "lucide-react";
+import { AlertTriangle, Clock3, Flame, Pencil, Plus, Search } from "lucide-react";
 import { AccessSettingsPage } from "@/components/access/access-settings-page";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
 import { CrmSourceIndicator } from "@/components/crm/crm-source-indicator";
@@ -156,6 +156,7 @@ export function CrmPage({
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [baseSearch, setBaseSearch] = useState("");
+  const [leadNameSearch, setLeadNameSearch] = useState("");
   const [newStageNames, setNewStageNames] = useState<Record<string, string>>({});
   const [advancedFilters, setAdvancedFilters] =
     useState<CrmAdvancedSearchFilters>({
@@ -269,8 +270,11 @@ export function CrmPage({
     ? leads.find((lead) => lead.id === selectedLeadId)
     : undefined;
   const filteredLeads = useMemo(
-    () => filterCrmLeadsAdvanced(leads, advancedFilters),
-    [advancedFilters, leads],
+    () =>
+      filterCrmLeadsAdvanced(leads, advancedFilters).filter((lead) =>
+        normalizeLeadName(lead.nome).includes(normalizeLeadName(leadNameSearch)),
+      ),
+    [advancedFilters, leadNameSearch, leads],
   );
   const searchOptions = useMemo(
     () => buildCrmAdvancedSearchOptions(leads),
@@ -310,6 +314,8 @@ export function CrmPage({
     activeTab === "prospecting" || activeTab === "sales";
   const shouldShowOperationalSupport =
     activeTab === "my-day";
+  const hasLeadSearchNoResults =
+    Boolean(leadNameSearch.trim()) && filteredLeads.length === 0;
 
   if (selectedLead && activeTab !== "settings") {
     return (
@@ -572,6 +578,22 @@ export function CrmPage({
           summary={searchSummary}
         />
 
+        <div className="mt-4 max-w-md">
+          <label className="sr-only" htmlFor="crm-lead-name-search">
+            Buscar lead por nome
+          </label>
+          <div className="flex items-center gap-2 rounded-md border bg-background/70 px-3 py-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15">
+            <Search aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+              id="crm-lead-name-search"
+              onChange={(event) => setLeadNameSearch(event.target.value)}
+              placeholder="Buscar lead..."
+              value={leadNameSearch}
+            />
+          </div>
+        </div>
+
         <nav className="mt-4 flex gap-2 overflow-x-auto pb-1">
           {crmTabs.map((tab) => (
             <button
@@ -603,7 +625,13 @@ export function CrmPage({
 
       {successMessage ? <SuccessFeedback message={successMessage} /> : null}
 
-      {activePipelineGroup ? (
+      {hasLeadSearchNoResults && activeTab !== "settings" ? (
+        <section className="executive-surface rounded-md border-dashed p-5 text-sm text-muted-foreground">
+          Nenhum lead encontrado.
+        </section>
+      ) : null}
+
+      {activePipelineGroup && !hasLeadSearchNoResults ? (
         <div className="grid min-w-0 gap-4 overflow-x-hidden">
           <FocusOfTheDayPanel groups={focusGroups} />
           <OperationalKanban
@@ -633,7 +661,7 @@ export function CrmPage({
         </div>
       ) : null}
 
-      {shouldShowOperationalSupport ? (
+      {shouldShowOperationalSupport && !hasLeadSearchNoResults ? (
         <MyDayPanel
           error={myDayError}
           groups={myDayGroups}
@@ -642,14 +670,14 @@ export function CrmPage({
         />
       ) : null}
 
-      {activeTab === "lost" ? (
+      {activeTab === "lost" && !hasLeadSearchNoResults ? (
         <LostLeadsPanel
           leads={filteredLeads.filter((lead) => isLeadInGroup(lead, "lost"))}
           onEdit={handleEditLead}
         />
       ) : null}
 
-      {activeTab === "base" ? (
+      {activeTab === "base" && !hasLeadSearchNoResults ? (
         <BasePanel
           baseSearch={baseSearch}
           leads={filteredBaseLeads}
@@ -2510,6 +2538,10 @@ function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) 
   return fallbackReference
     ? `Lead sem nome (${fallbackReference})`
     : "Lead sem nome";
+}
+
+function normalizeLeadName(value: string | null | undefined) {
+  return (value ?? "").trim().toLocaleLowerCase("pt-BR");
 }
 
 function SuccessFeedback({ message }: { message: string }) {
