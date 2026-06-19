@@ -162,9 +162,9 @@ export function CrmLeadDetail({
   const commercialSimulations = leadSimulations.filter(
     (simulation) => simulation.simulationType === "commercial",
   );
-  const multiCotasSimulations = leadSimulations.filter(
-    (simulation) => simulation.simulationType === "multi_cotas",
-  );
+  const multiCotasSimulations = leadSimulations
+    .filter((simulation) => simulation.simulationType === "multi_cotas")
+    .sort(sortLeadSimulationsByCreatedAtDesc);
   const latestMovement =
     persistedStructuredNotes[0] ?? structuredNotes.latestMovements[0];
   const commercialSignal = resolveCrmLeadCommercialSignal(lead);
@@ -902,7 +902,7 @@ export function CrmLeadDetail({
         </ExecutiveDossierCard>
 
         <ExecutiveDossierCard
-          description="Estudos Multi-Cotas vinculados a este lead."
+          description="Historico de estudos Multi-Cotas vinculados a este lead."
           eyebrow="Estrategia"
           title="Multi-Cotas"
         >
@@ -1784,7 +1784,7 @@ function LeadMultiCotasSummary({
   if (!simulations.length) {
     return (
       <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
-        Nenhum estudo Multi-Cotas salvo neste lead.
+        Nenhum estudo Multi-Cotas salvo para este lead.
       </p>
     );
   }
@@ -1795,22 +1795,39 @@ function LeadMultiCotasSummary({
         {simulations.length} {simulations.length === 1 ? "estudo salvo" : "estudos salvos"}.
       </p>
       {simulations.map((simulation) => (
-        <article
-          className="flex flex-col gap-2 rounded-md border bg-background/70 p-4 sm:flex-row sm:items-center sm:justify-between"
-          key={simulation.id}
-        >
-          <div>
-            <p className="text-sm font-medium text-foreground">{simulation.title}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {simulation.quotaCount ?? 0} cartas
-            </p>
-          </div>
-          <time className="text-xs text-muted-foreground" dateTime={simulation.createdAt}>
-            {dateFormatter.format(new Date(simulation.createdAt))}
-          </time>
-        </article>
+        <LeadMultiCotasHistoryItem key={simulation.id} simulation={simulation} />
       ))}
     </div>
+  );
+}
+
+function LeadMultiCotasHistoryItem({
+  simulation,
+}: {
+  simulation: CrmLeadSimulation;
+}) {
+  const summary = resolveMultiCotasHistorySummary(simulation);
+
+  return (
+    <article className="flex flex-col gap-3 rounded-md border bg-background/70 p-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">{simulation.title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {summary.quotaCount === null ? "Quantidade de cartas nao informada" : `${summary.quotaCount} cartas`}
+        </p>
+        {summary.financialSummary.length ? (
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            {summary.financialSummary.join(" | ")}
+          </p>
+        ) : null}
+      </div>
+      <div className="shrink-0 text-xs text-muted-foreground sm:text-right">
+        <p>Multi-Cotas</p>
+        <time className="mt-1 block" dateTime={simulation.createdAt}>
+          Criado em {dateFormatter.format(new Date(simulation.createdAt))}
+        </time>
+      </div>
+    </article>
   );
 }
 
@@ -2084,6 +2101,49 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function readNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function resolveMultiCotasHistorySummary(simulation: CrmLeadSimulation) {
+  const calculationSnapshot = readRecord(simulation.calculationSnapshot);
+  const result = readRecord(calculationSnapshot.result);
+  const snapshotSummary = readRecord(result.summary);
+  const quotaCount =
+    readNumber(snapshotSummary.cardCount) ?? simulation.quotaCount ?? null;
+  const totalUpdatedCredit =
+    readNumber(snapshotSummary.totalUpdatedCredit) ?? simulation.updatedCredit;
+  const totalFutureValue =
+    readNumber(snapshotSummary.totalFutureValue) ?? simulation.estimatedSaleValue;
+  const estimatedGain =
+    readNumber(snapshotSummary.totalInccGain) !== null &&
+    readNumber(snapshotSummary.totalIdleAppreciationGain) !== null
+      ? (readNumber(snapshotSummary.totalInccGain) ?? 0) +
+        (readNumber(snapshotSummary.totalIdleAppreciationGain) ?? 0)
+      : simulation.estimatedGain;
+  const financialSummary = [
+    totalUpdatedCredit === null
+      ? null
+      : `Credito atualizado: ${currencyFormatter.format(totalUpdatedCredit)}`,
+    totalFutureValue === null
+      ? null
+      : `Valor futuro: ${currencyFormatter.format(totalFutureValue)}`,
+    estimatedGain === null
+      ? null
+      : `Ganho estimado: ${currencyFormatter.format(estimatedGain)}`,
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    financialSummary,
+    quotaCount,
+  };
+}
+
+function sortLeadSimulationsByCreatedAtDesc(
+  first: CrmLeadSimulation,
+  second: CrmLeadSimulation,
+) {
+  return (
+    new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
+  );
 }
 
 function readString(value: unknown) {
