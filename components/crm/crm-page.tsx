@@ -1703,7 +1703,7 @@ function CompactLeadCard({
         </span>
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
-        <OperationalPriorityBadge lead={lead} />
+        <OperationalPriorityBadge lead={lead} nextPendingTask={nextPendingTask} />
         <Button
           aria-label={`Editar ${getLeadDisplayName(lead)}`}
           className="h-6 w-6 px-0"
@@ -2223,8 +2223,35 @@ function CommercialSignalBadge({ lead }: { lead: CrmLead }) {
   );
 }
 
-function OperationalPriorityBadge({ lead }: { lead: CrmLead }) {
-  const priority = resolveCrmLeadOperationalPriority(lead);
+function OperationalPriorityBadge({
+  lead,
+  nextPendingTask,
+}: {
+  lead: CrmLead;
+  nextPendingTask?: CrmTask | null;
+}) {
+  const priority: {
+    label: string;
+    priority: CrmOperationalPriority;
+    summary: string;
+  } =
+    nextPendingTask === undefined
+      ? resolveCrmLeadOperationalPriority(lead)
+      : nextPendingTask
+        ? {
+            label: isBeforeToday(nextPendingTask.dueDate)
+              ? "Acao vencida"
+              : "Acao agendada",
+            priority: isBeforeToday(nextPendingTask.dueDate)
+              ? "overdue"
+              : "scheduled",
+            summary: "Derivada da proxima tarefa pendente do lead.",
+          }
+        : {
+            label: "Sem proxima acao",
+            priority: "missing_action",
+            summary: "Lead sem tarefa pendente.",
+          };
 
   return (
     <span
