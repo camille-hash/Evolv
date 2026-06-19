@@ -35,6 +35,7 @@ import {
   resolveCrmLeadOperationalAging,
   resolveCrmLeadCommercialSignal,
   resolveCrmLeadOperationalPriority,
+  resolveCrmTaskTemporalStatus,
   resolveNextPendingCrmTask,
   saveCrmLead,
   summarizeCrmAdvancedSearch,
@@ -2234,6 +2235,9 @@ function OperationalPriorityBadge({
   lead: CrmLead;
   nextPendingTask?: CrmTask | null;
 }) {
+  const pendingTaskTemporalStatus = nextPendingTask
+    ? resolveCrmTaskTemporalStatus(nextPendingTask)
+    : null;
   const priority: {
     label: string;
     priority: CrmOperationalPriority;
@@ -2243,12 +2247,13 @@ function OperationalPriorityBadge({
       ? resolveCrmLeadOperationalPriority(lead)
       : nextPendingTask
         ? {
-            label: isBeforeToday(nextPendingTask.dueDate)
+            label: pendingTaskTemporalStatus === "overdue"
               ? "Acao vencida"
               : "Acao agendada",
-            priority: isBeforeToday(nextPendingTask.dueDate)
-              ? "overdue"
-              : "scheduled",
+            priority:
+              pendingTaskTemporalStatus === "overdue"
+                ? "overdue"
+                : "scheduled",
             summary: "Derivada da proxima tarefa pendente do lead.",
           }
         : {
@@ -2376,7 +2381,7 @@ function buildMyDayGroups(
   }
 
   const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
-  const today = formatLocalDate(new Date());
+  const now = new Date();
   const taskItems = myDayView.tasks
     .map((task) => {
       const lead = leadsById.get(task.leadId);
@@ -2384,16 +2389,22 @@ function buildMyDayGroups(
       return lead
         ? {
             lead,
-            relativeDueLabel: formatTaskDueLabel(task.dueDate, today),
+            relativeDueLabel: formatTaskDueLabel(task, now),
             task,
           }
         : null;
     })
     .filter((item): item is MyDayTaskItem => item !== null)
     .sort((first, second) => compareTaskDueDate(first.task, second.task));
-  const overdue = taskItems.filter((item) => item.task.dueDate < today);
-  const dueToday = taskItems.filter((item) => item.task.dueDate === today);
-  const future = taskItems.filter((item) => item.task.dueDate > today);
+  const overdue = taskItems.filter(
+    (item) => resolveCrmTaskTemporalStatus(item.task, now) === "overdue",
+  );
+  const dueToday = taskItems.filter(
+    (item) => resolveCrmTaskTemporalStatus(item.task, now) === "today",
+  );
+  const future = taskItems.filter(
+    (item) => resolveCrmTaskTemporalStatus(item.task, now) === "future",
+  );
   const greenFlags = Object.entries(myDayView.greenFlagsByLeadId)
     .map(([leadId, flags]) => {
       const lead = leadsById.get(leadId);
@@ -2423,23 +2434,36 @@ function compareTaskDueDate(first: CrmTask, second: CrmTask) {
   return firstKey.localeCompare(secondKey);
 }
 
-function formatTaskDueLabel(dueDate: string, today: string) {
-  if (dueDate === today) {
+function formatTaskDueLabel(task: CrmTask, now: Date) {
+  const temporalStatus = resolveCrmTaskTemporalStatus(task, now);
+
+  if (temporalStatus === "today") {
     return "Hoje";
   }
 
-  if (dueDate < today) {
+  if (temporalStatus === "overdue") {
+    const dueDate = parseLocalDate(task.dueDate);
+
+    if (
+      dueDate.getFullYear() === now.getFullYear() &&
+      dueDate.getMonth() === now.getMonth() &&
+      dueDate.getDate() === now.getDate()
+    ) {
+      return "Vencida hoje";
+    }
+
     const daysOverdue = Math.max(
       1,
       Math.round(
-        (parseLocalDate(today).getTime() - parseLocalDate(dueDate).getTime()) /
+        (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
+          parseLocalDate(task.dueDate).getTime()) /
           (24 * 60 * 60 * 1000),
       ),
     );
     return `Vencida ha ${daysOverdue} ${daysOverdue === 1 ? "dia" : "dias"}`;
   }
 
-  return `Agendada para ${dateOnlyFormatter.format(parseLocalDate(dueDate))}`;
+  return `Agendada para ${dateOnlyFormatter.format(parseLocalDate(task.dueDate))}`;
 }
 
 function formatPipelineNextAction(task: CrmTask | null) {
@@ -2449,7 +2473,7 @@ function formatPipelineNextAction(task: CrmTask | null) {
 
   const dueDate = dateOnlyFormatter.format(parseLocalDate(task.dueDate));
 
-  return isBeforeToday(task.dueDate)
+  return resolveCrmTaskTemporalStatus(task) === "overdue"
     ? `Acao vencida ${dueDate}`
     : `Proxima acao ${dueDate}`;
 }
@@ -2568,7 +2592,10 @@ function buildCommercialFocusGroups(
     ),
     overdueActions: activeLeads.filter((lead) => {
       const nextPendingTask = getNextPendingTask(lead);
-      return nextPendingTask !== null && isBeforeToday(nextPendingTask.dueDate);
+      return (
+        nextPendingTask !== null &&
+        resolveCrmTaskTemporalStatus(nextPendingTask) === "overdue"
+      );
     }),
     staleLeads: activeLeads.filter((lead) =>
       isOlderThanDays(lead.updatedAt, 14),
@@ -2747,18 +2774,6 @@ function getFilterStages(
   );
 }
 
-function isBeforeToday(value: string) {
-  if (!value) {
-    return false;
-  }
-
-  const target = new Date(`${value}T00:00:00`).getTime();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return Number.isFinite(target) && target < today.getTime();
-}
-
 function isOlderThanDays(value: string, days: number) {
   const target = new Date(value).getTime();
 
@@ -2803,14 +2818,6 @@ async function readSupabaseAccessToken() {
   }
 
   return data.session.access_token;
-}
-
-function formatLocalDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return [year, month, day].join("-");
 }
 
 function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) {

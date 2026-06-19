@@ -33,6 +33,7 @@ import {
   resolveCrmLeadGreenFlags,
   resolveCrmLeadCommercialSignal,
   resolveCrmLeadOperationalPriority,
+  resolveCrmTaskTemporalStatus,
   resolveNextPendingCrmTask,
   type CrmCommercialSignal,
   type CrmLeadGreenFlag,
@@ -1547,13 +1548,13 @@ function getTaskTypeLabel(taskType: CrmTaskType) {
 }
 
 function getTaskDueStatusLabel(task: CrmTask) {
-  const today = getLocalDateKey(new Date());
+  const temporalStatus = resolveCrmTaskTemporalStatus(task);
 
-  if (task.dueDate < today) {
+  if (temporalStatus === "overdue") {
     return "Atrasada";
   }
 
-  if (task.dueDate === today) {
+  if (temporalStatus === "today") {
     return "Hoje";
   }
 

@@ -19,6 +19,8 @@ export const crmTaskStatuses = [
 
 export type CrmTaskStatus = (typeof crmTaskStatuses)[number];
 
+export type CrmTaskTemporalStatus = "overdue" | "today" | "future";
+
 export type CrmTask = {
   assignedUserId: string | null;
   canceledAt: string | null;
@@ -78,6 +80,46 @@ export function resolveNextPendingCrmTask(tasks: CrmTask[]) {
     tasks
       .filter((task) => task.status === "pending")
       .sort(compareCrmTasksByDueDate)[0] ?? null
+  );
+}
+
+export function resolveCrmTaskTemporalStatus(
+  task: Pick<CrmTask, "dueDate" | "dueTime">,
+  now = new Date(),
+): CrmTaskTemporalStatus {
+  const dueAt = parseCrmTaskDueAt(task);
+
+  if (dueAt.getTime() < now.getTime()) {
+    return "overdue";
+  }
+
+  if (
+    dueAt.getFullYear() === now.getFullYear() &&
+    dueAt.getMonth() === now.getMonth() &&
+    dueAt.getDate() === now.getDate()
+  ) {
+    return "today";
+  }
+
+  return "future";
+}
+
+function parseCrmTaskDueAt(
+  task: Pick<CrmTask, "dueDate" | "dueTime">,
+) {
+  const [year, month, day] = task.dueDate.split("-").map(Number);
+  const [hour, minute, second] = (task.dueTime ?? "23:59:59")
+    .split(":")
+    .map(Number);
+
+  return new Date(
+    year,
+    (month ?? 1) - 1,
+    day ?? 1,
+    hour ?? 23,
+    minute ?? 59,
+    second ?? 59,
+    task.dueTime ? 0 : 999,
   );
 }
 
