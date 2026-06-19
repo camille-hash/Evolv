@@ -1773,6 +1773,13 @@ function LeadMultiCotasSummary({
   isLoading: boolean;
   simulations: CrmLeadSimulation[];
 }) {
+  const [selectedSimulationId, setSelectedSimulationId] = useState<string | null>(
+    null,
+  );
+  const selectedSimulation =
+    simulations.find((simulation) => simulation.id === selectedSimulationId) ??
+    null;
+
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">Carregando estudos...</p>;
   }
@@ -1795,15 +1802,27 @@ function LeadMultiCotasSummary({
         {simulations.length} {simulations.length === 1 ? "estudo salvo" : "estudos salvos"}.
       </p>
       {simulations.map((simulation) => (
-        <LeadMultiCotasHistoryItem key={simulation.id} simulation={simulation} />
+        <LeadMultiCotasHistoryItem
+          key={simulation.id}
+          onOpen={() => setSelectedSimulationId(simulation.id)}
+          simulation={simulation}
+        />
       ))}
+      {selectedSimulation ? (
+        <LeadMultiCotasReadDetail
+          onClose={() => setSelectedSimulationId(null)}
+          simulation={selectedSimulation}
+        />
+      ) : null}
     </div>
   );
 }
 
 function LeadMultiCotasHistoryItem({
+  onOpen,
   simulation,
 }: {
+  onOpen: () => void;
   simulation: CrmLeadSimulation;
 }) {
   const summary = resolveMultiCotasHistorySummary(simulation);
@@ -1826,6 +1845,141 @@ function LeadMultiCotasHistoryItem({
         <time className="mt-1 block" dateTime={simulation.createdAt}>
           Criado em {dateFormatter.format(new Date(simulation.createdAt))}
         </time>
+        <Button className="mt-3" onClick={onOpen} type="button" variant="secondary">
+          Abrir
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+function LeadMultiCotasReadDetail({
+  onClose,
+  simulation,
+}: {
+  onClose: () => void;
+  simulation: CrmLeadSimulation;
+}) {
+  const snapshot = readRecord(simulation.calculationSnapshot);
+  const input = readRecord(snapshot.input);
+  const metadata = readRecord(snapshot.metadata);
+  const result = readRecord(snapshot.result);
+  const summary = readRecord(result.summary);
+  const cards = Array.isArray(result.cards)
+    ? result.cards.map(readRecord).filter((card) => Object.keys(card).length > 0)
+    : [];
+  const isSnapshotComplete =
+    Object.keys(input).length > 0 &&
+    Object.keys(summary).length > 0 &&
+    cards.length > 0;
+
+  return (
+    <section className="rounded-md border bg-card p-5 text-card-foreground">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Estudo salvo
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-foreground">
+            {simulation.title}
+          </h4>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Multi-Cotas - {dateFormatter.format(new Date(simulation.createdAt))}
+          </p>
+        </div>
+        <Button onClick={onClose} type="button" variant="ghost">
+          Fechar detalhe
+        </Button>
+      </div>
+
+      {!isSnapshotComplete ? (
+        <p className="mt-5 rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+          Nao foi possivel carregar todos os dados deste estudo.
+        </p>
+      ) : (
+        <div className="mt-5 grid gap-5">
+          <SimulationDetailSection title="Resumo">
+            <SimulationDetailGrid>
+              <LeadInfo label="Cartas" value={formatIntegerOrDash(readNumber(summary.cardCount))} />
+              <LeadInfo
+                label="Total contratado"
+                value={formatCurrencyOrDash(readNumber(summary.totalOriginalContracted))}
+              />
+              <LeadInfo
+                label="Credito atualizado"
+                value={formatCurrencyOrDash(readNumber(summary.totalUpdatedCredit))}
+              />
+              <LeadInfo
+                label="Valor futuro"
+                value={formatCurrencyOrDash(readNumber(summary.totalFutureValue))}
+              />
+              <LeadInfo
+                label="Ganho INCC"
+                value={formatCurrencyOrDash(readNumber(summary.totalInccGain))}
+              />
+              <LeadInfo
+                label="Ganho valorizacao"
+                value={formatCurrencyOrDash(readNumber(summary.totalIdleAppreciationGain))}
+              />
+            </SimulationDetailGrid>
+          </SimulationDetailSection>
+
+          <SimulationDetailSection title="Cartas">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {cards.map((card, index) => (
+                <MultiCotasSnapshotCard
+                  card={card}
+                  key={readString(card.id) === "-" ? String(index) : readString(card.id)}
+                />
+              ))}
+            </div>
+          </SimulationDetailSection>
+
+          <SimulationDetailSection title="Dados de Entrada">
+            <SimulationDetailGrid>
+              <LeadInfo label="Quantidade de cartas" value={formatIntegerOrDash(readNumber(input.cardCount))} />
+              <LeadInfo label="Valor base" value={formatCurrencyOrDash(readNumber(input.baseCardValue))} />
+              <LeadInfo label="Prazo" value={formatTermOrDash(readNumber(input.termMonths))} />
+              <LeadInfo
+                label="Contemplacao compartilhada"
+                value={formatMonthOrDash(readNumber(input.sharedContemplationMonth))}
+              />
+              <LeadInfo
+                label="INCC anual"
+                value={formatPercentOrDash(percentValueToRate(readNumber(input.annualInccPercent)))}
+              />
+              <LeadInfo
+                label="Valorizacao mensal"
+                value={formatPercentOrDash(percentValueToRate(readNumber(input.monthlyIdleAppreciationPercent)))}
+              />
+              <LeadInfo
+                label="Mes de consolidacao"
+                value={formatMonthOrDash(readNumber(input.consolidationMonth))}
+              />
+              <LeadInfo label="Origem" value={readString(metadata.source)} />
+            </SimulationDetailGrid>
+          </SimulationDetailSection>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MultiCotasSnapshotCard({ card }: { card: Record<string, unknown> }) {
+  return (
+    <article className="rounded-md border bg-background/70 p-4 text-sm">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        Carta {formatIntegerOrDash(readNumber(card.position))}
+      </p>
+      <div className="mt-3 grid gap-2">
+        <LeadInfo label="Valor original" value={formatCurrencyOrDash(readNumber(card.originalValue))} />
+        <LeadInfo label="Contemplacao" value={formatMonthOrDash(readNumber(card.contemplationMonth))} />
+        <LeadInfo label="Saque" value={formatMonthOrDash(readNumber(card.withdrawalMonth))} />
+        <LeadInfo label="Reajustes INCC" value={formatIntegerOrDash(readNumber(card.inccAdjustmentCount))} />
+        <LeadInfo label="Credito atualizado" value={formatCurrencyOrDash(readNumber(card.updatedCredit))} />
+        <LeadInfo label="Valor futuro" value={formatCurrencyOrDash(readNumber(card.futureValue))} />
+        <LeadInfo label="Ganho estimado" value={formatCurrencyOrDash(readNumber(card.estimatedGain))} />
+        <LeadInfo label="ROI estimado" value={formatPercentOrDash(readNumber(card.estimatedGainRate))} />
       </div>
     </article>
   );
@@ -2159,6 +2313,16 @@ function formatCurrencyOrDash(value: number | null | undefined) {
 function formatPercentOrDash(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value)
     ? percentFormatter.format(value)
+    : "-";
+}
+
+function percentValueToRate(value: number | null) {
+  return value === null ? null : value / 100;
+}
+
+function formatIntegerOrDash(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(Math.trunc(value))
     : "-";
 }
 
