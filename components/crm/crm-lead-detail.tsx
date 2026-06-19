@@ -1604,6 +1604,13 @@ function LeadSimulationHistoryList({
   isLoading: boolean;
   simulations: CrmLeadSimulation[];
 }) {
+  const [selectedSimulationId, setSelectedSimulationId] = useState<string | null>(
+    null,
+  );
+  const selectedSimulation =
+    simulations.find((simulation) => simulation.id === selectedSimulationId) ??
+    null;
+
   if (isLoading) {
     return (
       <p className="rounded-md border bg-background/70 p-4 text-sm text-muted-foreground">
@@ -1629,20 +1636,42 @@ function LeadSimulationHistoryList({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {simulations.map((simulation) => (
-        <LeadSimulationHistoryItem
-          key={simulation.id}
-          simulation={simulation}
+    <div className="grid gap-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {simulations.map((simulation) => (
+          <LeadSimulationHistoryItem
+            isSelected={simulation.id === selectedSimulationId}
+            key={simulation.id}
+            onSelect={() =>
+              setSelectedSimulationId((current) =>
+                current === simulation.id ? null : simulation.id,
+              )
+            }
+            simulation={simulation}
+          />
+        ))}
+      </div>
+      {selectedSimulation ? (
+        <LeadSimulationReadDetail
+          onClose={() => setSelectedSimulationId(null)}
+          simulation={selectedSimulation}
         />
-      ))}
+      ) : (
+        <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+          Selecione uma simulacao para ver os detalhes salvos.
+        </p>
+      )}
     </div>
   );
 }
 
 function LeadSimulationHistoryItem({
+  isSelected,
+  onSelect,
   simulation,
 }: {
+  isSelected: boolean;
+  onSelect: () => void;
   simulation: CrmLeadSimulation;
 }) {
   const credit =
@@ -1652,7 +1681,12 @@ function LeadSimulationHistoryItem({
   const installment = simulation.monthlyPayment;
 
   return (
-    <article className="rounded-md border bg-background/70 p-4 text-sm">
+    <article
+      className={cn(
+        "rounded-md border bg-background/70 p-4 text-sm",
+        isSelected ? "border-primary/50 bg-primary/[0.04]" : "",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">
@@ -1692,8 +1726,218 @@ function LeadSimulationHistoryItem({
           value={dateFormatter.format(new Date(simulation.createdAt))}
         />
       </div>
+      <div className="mt-4">
+        <Button onClick={onSelect} type="button" variant="secondary">
+          {isSelected ? "Fechar detalhe" : "Ver detalhes"}
+        </Button>
+      </div>
     </article>
   );
+}
+
+function LeadSimulationReadDetail({
+  onClose,
+  simulation,
+}: {
+  onClose: () => void;
+  simulation: CrmLeadSimulation;
+}) {
+  const technicalInput = simulation.technicalInput;
+  const simulatorInput = readRecord(technicalInput.simulatorInput);
+  const selectedAdministrator = readRecord(technicalInput.selectedAdministrator);
+  const presentationSnapshot = simulation.presentationSnapshot;
+  const presentation = readRecord(presentationSnapshot.presentation);
+
+  return (
+    <section className="rounded-md border bg-card p-5 text-card-foreground">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Detalhe da simulacao
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-foreground">
+            {simulation.title}
+          </h4>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Leitura somente do snapshot salvo. Nenhum recalculo e executado.
+          </p>
+        </div>
+        <Button onClick={onClose} type="button" variant="ghost">
+          Fechar detalhe
+        </Button>
+      </div>
+
+      <div className="mt-5 grid gap-5">
+        <SimulationDetailSection title="Identificacao">
+          <SimulationDetailGrid>
+            <LeadInfo label="Titulo" value={simulation.title} />
+            <LeadInfo
+              label="Tipo"
+              value={leadSimulationTypeLabels[simulation.simulationType]}
+            />
+            <LeadInfo
+              label="Status"
+              value={leadSimulationStatusLabels[simulation.status]}
+            />
+            <LeadInfo
+              label="Criada em"
+              value={dateFormatter.format(new Date(simulation.createdAt))}
+            />
+          </SimulationDetailGrid>
+        </SimulationDetailSection>
+
+        <SimulationDetailSection title="Resumo Comercial">
+          <SimulationDetailGrid>
+            <LeadInfo
+              label="Credito"
+              value={formatCurrencyOrDash(simulation.totalCredit)}
+            />
+            <LeadInfo
+              label="Credito atualizado"
+              value={formatCurrencyOrDash(simulation.updatedCredit)}
+            />
+            <LeadInfo
+              label="Credito comercial"
+              value={formatCurrencyOrDash(simulation.commercialCredit)}
+            />
+            <LeadInfo
+              label="Parcela antes"
+              value={formatCurrencyOrDash(simulation.monthlyPayment)}
+            />
+            <LeadInfo
+              label="Parcela pos"
+              value={formatCurrencyOrDash(simulation.postContemplationPayment)}
+            />
+            <LeadInfo
+              label="Mes de contemplacao"
+              value={formatMonthOrDash(simulation.contemplationMonth)}
+            />
+            <LeadInfo
+              label="INCC"
+              value={formatPercentOrDash(simulation.inccRate)}
+            />
+            <LeadInfo
+              label="ROI estimado"
+              value={formatPercentOrDash(simulation.estimatedRoi)}
+            />
+            <LeadInfo
+              label="Lucro estimado"
+              value={formatCurrencyOrDash(simulation.estimatedGain)}
+            />
+            <LeadInfo
+              label="Venda estimada"
+              value={formatCurrencyOrDash(simulation.estimatedSaleValue)}
+            />
+          </SimulationDetailGrid>
+        </SimulationDetailSection>
+
+        <SimulationDetailSection title="Premissas Tecnicas">
+          <SimulationDetailGrid>
+            <LeadInfo
+              label="Administradora"
+              value={readString(selectedAdministrator.name)}
+            />
+            <LeadInfo
+              label="Cenario"
+              value={formatScenarioKey(readString(technicalInput.selectedScenarioKey))}
+            />
+            <LeadInfo
+              label="Seguro"
+              value={formatInsuranceOption(readString(technicalInput.insuranceOption))}
+            />
+            <LeadInfo
+              label="Tipo de lance"
+              value={formatBidType(readString(technicalInput.bidType))}
+            />
+            <LeadInfo
+              label="Taxa administrativa"
+              value={formatPercentOrDash(readNumber(simulatorInput.administrativeFeeRate))}
+            />
+            <LeadInfo
+              label="Fundo de reserva"
+              value={formatPercentOrDash(readNumber(simulatorInput.reserveFundRate))}
+            />
+            <LeadInfo
+              label="Prazo"
+              value={formatTermOrDash(readNumber(simulatorInput.termMonths))}
+            />
+            <LeadInfo
+              label="INCC"
+              value={formatPercentOrDash(readNumber(simulatorInput.inccRate))}
+            />
+            <LeadInfo
+              label="Venda da carta"
+              value={formatPercentOrDash(readNumber(simulatorInput.cardSaleRate))}
+            />
+            <LeadInfo
+              label="Lance embutido"
+              value={formatPercentOrDash(readNumber(simulatorInput.embeddedBidRate))}
+            />
+            <LeadInfo
+              label="Lance em dinheiro"
+              value={formatPercentOrDash(readNumber(simulatorInput.cashBidRate))}
+            />
+          </SimulationDetailGrid>
+        </SimulationDetailSection>
+
+        <SimulationDetailSection title="Apresentacao">
+          <SimulationDetailGrid>
+            <LeadInfo
+              label="Cenario selecionado"
+              value={readString(presentation.selectedScenarioName)}
+            />
+            <LeadInfo
+              label="Seguro"
+              value={readString(presentation.insuranceLabel)}
+            />
+            <LeadInfo
+              label="Tipo de lance"
+              value={readString(presentation.bidLabel)}
+            />
+            <LeadInfo
+              label="Investimento real"
+              value={formatCurrencyOrDash(readNumber(presentation.realInvestment))}
+            />
+            <LeadInfo
+              label="Credito liquido"
+              value={formatCurrencyOrDash(readNumber(presentation.liquidCredit))}
+            />
+            <LeadInfo
+              label="Credito comercial"
+              value={formatCurrencyOrDash(readNumber(presentation.commercialCredit))}
+            />
+            <LeadInfo
+              label="Lucro estimado"
+              value={formatCurrencyOrDash(readNumber(presentation.estimatedCardSaleProfit))}
+            />
+            <LeadInfo
+              label="Alavancagem"
+              value={formatMultipleOrDash(readNumber(presentation.leverageMultiple))}
+            />
+          </SimulationDetailGrid>
+        </SimulationDetailSection>
+      </div>
+    </section>
+  );
+}
+
+function SimulationDetailSection({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <div>
+      <h5 className="text-sm font-semibold text-foreground">{title}</h5>
+      <div className="mt-3">{children}</div>
+    </div>
+  );
+}
+
+function SimulationDetailGrid({ children }: { children: React.ReactNode }) {
+  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{children}</div>;
 }
 
 const timelineEventToneClassNames: Record<
@@ -1723,6 +1967,94 @@ const leadSimulationTypeLabels: Record<
   commercial: "Comercial",
   multi_cotas: "Multi-Cotas",
 };
+
+const leadSimulationStatusLabels: Record<
+  CrmLeadSimulation["status"],
+  string
+> = {
+  archived: "Arquivada",
+  draft: "Rascunho",
+  pdf_generated: "PDF gerado",
+  pdf_sent: "PDF enviado",
+  presented: "Apresentada",
+  proposal_generated: "Proposta gerada",
+};
+
+const simulationScenarioLabels: Record<string, string> = {
+  full: "Parcela cheia",
+  half: "50%",
+  seventy: "70%",
+};
+
+const simulationInsuranceLabels: Record<string, string> = {
+  "with-insurance": "Com seguro",
+  "without-insurance": "Sem seguro",
+};
+
+const simulationBidLabels: Record<string, string> = {
+  cash: "Lance em dinheiro",
+  embedded: "Lance embutido",
+  none: "Sem lance",
+};
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function readNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : "-";
+}
+
+function formatCurrencyOrDash(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? currencyFormatter.format(value)
+    : "-";
+}
+
+function formatPercentOrDash(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? percentFormatter.format(value)
+    : "-";
+}
+
+function formatMonthOrDash(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `Mes ${value}`
+    : "-";
+}
+
+function formatTermOrDash(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${value} meses`
+    : "-";
+}
+
+function formatMultipleOrDash(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${value.toLocaleString("pt-BR", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      })}x`
+    : "-";
+}
+
+function formatScenarioKey(value: string) {
+  return simulationScenarioLabels[value] ?? value;
+}
+
+function formatInsuranceOption(value: string) {
+  return simulationInsuranceLabels[value] ?? value;
+}
+
+function formatBidType(value: string) {
+  return simulationBidLabels[value] ?? value;
+}
 
 function ExecutiveDossierCard({
   children,
