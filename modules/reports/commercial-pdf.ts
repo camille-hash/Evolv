@@ -137,7 +137,7 @@ function drawCover(
 
   drawCoverMetric(doc, 130, {
     label: "Credito",
-    value: currencyFormatter.format(presentation.updatedCredit),
+    value: currencyFormatter.format(presentation.commercialCredit),
   });
   drawCoverMetric(doc, 158, {
     label: "Parcela antes da contemplacao",
@@ -213,6 +213,10 @@ function drawReportPage(
   y = drawSectionWithPageBreak(doc, y, "Resumo executivo", [
     {
       label: "Credito",
+      value: currencyFormatter.format(presentation.commercialCredit),
+    },
+    {
+      label: "Credito atualizado pelo INCC",
       value: currencyFormatter.format(presentation.updatedCredit),
     },
     {
@@ -239,7 +243,7 @@ function drawReportPage(
       value: String(presentation.contemplationMonth),
     },
     {
-      label: "Credito liquido disponivel",
+      label: "Credito disponivel ao cliente",
       value: currencyFormatter.format(presentation.liquidCredit),
     },
     {

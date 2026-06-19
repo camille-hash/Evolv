@@ -29,6 +29,8 @@ export type SimulatorSavedResultSnapshot = {
   leverageMultiple: number;
   contractedCredit: number;
   updatedCredit: number;
+  commercialCredit: number;
+  liquidCredit: number;
   selectedScenarioName: string;
 };
 
@@ -174,6 +176,8 @@ export function createResultSnapshot(
     leverageMultiple: presentation.leverageMultiple,
     contractedCredit: presentation.contractedCredit,
     updatedCredit: presentation.updatedCredit,
+    commercialCredit: presentation.commercialCredit,
+    liquidCredit: presentation.liquidCredit,
     selectedScenarioName: presentation.selectedScenarioName,
   };
 }
@@ -267,6 +271,18 @@ function normalizeResultSnapshot(
   return {
     ...value,
     updatedCredit: value.updatedCredit ?? value.contractedCredit ?? 0,
+    commercialCredit:
+      value.commercialCredit ??
+      value.liquidCredit ??
+      value.updatedCredit ??
+      value.contractedCredit ??
+      0,
+    liquidCredit:
+      value.liquidCredit ??
+      value.commercialCredit ??
+      value.updatedCredit ??
+      value.contractedCredit ??
+      0,
   } as SimulatorSavedResultSnapshot;
 }
 

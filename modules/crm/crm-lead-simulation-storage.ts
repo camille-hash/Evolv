@@ -43,7 +43,7 @@ export function addCrmLeadSimulation(input: {
     simulationId: input.simulation.id,
     simulationName: input.simulation.name,
     simulationDate: input.simulation.updatedAt,
-    credit: input.simulation.results.updatedCredit,
+    credit: input.simulation.results.commercialCredit,
     installment: input.simulation.results.installmentBeforeContemplation,
     scenario: input.simulation.results.selectedScenarioName,
     administrator:

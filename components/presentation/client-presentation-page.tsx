@@ -481,11 +481,11 @@ function CommercialResultGrid({
       <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <CommercialMetric
           label="Credito"
-          value={currencyFormatter.format(presentation.updatedCredit)}
+          value={currencyFormatter.format(presentation.commercialCredit)}
         />
         <CommercialMetric
-          label="Credito base"
-          value={currencyFormatter.format(presentation.contractedCredit)}
+          label="Credito atualizado"
+          value={currencyFormatter.format(presentation.updatedCredit)}
         />
         <CommercialMetric
           label="Parcela antes"

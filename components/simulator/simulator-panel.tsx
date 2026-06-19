@@ -1069,7 +1069,7 @@ function SimulationOperationPanel({
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <CommercialMetric
             label="Credito"
-            value={currencyFormatter.format(presentation.updatedCredit)}
+            value={currencyFormatter.format(presentation.commercialCredit)}
             featured
           />
           <CommercialMetric
@@ -1264,7 +1264,7 @@ function AnchoredProposalsSection({
                 <AnchoredProposalValue
                   label="Credito"
                   value={currencyFormatter.format(
-                    proposal.presentation.updatedCredit,
+                    proposal.presentation.commercialCredit,
                   )}
                 />
                 <AnchoredProposalValue
@@ -1543,15 +1543,19 @@ function SimulationResults({
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <CommercialMetric
           label="Credito"
-          value={currencyFormatter.format(presentation.updatedCredit)}
+          value={currencyFormatter.format(presentation.commercialCredit)}
           featured
+        />
+        <CommercialMetric
+          label="Credito atualizado"
+          value={currencyFormatter.format(presentation.updatedCredit)}
         />
         <CommercialMetric
           label="Credito base"
           value={currencyFormatter.format(presentation.contractedCredit)}
         />
         <CommercialMetric
-          label="Credito liquido"
+          label="Credito liquido disponivel"
           value={currencyFormatter.format(presentation.liquidCredit)}
         />
         <CommercialMetric
@@ -1659,7 +1663,7 @@ function SavedSimulationsPanel({
                 <SavedValue
                   label="Credito"
                   value={currencyFormatter.format(
-                    simulation.results.updatedCredit,
+                    simulation.results.commercialCredit,
                   )}
                 />
                 <SavedValue

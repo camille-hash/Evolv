@@ -23,6 +23,7 @@ export type SimulatorCommercialPresentation = {
   inccAdjustmentCount: number;
   inccFactor: number;
   updatedCredit: number;
+  commercialCredit: number;
   liquidCredit: number;
   selectedScenario: SimulatorScenarioResult;
   selectedScenarioName: string;
@@ -98,6 +99,7 @@ export function buildSimulatorCommercialPresentation({
     updatedCredit,
   });
   const liquidCredit = Math.max(0, updatedCredit - embeddedBidAmount);
+  const commercialCredit = liquidCredit;
   const estimatedCardSaleValue = liquidCredit * (input.cardSaleRate ?? 0);
   const realInvestment = totalInvestedUntilContemplation + cashBidAmount;
   const estimatedCardSaleProfit = estimatedCardSaleValue - realInvestment;
@@ -108,6 +110,7 @@ export function buildSimulatorCommercialPresentation({
     inccAdjustmentCount,
     inccFactor,
     updatedCredit,
+    commercialCredit,
     liquidCredit,
     selectedScenario,
     selectedScenarioName: selectedScenario.name,
