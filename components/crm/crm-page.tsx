@@ -135,6 +135,49 @@ const fieldInputClass =
   "w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15";
 const INITIAL_PIPELINE_CARDS_LIMIT = 5;
 
+type CrmOperationalHistoryFilters = {
+  createdAt: "all" | "today" | "last_7_days" | "last_30_days";
+  lastInteraction:
+    | "all"
+    | "today"
+    | "last_7_days"
+    | "last_30_days"
+    | "without";
+  lastSimulation:
+    | "all"
+    | "today"
+    | "last_7_days"
+    | "last_30_days"
+    | "without";
+  multiCotas: "all" | "has" | "without";
+  updatedAt: "all" | "today" | "last_7_days" | "last_30_days";
+};
+
+const emptyOperationalHistoryFilters: CrmOperationalHistoryFilters = {
+  createdAt: "all",
+  lastInteraction: "all",
+  lastSimulation: "all",
+  multiCotas: "all",
+  updatedAt: "all",
+};
+
+const dateWindowOptions = [
+  ["all", "Todos"],
+  ["today", "Hoje"],
+  ["last_7_days", "Ultimos 7 dias"],
+  ["last_30_days", "Ultimos 30 dias"],
+] as const;
+
+const dateWindowWithNoInteractionOptions = [
+  ...dateWindowOptions,
+  ["without", "Sem interacao"] as const,
+] as const;
+
+const dateWindowWithNoSimulationOptions = [
+  ...dateWindowOptions,
+  ["without", "Sem simulacao"] as const,
+] as const;
+
 export function CrmPage({
   onGenerateMultiCotas,
   onGenerateSimulation,
@@ -169,6 +212,8 @@ export function CrmPage({
       status: "all",
       temperatura: "all",
     });
+  const [operationalHistoryFilters, setOperationalHistoryFilters] =
+    useState<CrmOperationalHistoryFilters>(emptyOperationalHistoryFilters);
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [dragTarget, setDragTarget] = useState<{
     pipeline: CrmPipeline;
@@ -198,10 +243,6 @@ export function CrmPage({
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "my-day") {
-      return;
-    }
-
     let isActive = true;
 
     async function loadMyDay() {
@@ -240,7 +281,7 @@ export function CrmPage({
     return () => {
       isActive = false;
     };
-  }, [activeTab]);
+  }, []);
 
   useEffect(() => {
     if (!successMessage) {
@@ -271,10 +312,19 @@ export function CrmPage({
     : undefined;
   const filteredLeads = useMemo(
     () =>
-      filterCrmLeadsAdvanced(leads, advancedFilters).filter((lead) =>
-        normalizeLeadName(lead.nome).includes(normalizeLeadName(leadNameSearch)),
-      ),
-    [advancedFilters, leadNameSearch, leads],
+      filterCrmLeadsAdvanced(leads, advancedFilters)
+        .filter((lead) =>
+          normalizeLeadName(lead.nome).includes(normalizeLeadName(leadNameSearch)),
+        )
+        .filter((lead) =>
+          matchesOperationalHistoryFilters(
+            lead,
+            operationalHistoryFilters,
+            myDayView?.operationalHistoryByLeadId[lead.id],
+            myDayView !== null,
+          ),
+        ),
+    [advancedFilters, leadNameSearch, leads, myDayView, operationalHistoryFilters],
   );
   const searchOptions = useMemo(
     () => buildCrmAdvancedSearchOptions(leads),
@@ -316,6 +366,10 @@ export function CrmPage({
     activeTab === "my-day";
   const hasLeadSearchNoResults =
     Boolean(leadNameSearch.trim()) && filteredLeads.length === 0;
+  const hasOperationalHistoryFilters =
+    Object.values(operationalHistoryFilters).some((value) => value !== "all");
+  const hasOperationalFilterNoResults =
+    hasOperationalHistoryFilters && filteredLeads.length === 0;
 
   if (selectedLead && activeTab !== "settings") {
     return (
@@ -573,7 +627,9 @@ export function CrmPage({
           filters={advancedFilters}
           isOpen={isAdvancedSearchOpen}
           onChange={setAdvancedFilters}
+          onOperationalHistoryFiltersChange={setOperationalHistoryFilters}
           onToggle={() => setIsAdvancedSearchOpen((currentValue) => !currentValue)}
+          operationalHistoryFilters={operationalHistoryFilters}
           options={searchOptions}
           summary={searchSummary}
         />
@@ -625,13 +681,18 @@ export function CrmPage({
 
       {successMessage ? <SuccessFeedback message={successMessage} /> : null}
 
-      {hasLeadSearchNoResults && activeTab !== "settings" ? (
+      {(hasLeadSearchNoResults || hasOperationalFilterNoResults) &&
+      activeTab !== "settings" ? (
         <section className="executive-surface rounded-md border-dashed p-5 text-sm text-muted-foreground">
-          Nenhum lead encontrado.
+          {hasOperationalFilterNoResults
+            ? "Nenhum lead encontrado para os filtros selecionados."
+            : "Nenhum lead encontrado."}
         </section>
       ) : null}
 
-      {activePipelineGroup && !hasLeadSearchNoResults ? (
+      {activePipelineGroup &&
+      !hasLeadSearchNoResults &&
+      !hasOperationalFilterNoResults ? (
         <div className="grid min-w-0 gap-4 overflow-x-hidden">
           <FocusOfTheDayPanel groups={focusGroups} />
           <OperationalKanban
@@ -661,7 +722,9 @@ export function CrmPage({
         </div>
       ) : null}
 
-      {shouldShowOperationalSupport && !hasLeadSearchNoResults ? (
+      {shouldShowOperationalSupport &&
+      !hasLeadSearchNoResults &&
+      !hasOperationalFilterNoResults ? (
         <MyDayPanel
           error={myDayError}
           groups={myDayGroups}
@@ -670,14 +733,18 @@ export function CrmPage({
         />
       ) : null}
 
-      {activeTab === "lost" && !hasLeadSearchNoResults ? (
+      {activeTab === "lost" &&
+      !hasLeadSearchNoResults &&
+      !hasOperationalFilterNoResults ? (
         <LostLeadsPanel
           leads={filteredLeads.filter((lead) => isLeadInGroup(lead, "lost"))}
           onEdit={handleEditLead}
         />
       ) : null}
 
-      {activeTab === "base" && !hasLeadSearchNoResults ? (
+      {activeTab === "base" &&
+      !hasLeadSearchNoResults &&
+      !hasOperationalFilterNoResults ? (
         <BasePanel
           baseSearch={baseSearch}
           leads={filteredBaseLeads}
@@ -706,15 +773,21 @@ function AdvancedSearchPanel({
   filters,
   isOpen,
   onChange,
+  onOperationalHistoryFiltersChange,
   onToggle,
   options,
+  operationalHistoryFilters,
   summary,
 }: {
   filters: CrmAdvancedSearchFilters;
   isOpen: boolean;
   onChange: React.Dispatch<React.SetStateAction<CrmAdvancedSearchFilters>>;
+  onOperationalHistoryFiltersChange: React.Dispatch<
+    React.SetStateAction<CrmOperationalHistoryFilters>
+  >;
   onToggle: () => void;
   options: ReturnType<typeof buildCrmAdvancedSearchOptions>;
+  operationalHistoryFilters: CrmOperationalHistoryFilters;
   summary: ReturnType<typeof summarizeCrmAdvancedSearch>;
 }) {
   function clearFilters() {
@@ -728,6 +801,7 @@ function AdvancedSearchPanel({
       status: "all",
       temperatura: "all",
     });
+    onOperationalHistoryFiltersChange(emptyOperationalHistoryFilters);
   }
 
   return (
@@ -735,7 +809,7 @@ function AdvancedSearchPanel({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h3 className="text-sm font-semibold text-foreground">
-            Busca Avancada
+            Filtros
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
             {summary.total} registros encontrados nos filtros atuais.
@@ -886,6 +960,72 @@ function AdvancedSearchPanel({
             ...options.origens.map((origem) => [origem, origem] as const),
           ]}
           value={filters.origem}
+        />
+
+        <AdvancedSelect
+          label="Data de entrada"
+          onChange={(value) =>
+            onOperationalHistoryFiltersChange((currentFilters) => ({
+              ...currentFilters,
+              createdAt: value as CrmOperationalHistoryFilters["createdAt"],
+            }))
+          }
+          options={dateWindowOptions}
+          value={operationalHistoryFilters.createdAt}
+        />
+
+        <AdvancedSelect
+          label="Ultima atualizacao"
+          onChange={(value) =>
+            onOperationalHistoryFiltersChange((currentFilters) => ({
+              ...currentFilters,
+              updatedAt: value as CrmOperationalHistoryFilters["updatedAt"],
+            }))
+          }
+          options={dateWindowOptions}
+          value={operationalHistoryFilters.updatedAt}
+        />
+
+        <AdvancedSelect
+          label="Ultima interacao"
+          onChange={(value) =>
+            onOperationalHistoryFiltersChange((currentFilters) => ({
+              ...currentFilters,
+              lastInteraction:
+                value as CrmOperationalHistoryFilters["lastInteraction"],
+            }))
+          }
+          options={dateWindowWithNoInteractionOptions}
+          value={operationalHistoryFilters.lastInteraction}
+        />
+
+        <AdvancedSelect
+          label="Ultima simulacao"
+          onChange={(value) =>
+            onOperationalHistoryFiltersChange((currentFilters) => ({
+              ...currentFilters,
+              lastSimulation:
+                value as CrmOperationalHistoryFilters["lastSimulation"],
+            }))
+          }
+          options={dateWindowWithNoSimulationOptions}
+          value={operationalHistoryFilters.lastSimulation}
+        />
+
+        <AdvancedSelect
+          label="Multi-Cotas"
+          onChange={(value) =>
+            onOperationalHistoryFiltersChange((currentFilters) => ({
+              ...currentFilters,
+              multiCotas: value as CrmOperationalHistoryFilters["multiCotas"],
+            }))
+          }
+          options={[
+            ["all", "Todos"],
+            ["has", "Possui Multi-Cotas"],
+            ["without", "Nao possui Multi-Cotas"],
+          ]}
+          value={operationalHistoryFilters.multiCotas}
         />
         </div>
       ) : null}
@@ -2266,6 +2406,100 @@ function formatTaskDueLabel(dueDate: string, today: string) {
 function parseLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, (month ?? 1) - 1, day ?? 1);
+}
+
+function matchesOperationalHistoryFilters(
+  lead: CrmLead,
+  filters: CrmOperationalHistoryFilters,
+  history: CrmMyDayView["operationalHistoryByLeadId"][string] | undefined,
+  isHistoryLoaded: boolean,
+) {
+  if (
+    !matchesDateWindow(lead.createdAt, filters.createdAt) ||
+    !matchesDateWindow(lead.updatedAt, filters.updatedAt)
+  ) {
+    return false;
+  }
+
+  if (!isHistoryLoaded) {
+    return true;
+  }
+
+  if (!history) {
+    return (
+      (filters.lastInteraction === "all" ||
+        filters.lastInteraction === "without") &&
+      (filters.lastSimulation === "all" ||
+        filters.lastSimulation === "without") &&
+      (filters.multiCotas === "all" || filters.multiCotas === "without")
+    );
+  }
+
+  const matchesInteraction = matchesOptionalDateWindow(
+    history.lastInteractionAt,
+    filters.lastInteraction,
+  );
+  const matchesSimulation = matchesOptionalDateWindow(
+    history.lastSimulationAt,
+    filters.lastSimulation,
+  );
+  const matchesMultiCotas =
+    filters.multiCotas === "all" ||
+    (filters.multiCotas === "has" && history.hasMultiCotas) ||
+    (filters.multiCotas === "without" && !history.hasMultiCotas);
+
+  return matchesInteraction && matchesSimulation && matchesMultiCotas;
+}
+
+function matchesDateWindow(
+  value: string,
+  filter: CrmOperationalHistoryFilters["createdAt"],
+) {
+  if (filter === "all") {
+    return true;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const dateStart = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
+  const ageInDays = Math.floor(
+    (todayStart.getTime() - dateStart.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  if (filter === "today") {
+    return ageInDays === 0;
+  }
+
+  return ageInDays >= 0 && ageInDays <= (filter === "last_7_days" ? 7 : 30);
+}
+
+function matchesOptionalDateWindow(
+  value: string | null,
+  filter: CrmOperationalHistoryFilters["lastInteraction"],
+) {
+  if (filter === "without") {
+    return !value || Number.isNaN(new Date(value).getTime());
+  }
+
+  if (filter === "all") {
+    return true;
+  }
+
+  return value !== null && matchesDateWindow(value, filter);
 }
 
 function buildCommercialFocusGroups(leads: CrmLead[]) {

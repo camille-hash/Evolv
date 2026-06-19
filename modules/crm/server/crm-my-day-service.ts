@@ -127,6 +127,11 @@ export async function getCrmMyDay(
         simulations,
         tasks,
       }),
+      operationalHistoryByLeadId: buildOperationalHistoryByLeadId({
+        notes,
+        simulations,
+        tasks,
+      }),
       tasks: tasks
         .filter(
           (task) =>
@@ -190,6 +195,51 @@ function buildGreenFlagsByLeadId({
   return flagsByLeadId;
 }
 
+function buildOperationalHistoryByLeadId({
+  notes,
+  simulations,
+  tasks,
+}: {
+  notes: CrmMyDayNoteRow[];
+  simulations: CrmMyDaySimulationRow[];
+  tasks: CrmTask[];
+}) {
+  const leadIds = new Set([
+    ...notes.map((note) => note.lead_id),
+    ...simulations.map((simulation) => simulation.lead_id),
+    ...tasks.map((task) => task.leadId),
+  ]);
+
+  return Object.fromEntries(
+    Array.from(leadIds).map((leadId) => {
+      const interactionDates = [
+        ...notes
+          .filter((note) => note.lead_id === leadId)
+          .map((note) => note.created_at),
+        ...tasks
+          .filter((task) => task.leadId === leadId)
+          .map((task) => task.completedAt),
+      ];
+      const simulationDates = simulations
+        .filter((simulation) => simulation.lead_id === leadId)
+        .map((simulation) => simulation.created_at);
+
+      return [
+        leadId,
+        {
+          hasMultiCotas: simulations.some(
+            (simulation) =>
+              simulation.lead_id === leadId &&
+              simulation.simulation_type === "multi_cotas",
+          ),
+          lastInteractionAt: findLatestIsoDate(interactionDates),
+          lastSimulationAt: findLatestIsoDate(simulationDates),
+        },
+      ];
+    }),
+  );
+}
+
 function createTimelineEvents({
   notes,
   simulations,
@@ -251,6 +301,18 @@ function createTimelineEvents({
   });
 
   return events;
+}
+
+function findLatestIsoDate(values: Array<string | null>) {
+  return values.reduce<string | null>((latest, value) => {
+    if (!value || Number.isNaN(new Date(value).getTime())) {
+      return latest;
+    }
+
+    return !latest || new Date(value).getTime() > new Date(latest).getTime()
+      ? value
+      : latest;
+  }, null);
 }
 
 function mapTask(row: CrmMyDayTaskRow): CrmTask {
