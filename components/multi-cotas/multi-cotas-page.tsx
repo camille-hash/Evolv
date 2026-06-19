@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Minus, Plus } from "lucide-react";
 import {
   calculateMultiCotas,
   loadMultiCotasInput,
@@ -8,6 +9,7 @@ import {
   MIN_MULTI_COTAS_CARDS,
   normalizeMultiCotasInput,
   saveMultiCotasInput,
+  type MultiCotasCardResult,
   type MultiCotasInput,
 } from "@/modules/multi-cotas";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,12 @@ import { Button } from "@/components/ui/button";
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
   style: "currency",
+});
+
+const percentFormatter = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 1,
+  style: "percent",
 });
 
 export function MultiCotasPage() {
@@ -41,7 +49,10 @@ export function MultiCotasPage() {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  function updateInput(partialInput: Partial<MultiCotasInput>) {
+  function updateInput(
+    partialInput: Partial<MultiCotasInput>,
+    status = "Alteracoes aplicadas em tempo real",
+  ) {
     const nextInput = saveMultiCotasInput(
       normalizeMultiCotasInput({
         ...input,
@@ -50,7 +61,7 @@ export function MultiCotasPage() {
     );
 
     setInput(nextInput);
-    setSimulationStatus("Alteracoes aplicadas em tempo real");
+    setSimulationStatus(status);
   }
 
   function updateCard(
@@ -69,13 +80,15 @@ export function MultiCotasPage() {
     });
   }
 
-  function applyWithdrawalMonthToAllCards() {
+  function applySharedSettingsToAllCards() {
     updateInput({
       cards: input.cards.map((card) => ({
         ...card,
+        originalValue: input.baseCardValue,
+        contemplationMonth: input.sharedContemplationMonth,
         withdrawalMonth: input.consolidationMonth,
       })),
-    });
+    }, "Configuracao comum aplicada a todas as cartas");
   }
 
   function handleConfirmSimulation() {
@@ -131,10 +144,11 @@ export function MultiCotasPage() {
         {technicalOpen ? (
           <TechnicalSettings
             input={input}
-            onApplyWithdrawalMonthToAllCards={applyWithdrawalMonthToAllCards}
+            onApplySharedSettingsToAllCards={applySharedSettingsToAllCards}
             onCardChange={updateCard}
             onConfirmSimulation={handleConfirmSimulation}
             onInputChange={updateInput}
+            resultCards={result.cards}
             simulationStatus={simulationStatus}
           />
         ) : null}
@@ -299,20 +313,22 @@ export function MultiCotasPage() {
 
 function TechnicalSettings({
   input,
-  onApplyWithdrawalMonthToAllCards,
+  onApplySharedSettingsToAllCards,
   onCardChange,
   onConfirmSimulation,
   onInputChange,
+  resultCards,
   simulationStatus,
 }: {
   input: MultiCotasInput;
-  onApplyWithdrawalMonthToAllCards: () => void;
+  onApplySharedSettingsToAllCards: () => void;
   onCardChange: (
     cardId: string,
     partialCard: Partial<MultiCotasInput["cards"][number]>,
   ) => void;
   onConfirmSimulation: () => void;
   onInputChange: (input: Partial<MultiCotasInput>) => void;
+  resultCards: MultiCotasCardResult[];
   simulationStatus: string;
 }) {
   return (
@@ -343,6 +359,14 @@ function TechnicalSettings({
           value={input.annualInccPercent}
         />
         <NumberField
+          label="Mes de contemplacao para todas"
+          min={1}
+          onChange={(sharedContemplationMonth) =>
+            onInputChange({ sharedContemplationMonth })
+          }
+          value={input.sharedContemplationMonth}
+        />
+        <NumberField
           label="Valorizacao mensal parada (%)"
           onChange={(monthlyIdleAppreciationPercent) =>
             onInputChange({ monthlyIdleAppreciationPercent })
@@ -361,7 +385,7 @@ function TechnicalSettings({
         <div className="flex items-end">
           <Button
             className="w-full"
-            onClick={onApplyWithdrawalMonthToAllCards}
+            onClick={onApplySharedSettingsToAllCards}
             type="button"
             variant="secondary"
           >
@@ -371,44 +395,54 @@ function TechnicalSettings({
       </div>
 
       <div className="mt-6 grid gap-3">
-        {input.cards.map((card) => (
-          <div
-            className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[1fr_1fr_1fr_1fr]"
-            key={card.id}
-          >
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                Carta
-              </p>
-              <p className="mt-2 font-semibold text-foreground">
-                Carta {card.position}
-              </p>
+        {input.cards.map((card) => {
+          const resultCard =
+            resultCards.find((currentCard) => currentCard.id === card.id) ??
+            resultCards[card.position - 1];
+
+          return (
+            <div
+              className="grid gap-4 rounded-md border bg-card p-4"
+              key={card.id}
+            >
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Carta
+                  </p>
+                  <p className="mt-2 font-semibold text-foreground">
+                    Carta {card.position}
+                  </p>
+                </div>
+                <NumberField
+                  label="Valor individual"
+                  onChange={(originalValue) =>
+                    onCardChange(card.id, { originalValue })
+                  }
+                  value={card.originalValue}
+                />
+                <NumberField
+                  label="Mes de saque do credito"
+                  min={1}
+                  onChange={(withdrawalMonth) =>
+                    onCardChange(card.id, { withdrawalMonth })
+                  }
+                  value={card.withdrawalMonth}
+                />
+              </div>
+
+              <ContemplationTracker
+                maxMonth={input.termMonths}
+                onChange={(contemplationMonth) =>
+                  onCardChange(card.id, { contemplationMonth })
+                }
+                value={card.contemplationMonth}
+              />
+
+              {resultCard ? <CardOperationalSummary card={resultCard} /> : null}
             </div>
-            <NumberField
-              label="Valor individual"
-              onChange={(originalValue) =>
-                onCardChange(card.id, { originalValue })
-              }
-              value={card.originalValue}
-            />
-            <NumberField
-              label="Mes de contemplacao"
-              min={1}
-              onChange={(contemplationMonth) =>
-                onCardChange(card.id, { contemplationMonth })
-              }
-              value={card.contemplationMonth}
-            />
-            <NumberField
-              label="Mes de saque do credito"
-              min={1}
-              onChange={(withdrawalMonth) =>
-                onCardChange(card.id, { withdrawalMonth })
-              }
-              value={card.withdrawalMonth}
-            />
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
@@ -419,6 +453,100 @@ function TechnicalSettings({
           Confirmar simulacao
         </Button>
       </div>
+    </div>
+  );
+}
+
+function ContemplationTracker({
+  maxMonth,
+  onChange,
+  value,
+}: {
+  maxMonth: number;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  const nextValue = Math.min(Math.max(1, Math.trunc(value)), maxMonth);
+
+  return (
+    <div className="rounded-md border bg-background/70 p-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Mes de contemplacao
+          </p>
+          <p className="mt-2 text-3xl font-semibold text-foreground">
+            Mes {nextValue}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            aria-label="Reduzir mes de contemplacao"
+            disabled={nextValue <= 1}
+            onClick={() => onChange(nextValue - 1)}
+            type="button"
+            variant="secondary"
+          >
+            <Minus className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button
+            aria-label="Aumentar mes de contemplacao"
+            disabled={nextValue >= maxMonth}
+            onClick={() => onChange(nextValue + 1)}
+            type="button"
+            variant="secondary"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+      <input
+        aria-label="Selecionar mes de contemplacao da carta"
+        className="mt-4 w-full accent-primary"
+        max={maxMonth}
+        min={1}
+        onChange={(event) => onChange(Number(event.target.value))}
+        type="range"
+        value={nextValue}
+      />
+      <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+        <span>Mes 1</span>
+        <span>Mes {maxMonth}</span>
+      </div>
+    </div>
+  );
+}
+
+function CardOperationalSummary({ card }: { card: MultiCotasCardResult }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <InlineMetric
+        label="Credito"
+        value={currencyFormatter.format(card.commercialCredit)}
+      />
+      <InlineMetric
+        label="Reajustes INCC"
+        value={String(card.inccAdjustmentCount)}
+      />
+      <InlineMetric
+        label="Valor futuro"
+        value={currencyFormatter.format(card.futureValue)}
+      />
+      <InlineMetric
+        label="ROI estimado"
+        value={percentFormatter.format(card.estimatedGainRate)}
+      />
+    </div>
+  );
+}
+
+function InlineMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background/70 p-3">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }

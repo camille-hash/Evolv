@@ -11,6 +11,7 @@ export const defaultMultiCotasInput: MultiCotasInput = normalizeMultiCotasInput(
   cardCount: 5,
   baseCardValue: 200000,
   termMonths: 197,
+  sharedContemplationMonth: 12,
   annualInccPercent: 6,
   monthlyIdleAppreciationPercent: 0.8,
   consolidationMonth: 63,
@@ -40,15 +41,20 @@ export function calculateMultiCotas(input: MultiCotasInput): MultiCotasResult {
     );
     const futureValue =
       updatedCredit * Math.pow(1 + monthlyIdleAppreciationRate, idleMonths);
+    const estimatedGain = futureValue - card.originalValue;
 
     return {
       ...card,
       inccAdjustmentCount,
       updatedCredit,
+      commercialCredit: updatedCredit,
       idleMonths,
       futureValue,
       inccGain: updatedCredit - card.originalValue,
       idleAppreciationGain: futureValue - updatedCredit,
+      estimatedGain,
+      estimatedGainRate:
+        card.originalValue > 0 ? estimatedGain / card.originalValue : 0,
     };
   });
   const summary = cards.reduce(
@@ -88,6 +94,11 @@ export function normalizeMultiCotasInput(
   );
   const termMonths = Math.max(1, Math.trunc(input.termMonths || 1));
   const baseCardValue = Math.max(0, input.baseCardValue || 0);
+  const sharedContemplationMonth = clampInteger(
+    input.sharedContemplationMonth ?? Math.min(termMonths, 12),
+    1,
+    termMonths,
+  );
   const existingCards = Array.isArray(input.cards) ? input.cards : [];
   const cards = Array.from({ length: cardCount }, (_, index) => {
     const position = index + 1;
@@ -107,6 +118,7 @@ export function normalizeMultiCotasInput(
     cardCount,
     baseCardValue,
     termMonths,
+    sharedContemplationMonth,
     annualInccPercent: Math.max(0, input.annualInccPercent || 0),
     monthlyIdleAppreciationPercent: Math.max(
       0,

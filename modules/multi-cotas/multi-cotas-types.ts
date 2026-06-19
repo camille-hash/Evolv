@@ -10,6 +10,7 @@ export type MultiCotasInput = {
   cardCount: number;
   baseCardValue: number;
   termMonths: number;
+  sharedContemplationMonth: number;
   annualInccPercent: number;
   monthlyIdleAppreciationPercent: number;
   consolidationMonth: number;
@@ -19,10 +20,13 @@ export type MultiCotasInput = {
 export type MultiCotasCardResult = MultiCotasCardInput & {
   inccAdjustmentCount: number;
   updatedCredit: number;
+  commercialCredit: number;
   idleMonths: number;
   futureValue: number;
   inccGain: number;
   idleAppreciationGain: number;
+  estimatedGain: number;
+  estimatedGainRate: number;
 };
 
 export type MultiCotasSummary = {
