@@ -11,8 +11,10 @@ import {
   saveMultiCotasInput,
   type MultiCotasCardResult,
   type MultiCotasInput,
+  type MultiCotasResult,
 } from "@/modules/multi-cotas";
 import { Button } from "@/components/ui/button";
+import type { CrmLeadProposalContext } from "@/modules/crm";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
@@ -25,7 +27,18 @@ const percentFormatter = new Intl.NumberFormat("pt-BR", {
   style: "percent",
 });
 
-export function MultiCotasPage() {
+type MultiCotasSaveState = {
+  message: string;
+  status: "idle" | "saving" | "success" | "error";
+};
+
+export function MultiCotasPage({
+  leadProposalContext,
+  onClearLeadProposalContext,
+}: {
+  leadProposalContext?: CrmLeadProposalContext | null;
+  onClearLeadProposalContext?: () => void;
+}) {
   const [input, setInput] = useState<MultiCotasInput>(() =>
     loadMultiCotasInput(),
   );
@@ -33,6 +46,11 @@ export function MultiCotasPage() {
   const [simulationStatus, setSimulationStatus] = useState(
     "Simulacao atualizada",
   );
+  const [studyTitle, setStudyTitle] = useState("");
+  const [saveState, setSaveState] = useState<MultiCotasSaveState>({
+    message: "",
+    status: "idle",
+  });
   const result = useMemo(() => calculateMultiCotas(input), [input]);
   const averageCardValue =
     result.summary.cardCount > 0
@@ -96,6 +114,75 @@ export function MultiCotasPage() {
     setSimulationStatus("Simulacao atualizada");
   }
 
+  async function handleSaveLeadMultiCotas() {
+    if (!leadProposalContext?.leadId) {
+      setSaveState({
+        message: "Abra a estrategia a partir de um lead antes de salvar.",
+        status: "error",
+      });
+      return;
+    }
+
+    const title =
+      studyTitle.trim() || `Estudo Multi-Cotas - ${leadProposalContext.leadName}`;
+
+    setSaveState({
+      message: "Salvando estudo Multi-Cotas no lead...",
+      status: "saving",
+    });
+
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      setSaveState({
+        message: "Sessao Supabase indisponivel. Faca login novamente.",
+        status: "error",
+      });
+      return;
+    }
+
+    const payload = buildMultiCotasLeadSimulationPayload({
+      input,
+      leadProposalContext,
+      result,
+      title,
+    });
+
+    try {
+      const response = await fetch("/api/crm/lead-simulations", {
+        body: JSON.stringify(payload),
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        simulation?: { id?: string };
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Nao foi possivel salvar o estudo.");
+      }
+
+      setSaveState({
+        message: body?.simulation?.id
+          ? `Estudo Multi-Cotas salvo. ID: ${body.simulation.id}`
+          : "Estudo Multi-Cotas salvo no lead.",
+        status: "success",
+      });
+    } catch (error) {
+      setSaveState({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel salvar o estudo.",
+        status: "error",
+      });
+    }
+  }
+
   return (
     <section className="grid gap-6">
       <section className="executive-hero rounded-md p-7 text-primary-foreground sm:p-9">
@@ -121,6 +208,66 @@ export function MultiCotasPage() {
           </div>
         </div>
       </section>
+
+      {leadProposalContext ? (
+        <section className="executive-surface rounded-md p-5 text-card-foreground">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Lead vinculado
+              </p>
+              <h2 className="mt-2 text-lg font-semibold text-foreground">
+                {leadProposalContext.leadName}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Este estudo sera salvo apenas para este lead.
+              </p>
+            </div>
+            <div className="grid w-full gap-3 lg:max-w-md">
+              <label className="grid gap-2 text-sm font-medium text-foreground">
+                Titulo do estudo
+                <input
+                  className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+                  onChange={(event) => setStudyTitle(event.target.value)}
+                  placeholder={`Estudo Multi-Cotas - ${leadProposalContext.leadName}`}
+                  value={studyTitle}
+                />
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  disabled={saveState.status === "saving"}
+                  onClick={handleSaveLeadMultiCotas}
+                  type="button"
+                >
+                  {saveState.status === "saving"
+                    ? "Salvando..."
+                    : "Salvar estudo no lead"}
+                </Button>
+                {onClearLeadProposalContext ? (
+                  <Button
+                    onClick={onClearLeadProposalContext}
+                    type="button"
+                    variant="secondary"
+                  >
+                    Encerrar contexto do lead
+                  </Button>
+                ) : null}
+              </div>
+              {saveState.message ? (
+                <p
+                  className={
+                    saveState.status === "error"
+                      ? "text-xs leading-5 text-destructive"
+                      : "text-xs leading-5 text-muted-foreground"
+                  }
+                >
+                  {saveState.message}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="executive-surface rounded-md p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -593,4 +740,91 @@ function NumberField({
       />
     </label>
   );
+}
+
+function buildMultiCotasLeadSimulationPayload({
+  input,
+  leadProposalContext,
+  result,
+  title,
+}: {
+  input: MultiCotasInput;
+  leadProposalContext: CrmLeadProposalContext;
+  result: MultiCotasResult;
+  title: string;
+}) {
+  const totalEstimatedGain =
+    result.summary.totalInccGain + result.summary.totalIdleAppreciationGain;
+  const snapshot = {
+    input,
+    metadata: {
+      source: "multi_cotas",
+      version: "103A.41-R1",
+    },
+    result: {
+      cards: result.cards,
+      summary: result.summary,
+    },
+  };
+
+  return {
+    calculationSnapshot: snapshot,
+    leadId: leadProposalContext.leadId,
+    presentationSnapshot: {
+      ...snapshot,
+      leadContext: {
+        leadName: leadProposalContext.leadName,
+      },
+      summary: {
+        averageCardValue:
+          result.summary.cardCount > 0
+            ? result.summary.totalOriginalContracted / result.summary.cardCount
+            : 0,
+        totalEstimatedGain,
+        totalFutureValue: result.summary.totalFutureValue,
+        totalUpdatedCredit: result.summary.totalUpdatedCredit,
+      },
+    },
+    simulationType: "multi_cotas",
+    source: "multi_cotas",
+    summary: {
+      commercialCredit: result.summary.totalUpdatedCredit,
+      contemplationMonth: input.sharedContemplationMonth,
+      estimatedGain: totalEstimatedGain,
+      estimatedSaleValue: result.summary.totalFutureValue,
+      inccRate: input.annualInccPercent / 100,
+      quotaCount: result.summary.cardCount,
+      totalCredit: result.summary.totalOriginalContracted,
+      updatedCredit: result.summary.totalUpdatedCredit,
+    },
+    technicalInput: snapshot,
+    title,
+  };
+}
+
+async function readSupabaseAccessToken() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !publishableKey) {
+    return null;
+  }
+
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabase = createClient(supabaseUrl, publishableKey, {
+    auth: {
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  });
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error || !data.session?.access_token) {
+    return null;
+  }
+
+  return data.session.access_token;
 }

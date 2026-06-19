@@ -132,8 +132,10 @@ const fieldInputClass =
 const INITIAL_PIPELINE_CARDS_LIMIT = 5;
 
 export function CrmPage({
+  onGenerateMultiCotas,
   onGenerateSimulation,
 }: {
+  onGenerateMultiCotas?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
 }) {
@@ -272,6 +274,7 @@ export function CrmPage({
         }}
         onClearFeedbackMessage={() => setSuccessMessage(null)}
         onDraftChange={setDraft}
+        onGenerateMultiCotas={(lead: CrmLead) => onGenerateMultiCotas?.(lead)}
         onGenerateSimulation={(lead: CrmLead) => onGenerateSimulation?.(lead)}
         onSave={handleSaveSelectedLead}
         proposals={[]}

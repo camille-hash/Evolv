@@ -246,7 +246,7 @@ export default function Home() {
 
   function handleGenerateSimulationFromLead(
     lead: CrmLead,
-    intent: "simulation" | "proposal",
+    intent: "simulation" | "proposal" | "multi_cotas",
   ) {
     const nextContext = saveCrmLeadProposalContext({
       intent,
@@ -256,7 +256,7 @@ export default function Home() {
     });
 
     setLeadProposalContext(nextContext);
-    handleNavigate("presentation");
+    handleNavigate(intent === "multi_cotas" ? "multiCotas" : "presentation");
   }
 
   function handleClearLeadProposalContext() {
@@ -318,6 +318,11 @@ export default function Home() {
 
         {visibleActiveSection === "crm" ? (
           <CrmPage
+            onGenerateMultiCotas={
+              canCurrentUserGenerateLeadSimulation
+                ? (lead) => handleGenerateSimulationFromLead(lead, "multi_cotas")
+                : undefined
+            }
             onGenerateSimulation={
               canCurrentUserGenerateLeadSimulation
                 ? (lead) => handleGenerateSimulationFromLead(lead, "simulation")
@@ -332,7 +337,7 @@ export default function Home() {
         ) : null}
 
         {visibleActiveSection === "presentation" ? (
-          leadProposalContext ? (
+          leadProposalContext && leadProposalContext.intent !== "multi_cotas" ? (
             <SimulatorPanel
               activePage="simulation"
               leadProposalContext={leadProposalContext}
@@ -343,7 +348,16 @@ export default function Home() {
           )
         ) : null}
 
-        {visibleActiveSection === "multiCotas" ? <MultiCotasPage /> : null}
+        {visibleActiveSection === "multiCotas" ? (
+          <MultiCotasPage
+            leadProposalContext={
+              leadProposalContext?.intent === "multi_cotas"
+                ? leadProposalContext
+                : null
+            }
+            onClearLeadProposalContext={handleClearLeadProposalContext}
+          />
+        ) : null}
 
         {visibleActiveSection === "portfolio" ? <PortfolioPage /> : null}
 

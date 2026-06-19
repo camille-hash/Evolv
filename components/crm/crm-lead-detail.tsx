@@ -86,6 +86,7 @@ type CrmLeadDetailProps = {
   onCancel: () => void;
   onClearFeedbackMessage?: () => void;
   onDraftChange: (draft: CrmLeadInput) => void;
+  onGenerateMultiCotas?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   proposals: GeneratedProposalRecord[];
@@ -98,6 +99,7 @@ export function CrmLeadDetail({
   onCancel,
   onClearFeedbackMessage,
   onDraftChange,
+  onGenerateMultiCotas,
   onGenerateSimulation,
   onSave,
   proposals,
@@ -157,6 +159,12 @@ export function CrmLeadDetail({
     timelineState?.leadId === lead.id ? timelineState.timeline.events : [];
   const leadSimulations =
     simulationsState?.leadId === lead.id ? simulationsState.simulations : [];
+  const commercialSimulations = leadSimulations.filter(
+    (simulation) => simulation.simulationType === "commercial",
+  );
+  const multiCotasSimulations = leadSimulations.filter(
+    (simulation) => simulation.simulationType === "multi_cotas",
+  );
   const latestMovement =
     persistedStructuredNotes[0] ?? structuredNotes.latestMovements[0];
   const commercialSignal = resolveCrmLeadCommercialSignal(lead);
@@ -851,6 +859,15 @@ export function CrmLeadDetail({
                 <Plus className="h-4 w-4" aria-hidden />
                 Gerar simulacao
               </Button>
+              <Button
+                disabled={!onGenerateMultiCotas}
+                onClick={() => onGenerateMultiCotas?.(lead)}
+                type="button"
+                variant="secondary"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Gerar Multi-Cotas
+              </Button>
               <Button disabled type="button" variant="secondary">
                 <Plus className="h-4 w-4" aria-hidden />
                 Gerar proposta
@@ -880,7 +897,19 @@ export function CrmLeadDetail({
           <LeadSimulationHistoryList
             error={simulationsError}
             isLoading={isLoadingSimulations}
-            simulations={leadSimulations}
+            simulations={commercialSimulations}
+          />
+        </ExecutiveDossierCard>
+
+        <ExecutiveDossierCard
+          description="Estudos Multi-Cotas vinculados a este lead."
+          eyebrow="Estrategia"
+          title="Multi-Cotas"
+        >
+          <LeadMultiCotasSummary
+            error={simulationsError}
+            isLoading={isLoadingSimulations}
+            simulations={multiCotasSimulations}
           />
         </ExecutiveDossierCard>
 
@@ -1732,6 +1761,56 @@ function LeadSimulationHistoryItem({
         </Button>
       </div>
     </article>
+  );
+}
+
+function LeadMultiCotasSummary({
+  error,
+  isLoading,
+  simulations,
+}: {
+  error: string | null;
+  isLoading: boolean;
+  simulations: CrmLeadSimulation[];
+}) {
+  if (isLoading) {
+    return <p className="text-sm text-muted-foreground">Carregando estudos...</p>;
+  }
+
+  if (error) {
+    return <p className="text-sm text-muted-foreground">{error}</p>;
+  }
+
+  if (!simulations.length) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        Nenhum estudo Multi-Cotas salvo neste lead.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      <p className="text-sm text-muted-foreground">
+        {simulations.length} {simulations.length === 1 ? "estudo salvo" : "estudos salvos"}.
+      </p>
+      {simulations.map((simulation) => (
+        <article
+          className="flex flex-col gap-2 rounded-md border bg-background/70 p-4 sm:flex-row sm:items-center sm:justify-between"
+          key={simulation.id}
+        >
+          <div>
+            <p className="text-sm font-medium text-foreground">{simulation.title}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {simulation.quotaCount ?? 0} cartas
+            </p>
+          </div>
+          <time className="text-xs text-muted-foreground" dateTime={simulation.createdAt}>
+            {dateFormatter.format(new Date(simulation.createdAt))}
+          </time>
+        </article>
+      ))}
+    </div>
   );
 }
 
