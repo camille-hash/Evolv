@@ -30,7 +30,7 @@ export const defaultCrmPipelineConfig: CrmConfigurablePipeline[] = [
       buildDefaultStage("primeira-reuniao", "1a Reuniao", 1),
       buildDefaultStage("segunda-reuniao", "2a Reuniao", 2),
       buildDefaultStage("contorno-objecoes", "Contorno de objecoes", 3),
-      buildDefaultStage("green-flag", "Green Flag", 4),
+      buildDefaultStage("green-flag", "Check Point", 4),
       buildDefaultStage("documentacao", "Documentacao", 5),
     ],
   },

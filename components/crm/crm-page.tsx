@@ -103,7 +103,7 @@ const groupStages: Record<
     { label: "1a reuniao", candidates: ["1a reuniao", "1ª reunião", "primeira-reuniao"] },
     { label: "2a reuniao", candidates: ["2a reuniao", "2ª reunião", "segunda-reuniao"] },
     { label: "Contorno de objecoes", candidates: ["contorno de objecoes", "contorno-objecoes"] },
-    { label: "Green Flag", candidates: ["green flag", "green-flag"] },
+    { label: "Check Point", candidates: ["green flag", "green-flag"] },
     { label: "Documentacao", candidates: ["documentacao", "documentação"] },
   ],
   administrative: [
@@ -1221,10 +1221,10 @@ function MyDayPanel({
         title="Tarefas com vencimento hoje"
       />
       <MyDayGreenFlagsBlock
-        emptyText="Nenhuma Green Flag identificada."
+        emptyText="Nenhum Check Point identificado."
         items={groups.greenFlags}
         onOpen={onOpen}
-        title="Green Flags"
+        title="Check Points"
       />
       <MyDayTaskBlock
         emptyText="Nenhuma proxima acao agendada."
@@ -1319,7 +1319,7 @@ function MyDayGreenFlagsBlock({
                   {getLeadDisplayName(item.lead)}
                 </p>
                 <span className="shrink-0 text-xs font-medium text-emerald-700">
-                  {item.flags.length} Green Flags
+                  {item.flags.length} Check Points
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">

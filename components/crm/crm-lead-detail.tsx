@@ -912,7 +912,7 @@ export function CrmLeadDetail({
         <ExecutiveDossierCard
           description="Sinais explicaveis derivados das atividades e artefatos ja registrados."
           eyebrow="Inteligencia"
-          title="Green Flags"
+          title="Check Points"
         >
           <LeadGreenFlags flags={greenFlags} />
         </ExecutiveDossierCard>
@@ -1797,7 +1797,7 @@ function LeadGreenFlags({ flags }: { flags: CrmLeadGreenFlag[] }) {
   if (!flags.length) {
     return (
       <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
-        Nenhuma Green Flag identificada.
+        Nenhum Check Point identificado.
       </p>
     );
   }

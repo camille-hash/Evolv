@@ -38,7 +38,7 @@ export const crmPipelines: CrmPipelineDefinition[] = [
       { key: "primeira-reuniao", label: "1a Reuniao" },
       { key: "segunda-reuniao", label: "2a Reuniao" },
       { key: "contorno-objecoes", label: "Contorno de objecoes" },
-      { key: "green-flag", label: "Green Flag" },
+      { key: "green-flag", label: "Check Point" },
       { key: "documentacao", label: "Documentacao" },
     ],
   },

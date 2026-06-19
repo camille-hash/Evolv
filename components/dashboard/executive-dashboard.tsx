@@ -1043,7 +1043,7 @@ function buildCommercialExecutiveDashboard(leads: CrmLead[]) {
     { label: "Novos", match: ["novos"] },
     { label: "Abertura", match: ["abertura"] },
     { label: "Conexao", match: ["conexao", "conexão"] },
-    { label: "Green Flag", match: ["green flag", "green-flag"] },
+    { label: "Check Point", match: ["green flag", "green-flag"] },
     { label: "Documentacao", match: ["documentacao", "documentação"] },
   ].map((step) => ({
     count: activeLeads.filter((lead) =>
