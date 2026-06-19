@@ -45,6 +45,14 @@ const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
   timeStyle: "short",
 });
 
+const percentagePointsFormatter = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 0,
+});
+
+const commercialDisclaimer =
+  "Esta simulacao representa um cenario estimativo elaborado em tempo real, considerando os parametros selecionados durante a reuniao consultiva. Os resultados apresentados possuem carater exclusivamente ilustrativo e educacional, nao constituindo promessa de contemplacao, garantia de rentabilidade, oferta vinculante ou compromisso de desempenho futuro. A efetiva contemplacao esta sujeita as regras da administradora, disponibilidade dos grupos, criterios aplicaveis e condicoes vigentes na data da contratacao.";
+
 export function generateMultiCotasCommercialPdf({
   leadName,
   simulationCreatedAt,
@@ -52,6 +60,7 @@ export function generateMultiCotasCommercialPdf({
   snapshot,
 }: MultiCotasCommercialPdfInput) {
   const input = readRecord(snapshot.input);
+  const metadata = readRecord(snapshot.metadata);
   const result = readRecord(snapshot.result);
   const summary = readRecord(result.summary);
   const cards = Array.isArray(result.cards)
@@ -70,7 +79,7 @@ export function generateMultiCotasCommercialPdf({
   });
 
   cursorY = drawSection(doc, "Resumo executivo", cursorY);
-  cursorY = drawMetrics(doc, buildSummaryMetrics(summary), cursorY);
+  cursorY = drawMetrics(doc, buildSummaryMetrics(summary, input, metadata), cursorY);
 
   cursorY = ensureSpace(doc, cursorY, 26);
   cursorY = drawSection(doc, "Cartas", cursorY);
@@ -87,6 +96,7 @@ export function generateMultiCotasCommercialPdf({
     cursorY = drawMetrics(doc, consolidatedMetrics, cursorY);
   }
 
+  drawCommercialDisclaimerPage(doc);
   drawFooter(doc);
   doc.save(buildFileName(simulationTitle, leadName));
 }
@@ -204,6 +214,24 @@ function drawFooter(doc: jsPDF) {
   }
 }
 
+function drawCommercialDisclaimerPage(doc: jsPDF) {
+  doc.addPage();
+  doc.setTextColor(colors.ink);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text("Informacoes importantes", page.margin, 30);
+  doc.setDrawColor(colors.line);
+  doc.line(page.margin, 35, page.width - page.margin, 35);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(colors.muted);
+  doc.text(
+    doc.splitTextToSize(commercialDisclaimer, page.width - page.margin * 2),
+    page.margin,
+    45,
+  );
+}
+
 function ensureSpace(doc: jsPDF, cursorY: number, height: number) {
   if (cursorY + height <= page.height - 28) {
     return cursorY;
@@ -213,12 +241,20 @@ function ensureSpace(doc: jsPDF, cursorY: number, height: number) {
   return page.margin;
 }
 
-function buildSummaryMetrics(summary: SnapshotRecord) {
+function buildSummaryMetrics(
+  summary: SnapshotRecord,
+  input: SnapshotRecord,
+  metadata: SnapshotRecord,
+) {
   return compactMetrics([
     metric("Cartas", formatInteger(readNumber(summary.cardCount))),
     metric("Credito contratado", formatCurrency(readNumber(summary.totalOriginalContracted))),
     metric("Credito atualizado", formatCurrency(readNumber(summary.totalUpdatedCredit))),
     metric("Valor futuro", formatCurrency(readNumber(summary.totalFutureValue))),
+    {
+      label: "INCC utilizado",
+      value: resolveInccLabel(input, metadata, summary),
+    },
   ]);
 }
 
@@ -281,6 +317,33 @@ function formatMonths(value: number | null) {
 
 function formatPercent(value: number | null) {
   return value === null ? null : percentFormatter.format(value);
+}
+
+function resolveInccLabel(
+  input: SnapshotRecord,
+  metadata: SnapshotRecord,
+  summary: SnapshotRecord,
+) {
+  const percentagePoints =
+    readNumber(input.annualInccPercent) ??
+    readNumber(input.inccPercent) ??
+    readNumber(metadata.annualInccPercent) ??
+    readNumber(metadata.inccPercent) ??
+    readNumber(summary.annualInccPercent) ??
+    readNumber(summary.inccPercent);
+
+  if (percentagePoints !== null) {
+    return `${percentagePointsFormatter.format(percentagePoints)}% ao ano`;
+  }
+
+  const rate =
+    readNumber(input.inccRate) ??
+    readNumber(metadata.inccRate) ??
+    readNumber(summary.inccRate);
+
+  return rate === null
+    ? "Nao informado no estudo salvo"
+    : `${percentFormatter.format(rate)} ao ano`;
 }
 
 function formatDate(value: string) {
