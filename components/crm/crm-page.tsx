@@ -35,6 +35,7 @@ import {
   resolveCrmLeadOperationalAging,
   resolveCrmLeadCommercialSignal,
   resolveCrmLeadOperationalPriority,
+  resolveNextPendingCrmTask,
   saveCrmLead,
   summarizeCrmAdvancedSearch,
   toCrmPipelineDefinitions,
@@ -711,6 +712,7 @@ export function CrmPage({
             dragTarget={dragTarget}
             group={activePipelineGroup}
             leads={filteredLeads}
+            pendingTasksByLeadId={myDayView?.pendingTasksByLeadId ?? {}}
             expandedColumnIds={expandedPipelineColumns}
             onDragEnd={handleLeadDragEnd}
             onDragOver={handleStageDragOver}
@@ -1524,6 +1526,7 @@ function OperationalKanban({
   onDrop,
   onEdit,
   onToggleColumn,
+  pendingTasksByLeadId,
 }: {
   columns: OperationalColumn[];
   dragTarget: { pipeline: CrmPipeline; stage: CrmStage } | null;
@@ -1544,6 +1547,7 @@ function OperationalKanban({
   ) => void;
   onEdit: (lead: CrmLead) => void;
   onToggleColumn: (columnId: string) => void;
+  pendingTasksByLeadId: Record<string, CrmTask[]>;
 }) {
   return (
     <section className="executive-surface min-w-0 overflow-hidden rounded-md p-3.5 sm:p-4">
@@ -1603,6 +1607,7 @@ function OperationalKanban({
                     <CompactLeadCard
                       key={lead.id}
                       lead={lead}
+                      pendingTasks={pendingTasksByLeadId[lead.id] ?? []}
                       readOnly={Boolean(column.status)}
                       onDragEnd={onDragEnd}
                       onDragStart={onDragStart}
@@ -1640,16 +1645,19 @@ function CompactLeadCard({
   onDragEnd,
   onDragStart,
   onEdit,
+  pendingTasks,
   readOnly = false,
 }: {
   lead: CrmLead;
   onDragEnd: () => void;
   onDragStart: (leadId: string) => void;
   onEdit: (lead: CrmLead) => void;
+  pendingTasks: CrmTask[];
   readOnly?: boolean;
 }) {
   const hasRelevantValue = lead.valorPretendido > 0;
   const aging = resolveCrmLeadOperationalAging(lead);
+  const nextPendingTask = resolveNextPendingCrmTask(pendingTasks);
 
   return (
     <article
@@ -1691,7 +1699,7 @@ function CompactLeadCard({
           {currencyFormatter.format(lead.valorPretendido)}
         </span>
         <span className="min-w-0 truncate whitespace-nowrap text-right text-muted-foreground">
-          {lead.proximaAcao || "-"}
+          {formatPipelineNextAction(nextPendingTask)}
         </span>
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
@@ -2401,6 +2409,18 @@ function formatTaskDueLabel(dueDate: string, today: string) {
   }
 
   return `Agendada para ${dateOnlyFormatter.format(parseLocalDate(dueDate))}`;
+}
+
+function formatPipelineNextAction(task: CrmTask | null) {
+  if (!task) {
+    return "Sem proxima acao";
+  }
+
+  const dueDate = dateOnlyFormatter.format(parseLocalDate(task.dueDate));
+
+  return isBeforeToday(task.dueDate)
+    ? `Acao vencida ${dueDate}`
+    : `Proxima acao ${dueDate}`;
 }
 
 function parseLocalDate(value: string) {

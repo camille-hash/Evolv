@@ -72,3 +72,22 @@ export function isCrmTaskStatus(value: unknown): value is CrmTaskStatus {
     crmTaskStatuses.includes(value as CrmTaskStatus)
   );
 }
+
+export function resolveNextPendingCrmTask(tasks: CrmTask[]) {
+  return (
+    tasks
+      .filter((task) => task.status === "pending")
+      .sort(compareCrmTasksByDueDate)[0] ?? null
+  );
+}
+
+function compareCrmTasksByDueDate(first: CrmTask, second: CrmTask) {
+  const firstDate = `${first.dueDate}T${first.dueTime ?? "23:59:59"}`;
+  const secondDate = `${second.dueDate}T${second.dueTime ?? "23:59:59"}`;
+
+  if (firstDate !== secondDate) {
+    return firstDate.localeCompare(secondDate);
+  }
+
+  return first.createdAt.localeCompare(second.createdAt);
+}

@@ -132,6 +132,7 @@ export async function getCrmMyDay(
         simulations,
         tasks,
       }),
+      pendingTasksByLeadId: groupPendingTasksByLeadId(tasks),
       tasks: tasks
         .filter(
           (task) =>
@@ -142,6 +143,19 @@ export async function getCrmMyDay(
     },
     ok: true,
   };
+}
+
+function groupPendingTasksByLeadId(tasks: CrmTask[]) {
+  return tasks
+    .filter((task) => task.status === "pending")
+    .reduce<Record<string, CrmTask[]>>((tasksByLeadId, task) => {
+      const leadTasks = tasksByLeadId[task.leadId] ?? [];
+
+      return {
+        ...tasksByLeadId,
+        [task.leadId]: [...leadTasks, task],
+      };
+    }, {});
 }
 
 function buildGreenFlagsByLeadId({

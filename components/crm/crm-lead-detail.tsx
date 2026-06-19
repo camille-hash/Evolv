@@ -33,6 +33,7 @@ import {
   resolveCrmLeadGreenFlags,
   resolveCrmLeadCommercialSignal,
   resolveCrmLeadOperationalPriority,
+  resolveNextPendingCrmTask,
   type CrmCommercialSignal,
   type CrmLeadGreenFlag,
   type CrmLead,
@@ -153,7 +154,7 @@ export function CrmLeadDetail({
     notesState?.leadId === lead.id ? notesState.notes : [];
   const nextPendingTask = useMemo(
     () =>
-      resolveNextPendingTask(
+      resolveNextPendingCrmTask(
         tasksState?.leadId === lead.id ? tasksState.tasks : [],
       ),
     [lead.id, tasksState],
@@ -1419,23 +1420,6 @@ function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) 
   return fallbackReference
     ? `Lead sem nome (${fallbackReference})`
     : "Lead sem nome";
-}
-
-function resolveNextPendingTask(tasks: CrmTask[]) {
-  return tasks
-    .filter((task) => task.status === "pending")
-    .sort(compareTasksByDueDate)[0] ?? null;
-}
-
-function compareTasksByDueDate(first: CrmTask, second: CrmTask) {
-  const firstDate = `${first.dueDate}T${first.dueTime ?? "23:59:59"}`;
-  const secondDate = `${second.dueDate}T${second.dueTime ?? "23:59:59"}`;
-
-  if (firstDate !== secondDate) {
-    return firstDate.localeCompare(secondDate);
-  }
-
-  return first.createdAt.localeCompare(second.createdAt);
 }
 
 function TaskNextAction({
