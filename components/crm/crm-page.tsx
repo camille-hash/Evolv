@@ -7,6 +7,7 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { AlertTriangle, Clock3, Flame, Pencil, Plus } from "lucide-react";
 import { AccessSettingsPage } from "@/components/access/access-settings-page";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
@@ -46,12 +47,15 @@ import {
   type CrmCommercialSignal,
   type CrmLead,
   type CrmLeadInput,
+  type CrmMyDayView,
   type CrmOperationalAging,
   type CrmOperationalPriority,
   type CrmPipeline,
   type CrmStage,
+  type CrmTask,
   type CrmTemperature,
 } from "@/modules/crm";
+import { fetchCrmMyDay } from "@/modules/crm/client/crm-my-day-client";
 import { cn } from "@/lib/utils";
 
 type CrmOperationalTab =
@@ -170,6 +174,9 @@ export function CrmPage({
     stage: CrmStage;
   } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [myDayView, setMyDayView] = useState<CrmMyDayView | null>(null);
+  const [isLoadingMyDay, setIsLoadingMyDay] = useState(false);
+  const [myDayError, setMyDayError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -188,6 +195,51 @@ export function CrmPage({
       window.clearTimeout(timeoutId);
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "my-day") {
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadMyDay() {
+      setIsLoadingMyDay(true);
+      setMyDayError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setMyDayError("Nao foi possivel carregar o Meu Dia.");
+          setIsLoadingMyDay(false);
+        }
+        return;
+      }
+
+      try {
+        const nextMyDayView = await fetchCrmMyDay(accessToken);
+
+        if (isActive) {
+          setMyDayView(nextMyDayView);
+        }
+      } catch {
+        if (isActive) {
+          setMyDayError("Nao foi possivel carregar o Meu Dia.");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingMyDay(false);
+        }
+      }
+    }
+
+    void loadMyDay();
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeTab]);
 
   useEffect(() => {
     if (!successMessage) {
@@ -237,8 +289,8 @@ export function CrmPage({
     [filteredLeads],
   );
   const myDayGroups = useMemo(
-    () => buildMyDayGroups(filteredLeads),
-    [filteredLeads],
+    () => buildMyDayGroups(leads, myDayView),
+    [leads, myDayView],
   );
   const focusGroups = useMemo(
     () => buildCommercialFocusGroups(filteredLeads),
@@ -251,16 +303,13 @@ export function CrmPage({
   const activePipelineGroup =
     activeTab === "sales" || activeTab === "administrative"
       ? activeTab
-      : activeTab === "prospecting" || activeTab === "my-day"
+      : activeTab === "prospecting"
         ? "prospecting"
         : null;
   const shouldShowCommercialPipeline =
-    activeTab === "my-day" || activeTab === "prospecting" || activeTab === "sales";
+    activeTab === "prospecting" || activeTab === "sales";
   const shouldShowOperationalSupport =
-    activeTab === "my-day" ||
-    activeTab === "prospecting" ||
-    activeTab === "sales" ||
-    activeTab === "administrative";
+    activeTab === "my-day";
 
   if (selectedLead && activeTab !== "settings") {
     return (
@@ -586,8 +635,9 @@ export function CrmPage({
 
       {shouldShowOperationalSupport ? (
         <MyDayPanel
+          error={myDayError}
           groups={myDayGroups}
-          onEdit={handleEditLead}
+          isLoading={isLoadingMyDay}
           onOpen={setSelectedLeadId}
         />
       ) : null}
@@ -1122,47 +1172,79 @@ function FocusMetricCard({
 }
 
 function MyDayPanel({
+  error,
   groups,
-  onEdit,
+  isLoading,
   onOpen,
 }: {
-  groups: ReturnType<typeof buildMyDayGroups>;
-  onEdit: (lead: CrmLead) => void;
+  error: string | null;
+  groups: MyDayGroups;
+  isLoading: boolean;
   onOpen: (leadId: string) => void;
 }) {
+  if (isLoading) {
+    return (
+      <section className="executive-surface rounded-md p-5 text-sm text-muted-foreground">
+        Carregando Meu Dia...
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="executive-surface rounded-md p-5 text-sm text-muted-foreground">
+        {error}
+      </section>
+    );
+  }
+
+  if (!groups.total) {
+    return (
+      <section className="executive-surface rounded-md border-dashed p-5 text-sm text-muted-foreground">
+        Nenhuma acao pendente para hoje.
+      </section>
+    );
+  }
+
   return (
-    <section className="grid gap-6 xl:grid-cols-3">
-      <PriorityBlock
-        leads={groups.hot}
-        onEdit={onEdit}
+    <section className="grid min-w-0 gap-4 xl:grid-cols-2">
+      <MyDayTaskBlock
+        emptyText="Nenhuma tarefa vencida."
         onOpen={onOpen}
-        title="Quentes"
+        tasks={groups.overdue}
+        title="Tarefas vencidas"
       />
-      <PriorityBlock
-        leads={groups.dueToday}
-        onEdit={onEdit}
+      <MyDayTaskBlock
+        emptyText="Nenhuma tarefa para hoje."
         onOpen={onOpen}
-        title="Vencer hoje"
+        tasks={groups.today}
+        title="Tarefas com vencimento hoje"
       />
-      <PriorityBlock
-        leads={groups.awaitingAction}
-        onEdit={onEdit}
+      <MyDayGreenFlagsBlock
+        emptyText="Nenhuma Green Flag identificada."
+        items={groups.greenFlags}
         onOpen={onOpen}
-        title="Aguardando acao"
+        title="Green Flags"
+      />
+      <MyDayTaskBlock
+        emptyText="Nenhuma proxima acao agendada."
+        onOpen={onOpen}
+        tasks={groups.future}
+        title="Proximas acoes"
       />
     </section>
   );
 }
 
-function PriorityBlock({
-  leads,
-  onEdit,
+function MyDayTaskBlock({
+  emptyText,
   onOpen,
+  tasks,
   title,
 }: {
-  leads: CrmLead[];
-  onEdit: (lead: CrmLead) => void;
+  emptyText: string;
   onOpen: (leadId: string) => void;
+  tasks: MyDayTaskItem[];
   title: string;
 }) {
   return (
@@ -1170,22 +1252,91 @@ function PriorityBlock({
       <div className="flex items-center justify-between gap-3">
         <h3 className="font-semibold">{title}</h3>
         <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs text-muted-foreground">
-          {leads.length}
+          {tasks.length}
         </span>
       </div>
       <div className="mt-4 grid gap-2">
-        {leads.length ? (
-          leads.slice(0, 12).map((lead) => (
-            <DailyLeadCard
-              key={lead.id}
-              lead={lead}
-              onEdit={onEdit}
-              onOpen={onOpen}
-            />
+        {tasks.length ? (
+          tasks.map((item) => (
+            <button
+              className="rounded-md border bg-background/70 p-3 text-left transition hover:border-primary/45"
+              key={item.task.id}
+              onClick={() => onOpen(item.lead.id)}
+              type="button"
+            >
+              <p className="text-xs font-medium text-muted-foreground">
+                {item.relativeDueLabel}
+              </p>
+              <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                {item.task.title}
+              </p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {getLeadDisplayName(item.lead)}
+                {item.task.dueTime ? ` - ${item.task.dueTime.slice(0, 5)}` : ""}
+              </p>
+            </button>
           ))
         ) : (
           <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            Nada urgente aqui.
+            {emptyText}
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function MyDayGreenFlagsBlock({
+  emptyText,
+  items,
+  onOpen,
+  title,
+}: {
+  emptyText: string;
+  items: MyDayGreenFlagItem[];
+  onOpen: (leadId: string) => void;
+  title: string;
+}) {
+  return (
+    <article className="executive-surface min-w-0 rounded-md p-5 text-card-foreground">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-semibold">{title}</h3>
+        <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs text-muted-foreground">
+          {items.length}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2">
+        {items.length ? (
+          items.map((item) => (
+            <button
+              className="min-w-0 rounded-md border bg-background/70 p-3 text-left transition hover:border-primary/45"
+              key={item.lead.id}
+              onClick={() => onOpen(item.lead.id)}
+              type="button"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+                  {getLeadDisplayName(item.lead)}
+                </p>
+                <span className="shrink-0 text-xs font-medium text-emerald-700">
+                  {item.flags.length} Green Flags
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {item.flags.map((flag) => (
+                  <span
+                    className="max-w-full rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-xs leading-4 text-emerald-800"
+                    key={flag.type}
+                  >
+                    {flag.description}
+                  </span>
+                ))}
+              </div>
+            </button>
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            {emptyText}
           </p>
         )}
       </div>
@@ -1387,66 +1538,6 @@ function CompactLeadCard({
           variant="ghost"
         >
           <Pencil className="h-3 w-3" aria-hidden />
-        </Button>
-      </div>
-    </article>
-  );
-}
-
-function DailyLeadCard({
-  lead,
-  onEdit,
-  onOpen,
-}: {
-  lead: CrmLead;
-  onEdit: (lead: CrmLead) => void;
-  onOpen: (leadId: string) => void;
-}) {
-  const aging = resolveCrmLeadOperationalAging(lead);
-
-  return (
-    <article
-      className={cn(
-        "rounded-md border p-3",
-        getOperationalAgingCardClassName(aging.aging),
-      )}
-      title={aging.summary}
-    >
-      <button
-        className="block w-full text-left"
-        onClick={() => onOpen(lead.id)}
-        type="button"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h4 className="truncate text-sm font-semibold">{getLeadDisplayName(lead)}</h4>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              {lead.telefone || "Sem telefone"}
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-end gap-1">
-            <TemperatureBadge temperature={lead.temperatura} />
-          </div>
-        </div>
-        <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
-          <LeadLine
-            label="Valor P&S"
-            value={currencyFormatter.format(lead.valorPretendido)}
-          />
-          <LeadLine label="Proxima" value={lead.proximaAcao || "-"} />
-          <LeadLine label="Responsavel" value={lead.consultor || "-"} />
-        </div>
-      </button>
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <OperationalPriorityBadge lead={lead} />
-        <Button
-          className="shrink-0"
-          onClick={() => onEdit(lead)}
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          Editar
         </Button>
       </div>
     </article>
@@ -2044,33 +2135,109 @@ function getOperationalAgingRowClassName(aging: CrmOperationalAging) {
   return "";
 }
 
-function LeadLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span>{label}</span>
-      <span className="truncate text-right font-medium text-foreground">
-        {value}
-      </span>
-    </div>
-  );
-}
+type MyDayTaskItem = {
+  lead: CrmLead;
+  relativeDueLabel: string;
+  task: CrmTask;
+};
 
-function buildMyDayGroups(leads: CrmLead[]) {
-  const activeLeads = leads.filter((lead) => lead.status === "ativa");
-  const hot = activeLeads.filter((lead) => lead.temperatura === "quente");
-  const dueToday = activeLeads.filter((lead) =>
-    isTodayOrPast(lead.dataProximaAcao),
-  );
-  const awaitingAction = activeLeads.filter(
-    (lead) => !lead.proximaAcao && !lead.dataProximaAcao,
-  );
+type MyDayGreenFlagItem = {
+  flags: CrmMyDayView["greenFlagsByLeadId"][string];
+  lead: CrmLead;
+};
+
+type MyDayGroups = {
+  future: MyDayTaskItem[];
+  greenFlags: MyDayGreenFlagItem[];
+  overdue: MyDayTaskItem[];
+  today: MyDayTaskItem[];
+  total: number;
+};
+
+function buildMyDayGroups(
+  leads: CrmLead[],
+  myDayView: CrmMyDayView | null,
+): MyDayGroups {
+  if (!myDayView) {
+    return {
+      future: [],
+      greenFlags: [],
+      overdue: [],
+      today: [],
+      total: 0,
+    };
+  }
+
+  const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
+  const today = formatLocalDate(new Date());
+  const taskItems = myDayView.tasks
+    .map((task) => {
+      const lead = leadsById.get(task.leadId);
+
+      return lead
+        ? {
+            lead,
+            relativeDueLabel: formatTaskDueLabel(task.dueDate, today),
+            task,
+          }
+        : null;
+    })
+    .filter((item): item is MyDayTaskItem => item !== null)
+    .sort((first, second) => compareTaskDueDate(first.task, second.task));
+  const overdue = taskItems.filter((item) => item.task.dueDate < today);
+  const dueToday = taskItems.filter((item) => item.task.dueDate === today);
+  const future = taskItems.filter((item) => item.task.dueDate > today);
+  const greenFlags = Object.entries(myDayView.greenFlagsByLeadId)
+    .map(([leadId, flags]) => {
+      const lead = leadsById.get(leadId);
+      return lead ? { flags, lead } : null;
+    })
+    .filter((item): item is MyDayGreenFlagItem => item !== null)
+    .sort((first, second) => {
+      const flagDifference = second.flags.length - first.flags.length;
+
+      return flagDifference !== 0
+        ? flagDifference
+        : getLeadDisplayName(first.lead).localeCompare(getLeadDisplayName(second.lead));
+    });
 
   return {
-    awaitingAction,
-    dueToday,
-    hot,
-    total: new Set([...hot, ...dueToday, ...awaitingAction].map((lead) => lead.id)).size,
+    future,
+    greenFlags,
+    overdue,
+    today: dueToday,
+    total: overdue.length + dueToday.length + greenFlags.length + future.length,
   };
+}
+
+function compareTaskDueDate(first: CrmTask, second: CrmTask) {
+  const firstKey = `${first.dueDate}T${first.dueTime ?? "23:59:59"}`;
+  const secondKey = `${second.dueDate}T${second.dueTime ?? "23:59:59"}`;
+  return firstKey.localeCompare(secondKey);
+}
+
+function formatTaskDueLabel(dueDate: string, today: string) {
+  if (dueDate === today) {
+    return "Hoje";
+  }
+
+  if (dueDate < today) {
+    const daysOverdue = Math.max(
+      1,
+      Math.round(
+        (parseLocalDate(today).getTime() - parseLocalDate(dueDate).getTime()) /
+          (24 * 60 * 60 * 1000),
+      ),
+    );
+    return `Vencida ha ${daysOverdue} ${daysOverdue === 1 ? "dia" : "dias"}`;
+  }
+
+  return `Agendada para ${dateOnlyFormatter.format(parseLocalDate(dueDate))}`;
+}
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, (month ?? 1) - 1, day ?? 1);
 }
 
 function buildCommercialFocusGroups(leads: CrmLead[]) {
@@ -2260,18 +2427,6 @@ function getFilterStages(
   );
 }
 
-function isTodayOrPast(value: string) {
-  if (!value) {
-    return false;
-  }
-
-  const target = new Date(`${value}T00:00:00`).getTime();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return Number.isFinite(target) && target <= today.getTime();
-}
-
 function isBeforeToday(value: string) {
   if (!value) {
     return false;
@@ -2302,6 +2457,40 @@ function formatDate(value: string) {
   const date = new Date(value);
 
   return Number.isNaN(date.getTime()) ? "-" : dateOnlyFormatter.format(date);
+}
+
+async function readSupabaseAccessToken() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !publishableKey) {
+    return null;
+  }
+
+  const supabase = createClient(supabaseUrl, publishableKey, {
+    auth: {
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  });
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error || !data.session?.access_token) {
+    return null;
+  }
+
+  return data.session.access_token;
+}
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return [year, month, day].join("-");
 }
 
 function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) {

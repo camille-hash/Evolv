@@ -1,9 +1,18 @@
-import type { CrmLeadSimulation } from "./crm-lead-simulations";
 import type {
   CrmOperationalTimelineEvent,
   CrmOperationalTimelineEventType,
 } from "./crm-timeline";
 import type { CrmTask } from "./crm-tasks";
+
+type CrmLeadGreenFlagSimulation = Pick<
+  import("./crm-lead-simulations").CrmLeadSimulation,
+  "createdAt" | "proposalGeneratedAt" | "simulationType" | "status"
+>;
+
+type CrmLeadGreenFlagTimelineEvent = Pick<
+  CrmOperationalTimelineEvent,
+  "occurredAt" | "type"
+>;
 
 export const crmLeadGreenFlagTypes = [
   "lead_aquecido",
@@ -26,9 +35,9 @@ export type CrmLeadGreenFlag = {
 
 type CrmLeadGreenFlagInput = {
   now?: Date;
-  simulations: CrmLeadSimulation[];
+  simulations: CrmLeadGreenFlagSimulation[];
   tasks: CrmTask[] | null;
-  timelineEvents: CrmOperationalTimelineEvent[];
+  timelineEvents: CrmLeadGreenFlagTimelineEvent[];
 };
 
 const recentDays = 7;
