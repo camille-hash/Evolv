@@ -10,12 +10,14 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { AlertTriangle, Clock3, Flame, Pencil, Plus, Search } from "lucide-react";
 import { AccessSettingsPage } from "@/components/access/access-settings-page";
+import { CrmExecutiveDashboard } from "@/components/crm/crm-executive-dashboard";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
 import { CrmSourceIndicator } from "@/components/crm/crm-source-indicator";
 import { Button } from "@/components/ui/button";
 import {
   addCrmStageToPipeline,
   buildCrmCommercialSignalSummary,
+  buildCrmExecutiveDashboardReadModel,
   buildCrmOperationalPrioritySummary,
   buildCrmAdvancedSearchOptions,
   crmStageLabels,
@@ -49,6 +51,7 @@ import {
   type CrmCommercialSignal,
   type CrmLead,
   type CrmLeadInput,
+  type CrmLeadSimulation,
   type CrmMyDayView,
   type CrmOperationalAging,
   type CrmOperationalPriority,
@@ -61,6 +64,7 @@ import { fetchCrmMyDay } from "@/modules/crm/client/crm-my-day-client";
 import { cn } from "@/lib/utils";
 
 type CrmOperationalTab =
+  | "executive-dashboard"
   | "my-day"
   | "prospecting"
   | "sales"
@@ -80,6 +84,7 @@ type OperationalColumn = {
 };
 
 const crmTabs: Array<{ key: CrmOperationalTab; label: string; quiet?: boolean }> = [
+  { key: "executive-dashboard", label: "Dashboard Executivo" },
   { key: "my-day", label: "Meu Dia" },
   { key: "prospecting", label: "Prospeccao" },
   { key: "sales", label: "Vendas" },
@@ -188,7 +193,8 @@ export function CrmPage({
   onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<CrmOperationalTab>("my-day");
+  const [activeTab, setActiveTab] =
+    useState<CrmOperationalTab>("executive-dashboard");
   const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
   const [expandedPipelineColumns, setExpandedPipelineColumns] = useState<
     Record<string, boolean>
@@ -225,6 +231,13 @@ export function CrmPage({
   const [myDayView, setMyDayView] = useState<CrmMyDayView | null>(null);
   const [isLoadingMyDay, setIsLoadingMyDay] = useState(false);
   const [myDayError, setMyDayError] = useState<string | null>(null);
+  const [executiveSimulationsByLeadId, setExecutiveSimulationsByLeadId] =
+    useState<Record<string, CrmLeadSimulation[]>>({});
+  const [isLoadingExecutiveSimulations, setIsLoadingExecutiveSimulations] =
+    useState(false);
+  const [executiveSimulationError, setExecutiveSimulationError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -284,6 +297,83 @@ export function CrmPage({
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "executive-dashboard") {
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadExecutiveSimulations() {
+      setIsLoadingExecutiveSimulations(true);
+      setExecutiveSimulationError(null);
+
+      if (leads.length === 0) {
+        setExecutiveSimulationsByLeadId({});
+        setIsLoadingExecutiveSimulations(false);
+        return;
+      }
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setExecutiveSimulationError(
+            "Nao foi possivel carregar os indicadores de simulacoes.",
+          );
+          setIsLoadingExecutiveSimulations(false);
+        }
+        return;
+      }
+
+      try {
+        const entries = await Promise.all(
+          leads.map(async (lead) => {
+            const response = await fetch(
+              `/api/crm/lead-simulations?leadId=${encodeURIComponent(lead.id)}`,
+              {
+                headers: { Authorization: `Bearer ${accessToken}` },
+                method: "GET",
+              },
+            );
+            const payload = (await response.json().catch(() => null)) as {
+              error?: string;
+              simulations?: CrmLeadSimulation[];
+            } | null;
+
+            if (!response.ok) {
+              throw new Error(
+                payload?.error ?? "Nao foi possivel carregar as simulacoes.",
+              );
+            }
+
+            return [lead.id, payload?.simulations ?? []] as const;
+          }),
+        );
+
+        if (isActive) {
+          setExecutiveSimulationsByLeadId(Object.fromEntries(entries));
+        }
+      } catch {
+        if (isActive) {
+          setExecutiveSimulationError(
+            "Nao foi possivel carregar os indicadores de simulacoes.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingExecutiveSimulations(false);
+        }
+      }
+    }
+
+    void loadExecutiveSimulations();
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeTab, leads]);
 
   useEffect(() => {
     if (!successMessage) {
@@ -347,6 +437,16 @@ export function CrmPage({
   const myDayGroups = useMemo(
     () => buildMyDayGroups(leads, myDayView),
     [leads, myDayView],
+  );
+  const executiveDashboard = useMemo(
+    () =>
+      buildCrmExecutiveDashboardReadModel({
+        checkpointsByLeadId: myDayView?.greenFlagsByLeadId ?? {},
+        leads,
+        pendingTasksByLeadId: myDayView?.pendingTasksByLeadId ?? {},
+        simulationsByLeadId: executiveSimulationsByLeadId,
+      }),
+    [executiveSimulationsByLeadId, leads, myDayView],
   );
   const focusGroups = useMemo(
     () =>
@@ -688,12 +788,24 @@ export function CrmPage({
       {successMessage ? <SuccessFeedback message={successMessage} /> : null}
 
       {(hasLeadSearchNoResults || hasOperationalFilterNoResults) &&
+      activeTab !== "executive-dashboard" &&
       activeTab !== "settings" ? (
         <section className="executive-surface rounded-md border-dashed p-5 text-sm text-muted-foreground">
           {hasOperationalFilterNoResults
             ? "Nenhum lead encontrado para os filtros selecionados."
             : "Nenhum lead encontrado."}
         </section>
+      ) : null}
+
+      {activeTab === "executive-dashboard" ? (
+        <CrmExecutiveDashboard
+          data={executiveDashboard}
+          isOperationalDataAvailable={myDayView !== null}
+          isOperationalDataLoading={isLoadingMyDay}
+          isSimulationDataLoading={isLoadingExecutiveSimulations}
+          operationalDataError={myDayError}
+          simulationDataError={executiveSimulationError}
+        />
       ) : null}
 
       {activePipelineGroup &&
