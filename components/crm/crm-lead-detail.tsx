@@ -698,7 +698,7 @@ export function CrmLeadDetail({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Dossie executivo
+              Dossie multicanal
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-foreground">
               {leadDisplayName}
@@ -738,6 +738,8 @@ export function CrmLeadDetail({
         </div>
       </section>
 
+      <DossierMultichannelNavigation />
+
       <form className="grid gap-4" onSubmit={onSave}>
         {feedbackMessage ? (
           <SuccessFeedback message={feedbackMessage} />
@@ -750,6 +752,12 @@ export function CrmLeadDetail({
         {taskSuccessMessage ? (
           <SuccessFeedback message={taskSuccessMessage} />
         ) : null}
+
+        <DossierAreaHeader
+          description="Visao consolidada do relacionamento, situacao atual e leitura executiva do lead."
+          id="dossie-resumo"
+          title="Resumo"
+        />
 
         <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <ExecutiveDossierCard
@@ -920,6 +928,12 @@ export function CrmLeadDetail({
           <LeadGreenFlags flags={greenFlags} />
         </ExecutiveDossierCard>
 
+        <DossierAreaHeader
+          description="Historico comercial do lead com simulacoes comerciais, Multi-Cotas e artefatos existentes."
+          id="dossie-simulacoes"
+          title="Simulacoes"
+        />
+
         <ExecutiveDossierCard
           description="Simulacoes comerciais vinculadas a este lead."
           eyebrow="Simulacoes"
@@ -944,6 +958,12 @@ export function CrmLeadDetail({
             simulations={multiCotasSimulations}
           />
         </ExecutiveDossierCard>
+
+        <DossierAreaHeader
+          description="Eventos resumidos e transversais do relacionamento, preservando a Timeline atual."
+          id="dossie-timeline"
+          title="Timeline"
+        />
 
         <section className="executive-surface rounded-md p-5 text-card-foreground">
           <button
@@ -985,6 +1005,94 @@ export function CrmLeadDetail({
             </div>
           ) : null}
         </section>
+
+        <DossierAreaHeader
+          description="Execucao e memoria operacional do lead, usando notas, tarefas e proxima acao ja existentes."
+          id="dossie-tarefas-notas"
+          title="Tarefas e Notas"
+        />
+
+        <ExecutiveDossierCard
+          description="Area operacional baseada nas funcionalidades existentes de notas e tasks."
+          eyebrow="Operacao"
+          title="Tarefas e Notas"
+        >
+          <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-md border bg-background/70 p-4 text-sm">
+              <p className="font-medium text-foreground">Proxima acao</p>
+              <div className="mt-3">
+                {isLoadingTasks ? (
+                  <p className="text-sm text-muted-foreground">
+                    Carregando proxima acao...
+                  </p>
+                ) : taskLoadError ? (
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {taskLoadError}
+                  </p>
+                ) : nextPendingTask ? (
+                  <TaskSummary task={nextPendingTask} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma acao programada.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="rounded-md border bg-background/70 p-4 text-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-medium text-foreground">Notas</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Registros operacionais do relacionamento com este lead.
+                  </p>
+                </div>
+                <Button onClick={handleOpenNoteModal} type="button" variant="secondary">
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Adicionar Nota
+                </Button>
+              </div>
+              <div className="mt-4">
+                <CrmStructuredNotesList
+                  emptyText="Nenhuma nota operacional registrada ainda."
+                  notes={persistedStructuredNotes}
+                />
+              </div>
+            </div>
+          </div>
+        </ExecutiveDossierCard>
+
+        <DossierAreaHeader
+          description="Canal reservado para comunicacoes futuras, sem integracao nesta sprint."
+          id="dossie-comunicacoes"
+          title="Comunicacoes"
+        />
+
+        <MultichannelPlaceholder
+          items={["WhatsApp", "E-mail"]}
+          title="Comunicacoes"
+        />
+
+        <DossierAreaHeader
+          description="Canal reservado para agenda e encontros futuros, sem integracao nesta sprint."
+          id="dossie-reunioes"
+          title="Reunioes"
+        />
+
+        <MultichannelPlaceholder
+          items={["Google Calendar", "Google Meet"]}
+          title="Reunioes"
+        />
+
+        <DossierAreaHeader
+          description="Canal reservado para chamadas e telefonia futuras, sem integracao nesta sprint."
+          id="dossie-ligacoes"
+          title="Ligacoes"
+        />
+
+        <MultichannelPlaceholder
+          items={["Chamadas", "Telefonia"]}
+          title="Ligacoes"
+        />
 
         <div className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
           <ExecutiveDossierCard
@@ -1577,6 +1685,112 @@ function getLocalDateKey(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+const dossierNavigationItems = [
+  { href: "#dossie-resumo", label: "Resumo" },
+  { href: "#dossie-timeline", label: "Timeline" },
+  { href: "#dossie-simulacoes", label: "Simulacoes" },
+  { href: "#dossie-tarefas-notas", label: "Tarefas e Notas" },
+  { href: "#dossie-comunicacoes", label: "Comunicacoes" },
+  { href: "#dossie-reunioes", label: "Reunioes" },
+  { href: "#dossie-ligacoes", label: "Ligacoes" },
+];
+
+function DossierMultichannelNavigation() {
+  return (
+    <nav
+      aria-label="Navegacao do Dossie Multicanal"
+      className="executive-surface rounded-md p-3"
+    >
+      <div className="flex flex-wrap gap-2">
+        {dossierNavigationItems.map((item) => (
+          <a
+            className="rounded-md border bg-background px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+            href={item.href}
+            key={item.href}
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function DossierAreaHeader({
+  description,
+  id,
+  title,
+}: {
+  description: string;
+  id: string;
+  title: string;
+}) {
+  return (
+    <header className="scroll-mt-24 rounded-md border bg-background/70 p-4" id={id}>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        Dossie Multicanal
+      </p>
+      <h3 className="mt-1 text-base font-semibold text-foreground">{title}</h3>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        {description}
+      </p>
+    </header>
+  );
+}
+
+function MultichannelPlaceholder({
+  items,
+  title,
+}: {
+  items: string[];
+  title: string;
+}) {
+  return (
+    <ExecutiveDossierCard
+      description="Area reservada para evolucao futura do Dossie Multicanal."
+      eyebrow="Em definicao arquitetural"
+      title={title}
+    >
+      <div className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">Em definicao arquitetural.</p>
+        <p className="mt-3">Canal reservado para:</p>
+        <ul className="mt-3 grid gap-2">
+          {items.map((item) => (
+            <li className="flex items-center gap-2" key={item}>
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+              {item}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-xs leading-5">
+          Nenhuma integracao externa foi criada nesta sprint.
+        </p>
+      </div>
+    </ExecutiveDossierCard>
+  );
+}
+
+function TaskSummary({ task }: { task: CrmTask }) {
+  return (
+    <div className="grid gap-2">
+      <div className="flex flex-wrap gap-2">
+        <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+          {getTaskDueStatusLabel(task)}
+        </span>
+        <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+          {getTaskTypeLabel(task.taskType)}
+        </span>
+      </div>
+      <div>
+        <p className="font-medium text-foreground">{task.title}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {formatTaskDueDate(task)}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function SuccessFeedback({ message }: { message: string }) {
