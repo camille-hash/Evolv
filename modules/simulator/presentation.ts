@@ -74,9 +74,19 @@ export function buildSimulatorCommercialPresentation({
     inccFactor,
   );
   const totalInvestedUntilContemplation =
-    installmentBeforeContemplation * safeContemplationMonth;
+    calculateHistoricalInstallmentTotal({
+      contemplationMonth: safeContemplationMonth,
+      inccRate,
+      insuranceOption,
+      scenario: selectedScenario,
+    });
   const totalInvestedUntilContemplationBase =
-    baseInstallment * safeContemplationMonth;
+    calculateHistoricalInstallmentTotal({
+      contemplationMonth: safeContemplationMonth,
+      inccRate,
+      insuranceOption,
+      scenario: baseScenario,
+    });
   const remainingMonths = input.termMonths - safeContemplationMonth;
   const embeddedBidAmount =
     bidType === "embedded" ? updatedCredit * (input.embeddedBidRate ?? 0) : 0;
@@ -160,6 +170,39 @@ function getScenarioInstallment(
     : scenario.installmentWithoutInsurance;
 
   return baseInstallment * inccFactor;
+}
+
+function calculateHistoricalInstallmentTotal({
+  contemplationMonth,
+  inccRate,
+  insuranceOption,
+  scenario,
+}: {
+  contemplationMonth: number;
+  inccRate: number;
+  insuranceOption: InsuranceOption;
+  scenario: SimulatorScenarioResult;
+}) {
+  let total = 0;
+
+  for (let month = 1; month <= contemplationMonth; month += 1) {
+    const adjustmentCount = calculateInccAdjustmentCount(month);
+    const historicalInccFactor = Math.pow(1 + inccRate, adjustmentCount);
+
+    total += roundCurrency(
+      getScenarioInstallment(
+        scenario,
+        insuranceOption,
+        historicalInccFactor,
+      ),
+    );
+  }
+
+  return roundCurrency(total);
+}
+
+function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function calculatePostContemplationInstallment({
