@@ -7,9 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Phone,
   Plus,
-  Send,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +28,6 @@ import {
   crmPipelines,
   crmStageLabels,
   crmTemperatureLabels,
-  buildWhatsappUrl,
   buildTemporaryStructuredNotesFromLead,
   getDefaultStageForPipeline,
   getStagesForPipeline,
@@ -104,6 +101,15 @@ type StrategicProfileDraft = {
   strategicTopics: CrmLeadProfileStrategicTopic[];
 };
 
+type DossierTabKey =
+  | "summary"
+  | "timeline"
+  | "simulations"
+  | "tasks-notes"
+  | "communications"
+  | "meetings"
+  | "calls";
+
 type CrmLeadDetailProps = {
   draft: CrmLeadInput;
   feedbackMessage?: string | null;
@@ -129,10 +135,12 @@ export function CrmLeadDetail({
   onSave,
   proposals,
 }: CrmLeadDetailProps) {
-  const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [isNotesHistoryOpen, setIsNotesHistoryOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [activeDossierTab, setActiveDossierTab] =
+    useState<DossierTabKey>("summary");
+  const [isCommercialDataOpen, setIsCommercialDataOpen] = useState(false);
   const [isStrategicProfileFormOpen, setIsStrategicProfileFormOpen] =
     useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -186,7 +194,6 @@ export function CrmLeadDetail({
   const [simulationsError, setSimulationsError] = useState<string | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const leadDisplayName = useMemo(() => getLeadDisplayName(lead), [lead]);
-  const whatsappUrl = buildWhatsappUrl(lead.telefone);
   const structuredNotes = buildTemporaryStructuredNotesFromLead(lead);
   const persistedNotes =
     notesState?.leadId === lead.id ? notesState.notes : [];
@@ -220,6 +227,13 @@ export function CrmLeadDetail({
   const multiCotasSimulations = leadSimulations
     .filter((simulation) => simulation.simulationType === "multi_cotas")
     .sort(sortLeadSimulationsByCreatedAtDesc);
+  const latestCommercialSimulation = useMemo(
+    () =>
+      [...commercialSimulations].sort(sortLeadSimulationsByCreatedAtDesc)[0] ??
+      null,
+    [commercialSimulations],
+  );
+  const latestMultiCotasSimulation = multiCotasSimulations[0] ?? null;
   const latestMovement =
     persistedStructuredNotes[0] ?? structuredNotes.latestMovements[0];
   const commercialSignal = resolveCrmLeadCommercialSignal(lead);
@@ -534,14 +548,6 @@ export function CrmLeadDetail({
         ? draft.etapa
         : getDefaultStageForPipeline(pipeline),
     });
-  }
-
-  function handleOpenWhatsapp() {
-    if (!whatsappUrl) {
-      return;
-    }
-
-    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
   function handleOpenNoteModal() {
@@ -900,7 +906,10 @@ export function CrmLeadDetail({
         </div>
       </section>
 
-      <DossierMultichannelNavigation />
+      <DossierMultichannelNavigation
+        activeTab={activeDossierTab}
+        onChange={setActiveDossierTab}
+      />
 
       <form className="grid gap-4" onSubmit={onSave}>
         {feedbackMessage ? (
@@ -919,607 +928,601 @@ export function CrmLeadDetail({
           <SuccessFeedback message={strategicProfileSuccessMessage} />
         ) : null}
 
-        <DossierAreaHeader
-          description="Visao consolidada do relacionamento, situacao atual e leitura executiva do lead."
-          id="dossie-resumo"
-          title="Resumo"
-        />
-
-        <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-          <ExecutiveDossierCard
-            description="Dados estaveis para entender rapidamente quem esta do outro lado."
-            eyebrow="Quem e"
-            title={leadDisplayName}
-          >
-            <div className="grid gap-3 text-sm md:grid-cols-2">
-              <LeadInfo label="Telefone" value={lead.telefone || "-"} />
-              <LeadInfo label="E-mail" value={lead.email || "-"} />
-              <LeadInfo label="Origem" value={lead.origem || "-"} />
-              <LeadInfo label="Cidade / Pais" value={lead.pais || "-"} />
-              <LeadInfo label="Objetivo comercial" value={leadObjective} />
-              <LeadInfo
-                label="Credito desejado"
-                value={currencyFormatter.format(lead.valorPretendido)}
-              />
-            </div>
-          </ExecutiveDossierCard>
-
-          <ExecutiveDossierCard
-            description="Camada persistente de contexto estrategico vinculada a este lead."
-            eyebrow="Relacionamento"
-            title="Perfil Estrategico"
-          >
-            <LeadStrategicProfileCard
-              draft={strategicProfileDraft}
-              error={strategicProfileError}
-              isEditing={isStrategicProfileFormOpen}
-              isLoading={isLoadingStrategicProfile}
-              isSaving={isSavingStrategicProfile}
-              onChange={updateStrategicProfileDraft}
-              onCreate={() => {
-                setStrategicProfileDraft(createEmptyStrategicProfileDraft());
-                setStrategicProfileError(null);
-                setIsStrategicProfileFormOpen(true);
-              }}
-              onEdit={() => {
-                setStrategicProfileDraft(
-                  strategicProfile
-                    ? mapStrategicProfileToDraft(strategicProfile)
-                    : createEmptyStrategicProfileDraft(),
-                );
-                setStrategicProfileError(null);
-                setIsStrategicProfileFormOpen(true);
-              }}
-              onCancel={() => {
-                setStrategicProfileDraft(
-                  strategicProfile
-                    ? mapStrategicProfileToDraft(strategicProfile)
-                    : createEmptyStrategicProfileDraft(),
-                );
-                setStrategicProfileError(null);
-                setIsStrategicProfileFormOpen(false);
-              }}
-              onSave={handleSaveStrategicProfile}
-              profile={strategicProfile}
+        {activeDossierTab === "summary" ? (
+          <div className="grid gap-4">
+            <DossierAreaHeader
+              description="Visao consolidada do relacionamento, situacao atual e leitura executiva do lead."
+              id="dossie-resumo"
+              title="Resumo"
             />
-          </ExecutiveDossierCard>
-        </div>
 
-        <div className="grid gap-4 xl:grid-cols-[0.95fr_0.95fr_1.1fr]">
-          <ExecutiveDossierCard
-            description="Um unico sinal recente para leitura rapida."
-            eyebrow="Agora"
-            title="Ultima Movimentacao"
-          >
-            {latestMovement ? (
-              <div className="rounded-md border bg-background/70 p-4 text-sm">
-                <p className="leading-6 text-foreground">
-                  {latestMovement.content}
-                </p>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {dateFormatter.format(new Date(latestMovement.timestamp))}
-                </p>
-              </div>
-            ) : (
-              <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
-                Nenhuma movimentacao recente disponivel.
-              </p>
-            )}
-          </ExecutiveDossierCard>
+            <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+              <ExecutiveDossierCard
+                description="Dados estaveis para entender rapidamente quem esta do outro lado."
+                eyebrow="Quem e"
+                title={leadDisplayName}
+              >
+                <div className="grid gap-3 text-sm md:grid-cols-2">
+                  <LeadInfo label="Telefone" value={lead.telefone || "-"} />
+                  <LeadInfo label="E-mail" value={lead.email || "-"} />
+                  <LeadInfo label="Origem" value={lead.origem || "-"} />
+                  <LeadInfo label="Cidade / Pais" value={lead.pais || "-"} />
+                  <LeadInfo label="Objetivo comercial" value={leadObjective} />
+                  <LeadInfo
+                    label="Credito desejado"
+                    value={currencyFormatter.format(lead.valorPretendido)}
+                  />
+                </div>
+              </ExecutiveDossierCard>
 
-          <ExecutiveDossierCard
-            description="Primeira leitura da tarefa comercial pendente deste lead."
-            eyebrow="Acao"
-            title="Proxima Acao"
-          >
-            <div className="rounded-md border bg-background/70 p-4 text-sm">
-              {isLoadingTasks ? (
-                <p className="text-sm text-muted-foreground">
-                  Carregando proxima acao...
-                </p>
-              ) : taskLoadError ? (
-                <>
-                  <p className="font-medium text-foreground">
-                    Sem proxima acao
-                  </p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    {taskLoadError}
-                  </p>
-                </>
-              ) : nextPendingTask ? (
-                <TaskNextAction
-                  isCanceling={isCancelingTask}
-                  isCompleting={isCompletingTask}
-                  onCancelTask={handleCancelTask}
-                  onCompleteTask={handleCompleteTask}
-                  onCreateTask={handleOpenTaskModal}
-                  task={nextPendingTask}
+              <ExecutiveDossierCard
+                description="Camada persistente de contexto estrategico vinculada a este lead."
+                eyebrow="Relacionamento"
+                title="Perfil Estrategico"
+              >
+                <LeadStrategicProfileCard
+                  draft={strategicProfileDraft}
+                  error={strategicProfileError}
+                  isEditing={isStrategicProfileFormOpen}
+                  isLoading={isLoadingStrategicProfile}
+                  isSaving={isSavingStrategicProfile}
+                  onChange={updateStrategicProfileDraft}
+                  onCreate={() => {
+                    setStrategicProfileDraft(createEmptyStrategicProfileDraft());
+                    setStrategicProfileError(null);
+                    setIsStrategicProfileFormOpen(true);
+                  }}
+                  onEdit={() => {
+                    setStrategicProfileDraft(
+                      strategicProfile
+                        ? mapStrategicProfileToDraft(strategicProfile)
+                        : createEmptyStrategicProfileDraft(),
+                    );
+                    setStrategicProfileError(null);
+                    setIsStrategicProfileFormOpen(true);
+                  }}
+                  onCancel={() => {
+                    setStrategicProfileDraft(
+                      strategicProfile
+                        ? mapStrategicProfileToDraft(strategicProfile)
+                        : createEmptyStrategicProfileDraft(),
+                    );
+                    setStrategicProfileError(null);
+                    setIsStrategicProfileFormOpen(false);
+                  }}
+                  onSave={handleSaveStrategicProfile}
+                  profile={strategicProfile}
                 />
-              ) : (
-                <>
-                  <p className="font-medium text-foreground">
-                    Sem proxima acao
-                  </p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    Nenhuma acao programada.
-                  </p>
-                  <div className="mt-4">
-                    <Button
-                      onClick={handleOpenTaskModal}
-                      type="button"
-                      variant="secondary"
+              </ExecutiveDossierCard>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+              <ExecutiveDossierCard
+                description="Sinais explicaveis derivados das atividades e artefatos ja registrados."
+                eyebrow="Inteligencia"
+                title="Check Points"
+              >
+                <LeadGreenFlags flags={greenFlags} />
+              </ExecutiveDossierCard>
+
+              <ExecutiveDossierCard
+                description="Primeira leitura operacional para decidir o proximo movimento."
+                eyebrow="Operacao"
+                title="Estado Atual"
+              >
+                <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+                  <div className="rounded-md border bg-background/70 p-4 text-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Proxima Acao
+                    </p>
+                    <div className="mt-3">
+                      {isLoadingTasks ? (
+                        <p className="text-sm text-muted-foreground">
+                          Carregando proxima acao...
+                        </p>
+                      ) : taskLoadError ? (
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          {taskLoadError}
+                        </p>
+                      ) : nextPendingTask ? (
+                        <TaskSummary task={nextPendingTask} />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhuma acao programada.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-md border bg-background/70 p-4 text-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Ultima Movimentacao
+                    </p>
+                    <div className="mt-3">
+                      {latestMovement ? (
+                        <>
+                          <p className="leading-6 text-foreground">
+                            {latestMovement.content}
+                          </p>
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            {dateFormatter.format(new Date(latestMovement.timestamp))}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhuma movimentacao recente disponivel.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </ExecutiveDossierCard>
+            </div>
+
+            <ExecutiveDossierCard
+              description="Sintese comercial do ultimo material disponivel sem expor o historico completo."
+              eyebrow="Comercial"
+              title="Ultimos Artefatos"
+            >
+              <div className="grid gap-4 xl:grid-cols-2">
+                <LeadExecutiveSimulationSummary
+                  emptyText="Nenhuma simulacao comercial salva para este lead."
+                  simulation={latestCommercialSimulation}
+                  title="Ultima Simulacao"
+                />
+                <LeadExecutiveSimulationSummary
+                  emptyText="Nenhum estudo Multi-Cotas salvo para este lead."
+                  simulation={latestMultiCotasSimulation}
+                  title="Ultimo Estudo Multi-Cotas"
+                />
+              </div>
+            </ExecutiveDossierCard>
+
+            <section className="rounded-md border border-dashed bg-background/50 p-3">
+              <button
+                aria-expanded={isCommercialDataOpen}
+                className="flex w-full items-center justify-between gap-3 text-left"
+                onClick={() => setIsCommercialDataOpen((current) => !current)}
+                type="button"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-foreground">
+                    Ajustes Comerciais
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    Edicao do lead e propostas existentes ficam recolhidas para nao competir com o resumo executivo.
+                  </span>
+                </span>
+                {isCommercialDataOpen ? (
+                  <ChevronUp
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                  />
+                ) : (
+                  <ChevronDown
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                  />
+                )}
+              </button>
+              {isCommercialDataOpen ? (
+                <div className="mt-4 grid gap-4">
+                  <div className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
+                    <ExecutiveDossierCard
+                      description="Ajustes operacionais do lead, preservando os campos existentes."
+                      eyebrow="Edicao"
+                      title="Dados Comerciais"
                     >
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field label="Nome">
+                          <input
+                            className={fieldInputClass}
+                            onChange={(event) => updateDraft({ nome: event.target.value })}
+                            placeholder="Nome do lead"
+                            required
+                            value={draft.nome}
+                          />
+                        </Field>
+
+                        <Field label="Telefone">
+                          <input
+                            className={fieldInputClass}
+                            onChange={(event) =>
+                              updateDraft({ telefone: event.target.value })
+                            }
+                            placeholder="(00) 00000-0000"
+                            value={draft.telefone}
+                          />
+                        </Field>
+
+                        <Field label="E-mail">
+                          <input
+                            className={fieldInputClass}
+                            onChange={(event) => updateDraft({ email: event.target.value })}
+                            placeholder="cliente@email.com"
+                            type="email"
+                            value={draft.email}
+                          />
+                        </Field>
+
+                        <Field label="Origem">
+                          <input
+                            className={fieldInputClass}
+                            onChange={(event) => updateDraft({ origem: event.target.value })}
+                            placeholder="Indicacao, trafego, evento..."
+                            value={draft.origem}
+                          />
+                        </Field>
+
+                        <Field label="Consultor">
+                          <input
+                            className={fieldInputClass}
+                            onChange={(event) =>
+                              updateDraft({ consultor: event.target.value })
+                            }
+                            placeholder="Responsavel"
+                            value={draft.consultor}
+                          />
+                        </Field>
+
+                        <Field label="Valor / credito desejado">
+                          <input
+                            className={fieldInputClass}
+                            min={0}
+                            onChange={(event) =>
+                              updateDraft({ valorPretendido: Number(event.target.value) })
+                            }
+                            type="number"
+                            value={draft.valorPretendido}
+                          />
+                        </Field>
+
+                        <Field label="Funil">
+                          <select
+                            className={fieldInputClass}
+                            onChange={(event) =>
+                              handlePipelineChange(event.target.value as CrmPipeline)
+                            }
+                            value={draft.pipeline}
+                          >
+                            {crmPipelines.map((pipeline) => (
+                              <option key={pipeline.key} value={pipeline.key}>
+                                {pipeline.label}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+
+                        <Field label="Temperatura">
+                          <select
+                            className={fieldInputClass}
+                            onChange={(event) =>
+                              updateDraft({
+                                temperatura: event.target.value as CrmLeadInput["temperatura"],
+                              })
+                            }
+                            value={draft.temperatura}
+                          >
+                            {Object.entries(crmTemperatureLabels).map(([key, label]) => (
+                              <option key={key} value={key}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+
+                        <Field label="Etapa">
+                          <select
+                            className={fieldInputClass}
+                            onChange={(event) =>
+                              updateDraft({ etapa: event.target.value as CrmStage })
+                            }
+                            value={draft.etapa}
+                          >
+                            {getStagesForPipeline(draft.pipeline).map((stage) => (
+                              <option key={stage.key} value={stage.key}>
+                                {stage.label}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+                      <Field label="Observacoes atuais">
+                        <textarea
+                          className={cn(fieldInputClass, "min-h-32 resize-y")}
+                          onChange={(event) =>
+                            updateDraft({ observacoes: event.target.value })
+                          }
+                          placeholder="Perfil, objetivos, objecoes, contexto familiar e combinados."
+                          value={draft.observacoes}
+                        />
+                      </Field>
+                    </ExecutiveDossierCard>
+
+                    <ExecutiveDossierCard
+                      description="Artefatos comerciais ja existentes no EVOLV."
+                      eyebrow="Card 6"
+                      title="Propostas e Simulacoes"
+                    >
+                      <div className="grid gap-3">
+                        {proposals.length ? (
+                          proposals.map((proposal) => (
+                            <GeneratedProposalItem
+                              key={`${proposal.generatedAt}-${proposal.fileName ?? "pdf"}`}
+                              proposal={proposal}
+                            />
+                          ))
+                        ) : (
+                          <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                            Nenhuma proposta gerada nesta sessao.
+                          </p>
+                        )}
+                      </div>
+                    </ExecutiveDossierCard>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button type="submit">
                       <Plus className="h-4 w-4" aria-hidden />
-                      Criar proxima acao
+                      Salvar lead
+                    </Button>
+                    <Button onClick={onCancel} type="button" variant="ghost">
+                      Cancelar edicao
                     </Button>
                   </div>
-                </>
-              )}
-              {taskActionError ? (
-                <p className="mt-3 text-xs leading-5 text-destructive">
-                  {taskActionError}
-                </p>
+                </div>
               ) : null}
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm">
-              <LeadInfo label="Responsavel" value={lead.consultor || "-"} />
-              <LeadInfo
-                label="Valor desejado"
-                value={currencyFormatter.format(lead.valorPretendido)}
-              />
-            </div>
-          </ExecutiveDossierCard>
+            </section>
+          </div>
+        ) : null}
 
-          <ExecutiveDossierCard
-            description="Acoes comerciais existentes, sem mudanca de comportamento."
-            eyebrow="Atalhos"
-            title="Acoes Comerciais"
-          >
-            <div className="mt-4 grid gap-2">
-              <Button
-                disabled={!onGenerateSimulation}
-                onClick={() => onGenerateSimulation?.(lead)}
-                type="button"
-                variant="secondary"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Gerar simulacao
-              </Button>
-              <Button
-                disabled={!onGenerateMultiCotas}
-                onClick={() => onGenerateMultiCotas?.(lead)}
-                type="button"
-                variant="secondary"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Gerar Multi-Cotas
-              </Button>
-              <Button disabled type="button" variant="secondary">
-                <Plus className="h-4 w-4" aria-hidden />
-                Gerar proposta
-              </Button>
-              <Button disabled type="button" variant="ghost">
-                <Phone className="h-4 w-4" aria-hidden />
-                Ligar
-              </Button>
-              <Button
-                disabled={!whatsappUrl}
-                onClick={handleOpenWhatsapp}
-                type="button"
-                variant="ghost"
-              >
-                <Send className="h-4 w-4" aria-hidden />
-                WhatsApp
-              </Button>
-            </div>
-          </ExecutiveDossierCard>
-        </div>
-
-        <ExecutiveDossierCard
-          description="Sinais explicaveis derivados das atividades e artefatos ja registrados."
-          eyebrow="Inteligencia"
-          title="Check Points"
-        >
-          <LeadGreenFlags flags={greenFlags} />
-        </ExecutiveDossierCard>
-
-        <DossierAreaHeader
-          description="Historico comercial do lead com simulacoes comerciais, Multi-Cotas e artefatos existentes."
-          id="dossie-simulacoes"
-          title="Simulacoes"
-        />
-
-        <ExecutiveDossierCard
-          description="Simulacoes comerciais vinculadas a este lead."
-          eyebrow="Simulacoes"
-          title="Simulacoes Salvas"
-        >
-          <LeadSimulationHistoryList
-            error={simulationsError}
-            isLoading={isLoadingSimulations}
-            simulations={commercialSimulations}
-          />
-        </ExecutiveDossierCard>
-
-        <ExecutiveDossierCard
-          description="Historico de estudos Multi-Cotas vinculados a este lead."
-          eyebrow="Estrategia"
-          title="Multi-Cotas"
-        >
-          <LeadMultiCotasSummary
-            error={simulationsError}
-            isLoading={isLoadingSimulations}
-            leadName={leadDisplayName}
-            simulations={multiCotasSimulations}
-          />
-        </ExecutiveDossierCard>
-
-        <DossierAreaHeader
-          description="Eventos resumidos e transversais do relacionamento, preservando a Timeline atual."
-          id="dossie-timeline"
-          title="Timeline"
-        />
-
-        <section className="executive-surface rounded-md p-5 text-card-foreground">
-          <button
-            aria-expanded={isTimelineOpen}
-            className="flex w-full items-start justify-between gap-4 text-left"
-            onClick={() => setIsTimelineOpen((current) => !current)}
-            type="button"
-          >
-            <span>
+        {activeDossierTab === "timeline" ? (
+          <div className="grid gap-4">
+            <DossierAreaHeader
+              description="Eventos resumidos e transversais do relacionamento."
+              id="dossie-timeline"
+              title="Timeline"
+            />
+            <section className="executive-surface rounded-md p-5 text-card-foreground">
               <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 Timeline
               </span>
               <span className="mt-1 block text-sm font-semibold text-foreground">
                 Timeline Operacional
               </span>
-              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Notas e tarefas recentes deste lead, com autoria e horario.
-              </span>
-            </span>
-            {isTimelineOpen ? (
-              <ChevronUp className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-          </button>
-          <div className="mt-4 flex justify-end">
-            <Button onClick={handleOpenNoteModal} type="button" variant="secondary">
-              <Plus className="h-4 w-4" aria-hidden />
-              Adicionar Nota
-            </Button>
+              <div className="mt-4">
+                <CrmOperationalTimelineList
+                  error={timelineError}
+                  events={timelineEvents}
+                  isLoading={isLoadingTimeline}
+                />
+              </div>
+            </section>
           </div>
-          {isTimelineOpen ? (
-            <div className="mt-4">
-              <CrmOperationalTimelineList
-                error={timelineError}
-                events={timelineEvents}
-                isLoading={isLoadingTimeline}
+        ) : null}
+
+        {activeDossierTab === "simulations" ? (
+          <div className="grid gap-4">
+            <DossierAreaHeader
+              description="Historico comercial do lead com simulacoes e Multi-Cotas."
+              id="dossie-simulacoes"
+              title="Simulacoes"
+            />
+            <ExecutiveDossierCard
+              description="Simulacoes comerciais vinculadas a este lead."
+              eyebrow="Simulacoes"
+              title="Simulacoes Salvas"
+            >
+              <LeadSimulationHistoryList
+                error={simulationsError}
+                isLoading={isLoadingSimulations}
+                simulations={commercialSimulations}
               />
-            </div>
-          ) : null}
-        </section>
+            </ExecutiveDossierCard>
 
-        <DossierAreaHeader
-          description="Execucao e memoria operacional do lead, usando notas, tarefas e proxima acao ja existentes."
-          id="dossie-tarefas-notas"
-          title="Tarefas e Notas"
-        />
+            <ExecutiveDossierCard
+              description="Historico de estudos Multi-Cotas vinculados a este lead."
+              eyebrow="Estrategia"
+              title="Multi-Cotas"
+            >
+              <LeadMultiCotasSummary
+                error={simulationsError}
+                isLoading={isLoadingSimulations}
+                leadName={leadDisplayName}
+                simulations={multiCotasSimulations}
+              />
+            </ExecutiveDossierCard>
+          </div>
+        ) : null}
 
-        <ExecutiveDossierCard
-          description="Area operacional baseada nas funcionalidades existentes de notas e tasks."
-          eyebrow="Operacao"
-          title="Tarefas e Notas"
-        >
-          <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-md border bg-background/70 p-4 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-foreground">Proxima acao</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Execucao pendente prioritaria deste lead.
-                  </p>
-                </div>
-                <span className="rounded-full border bg-card px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Destaque
-                </span>
-              </div>
-              <div className="mt-3">
-                {isLoadingTasks ? (
-                  <p className="text-sm text-muted-foreground">
-                    Carregando proxima acao...
-                  </p>
-                ) : taskLoadError ? (
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {taskLoadError}
-                  </p>
-                ) : nextPendingTask ? (
-                  <TaskSummary task={nextPendingTask} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhuma acao programada.
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="rounded-md border bg-background/70 p-4 text-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="font-medium text-foreground">Notas</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Registros operacionais do relacionamento com este lead.
-                  </p>
-                </div>
-                <Button onClick={handleOpenNoteModal} type="button" variant="secondary">
-                  <Plus className="h-4 w-4" aria-hidden />
-                  Adicionar Nota
-                </Button>
-              </div>
-              {latestPersistedNote ? (
-                <div className="mt-4 grid gap-3">
-                  <div className="rounded-md border bg-card p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                        Ultima nota
+        {activeDossierTab === "tasks-notes" ? (
+          <div className="grid gap-4">
+            <DossierAreaHeader
+              description="Execucao e memoria operacional do lead."
+              id="dossie-tarefas-notas"
+              title="Tarefas e Notas"
+            />
+
+            <ExecutiveDossierCard
+              description="Area operacional baseada nas funcionalidades existentes de notas e tasks."
+              eyebrow="Operacao"
+              title="Tarefas e Notas"
+            >
+              <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+                <div className="rounded-md border bg-background/70 p-4 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-foreground">Proxima acao</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        Execucao pendente prioritaria deste lead.
                       </p>
-                      <time
-                        className="text-xs text-muted-foreground"
-                        dateTime={latestPersistedNote.timestamp}
-                      >
-                        {dateFormatter.format(new Date(latestPersistedNote.timestamp))}
-                      </time>
                     </div>
-                    <p className="mt-3 leading-6 text-foreground">
-                      {latestPersistedNote.content}
-                    </p>
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      {latestPersistedNote.author}
-                    </p>
+                    <span className="rounded-full border bg-card px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Destaque
+                    </span>
                   </div>
-                  {historicalPersistedNotes.length ? (
-                    <div className="rounded-md border border-dashed bg-background/50 p-3">
-                      <button
-                        aria-expanded={isNotesHistoryOpen}
-                        className="flex w-full items-center justify-between gap-3 text-left"
-                        onClick={() => setIsNotesHistoryOpen((current) => !current)}
-                        type="button"
-                      >
-                        <span className="text-sm font-medium text-foreground">
-                          Ver historico ({historicalPersistedNotes.length})
-                        </span>
-                        {isNotesHistoryOpen ? (
-                          <ChevronUp
-                            aria-hidden
-                            className="h-4 w-4 shrink-0 text-muted-foreground"
-                          />
-                        ) : (
-                          <ChevronDown
-                            aria-hidden
-                            className="h-4 w-4 shrink-0 text-muted-foreground"
-                          />
-                        )}
-                      </button>
-                      {isNotesHistoryOpen ? (
-                        <div className="mt-3">
-                          <CrmStructuredNotesList
-                            emptyText="Nenhuma nota operacional registrada ainda."
-                            notes={historicalPersistedNotes}
-                            variant="compact"
-                          />
+                  <div className="mt-3">
+                    {isLoadingTasks ? (
+                      <p className="text-sm text-muted-foreground">
+                        Carregando proxima acao...
+                      </p>
+                    ) : taskLoadError ? (
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        {taskLoadError}
+                      </p>
+                    ) : nextPendingTask ? (
+                      <TaskNextAction
+                        isCanceling={isCancelingTask}
+                        isCompleting={isCompletingTask}
+                        onCancelTask={handleCancelTask}
+                        onCompleteTask={handleCompleteTask}
+                        onCreateTask={handleOpenTaskModal}
+                        task={nextPendingTask}
+                      />
+                    ) : (
+                      <div className="grid gap-3">
+                        <p className="text-sm text-muted-foreground">
+                          Nenhuma acao programada.
+                        </p>
+                        <Button
+                          onClick={handleOpenTaskModal}
+                          type="button"
+                          variant="secondary"
+                        >
+                          <Plus className="h-4 w-4" aria-hidden />
+                          Criar acao
+                        </Button>
+                      </div>
+                    )}
+                    {taskActionError ? (
+                      <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                        {taskActionError}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="rounded-md border bg-background/70 p-4 text-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">Notas</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        Registros operacionais do relacionamento com este lead.
+                      </p>
+                    </div>
+                    <Button onClick={handleOpenNoteModal} type="button" variant="secondary">
+                      <Plus className="h-4 w-4" aria-hidden />
+                      Adicionar Nota
+                    </Button>
+                  </div>
+                  {latestPersistedNote ? (
+                    <div className="mt-4 grid gap-3">
+                      <div className="rounded-md border bg-card p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                            Ultima nota
+                          </p>
+                          <time
+                            className="text-xs text-muted-foreground"
+                            dateTime={latestPersistedNote.timestamp}
+                          >
+                            {dateFormatter.format(new Date(latestPersistedNote.timestamp))}
+                          </time>
+                        </div>
+                        <p className="mt-3 leading-6 text-foreground">
+                          {latestPersistedNote.content}
+                        </p>
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          {latestPersistedNote.author}
+                        </p>
+                      </div>
+                      {historicalPersistedNotes.length ? (
+                        <div className="rounded-md border border-dashed bg-background/50 p-3">
+                          <button
+                            aria-expanded={isNotesHistoryOpen}
+                            className="flex w-full items-center justify-between gap-3 text-left"
+                            onClick={() => setIsNotesHistoryOpen((current) => !current)}
+                            type="button"
+                          >
+                            <span className="text-sm font-medium text-foreground">
+                              Ver historico ({historicalPersistedNotes.length})
+                            </span>
+                            {isNotesHistoryOpen ? (
+                              <ChevronUp
+                                aria-hidden
+                                className="h-4 w-4 shrink-0 text-muted-foreground"
+                              />
+                            ) : (
+                              <ChevronDown
+                                aria-hidden
+                                className="h-4 w-4 shrink-0 text-muted-foreground"
+                              />
+                            )}
+                          </button>
+                          {isNotesHistoryOpen ? (
+                            <div className="mt-3">
+                              <CrmStructuredNotesList
+                                emptyText="Nenhuma nota operacional registrada ainda."
+                                notes={historicalPersistedNotes}
+                                variant="compact"
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="mt-4">
+                      <CrmStructuredNotesList
+                        emptyText="Nenhuma nota operacional registrada ainda."
+                        notes={persistedStructuredNotes}
+                      />
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="mt-4">
-                  <CrmStructuredNotesList
-                    emptyText="Nenhuma nota operacional registrada ainda."
-                    notes={persistedStructuredNotes}
-                  />
-                </div>
-              )}
-            </div>
+              </div>
+            </ExecutiveDossierCard>
           </div>
-        </ExecutiveDossierCard>
+        ) : null}
 
-        <DossierAreaHeader
-          description="Canal reservado para comunicacoes futuras, sem integracao nesta sprint."
-          id="dossie-comunicacoes"
-          title="Comunicacoes"
-        />
+        {activeDossierTab === "communications" ? (
+          <div className="grid gap-4">
+            <DossierAreaHeader
+              description="Canal reservado para comunicacoes futuras, sem integracao nesta sprint."
+              id="dossie-comunicacoes"
+              title="Comunicacoes"
+            />
+            <MultichannelPlaceholder
+              items={["WhatsApp", "E-mail"]}
+              title="Comunicacoes"
+            />
+          </div>
+        ) : null}
 
-        <MultichannelPlaceholder
-          items={["WhatsApp", "E-mail"]}
-          title="Comunicacoes"
-        />
+        {activeDossierTab === "meetings" ? (
+          <div className="grid gap-4">
+            <DossierAreaHeader
+              description="Canal reservado para agenda e encontros futuros, sem integracao nesta sprint."
+              id="dossie-reunioes"
+              title="Reunioes"
+            />
+            <MultichannelPlaceholder
+              items={["Google Calendar", "Google Meet"]}
+              title="Reunioes"
+            />
+          </div>
+        ) : null}
 
-        <DossierAreaHeader
-          description="Canal reservado para agenda e encontros futuros, sem integracao nesta sprint."
-          id="dossie-reunioes"
-          title="Reunioes"
-        />
-
-        <MultichannelPlaceholder
-          items={["Google Calendar", "Google Meet"]}
-          title="Reunioes"
-        />
-
-        <DossierAreaHeader
-          description="Canal reservado para chamadas e telefonia futuras, sem integracao nesta sprint."
-          id="dossie-ligacoes"
-          title="Ligacoes"
-        />
-
-        <MultichannelPlaceholder
-          items={["Chamadas", "Telefonia"]}
-          title="Ligacoes"
-        />
-
-        <div className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
-          <ExecutiveDossierCard
-            description="Ajustes operacionais do lead, preservando os campos existentes."
-            eyebrow="Edicao"
-            title="Dados Comerciais"
-          >
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Nome">
-                <input
-                  className={fieldInputClass}
-                  onChange={(event) => updateDraft({ nome: event.target.value })}
-                  placeholder="Nome do lead"
-                  required
-                  value={draft.nome}
-                />
-              </Field>
-
-              <Field label="Telefone">
-                <input
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    updateDraft({ telefone: event.target.value })
-                  }
-                  placeholder="(00) 00000-0000"
-                  value={draft.telefone}
-                />
-              </Field>
-
-              <Field label="E-mail">
-                <input
-                  className={fieldInputClass}
-                  onChange={(event) => updateDraft({ email: event.target.value })}
-                  placeholder="cliente@email.com"
-                  type="email"
-                  value={draft.email}
-                />
-              </Field>
-
-              <Field label="Origem">
-                <input
-                  className={fieldInputClass}
-                  onChange={(event) => updateDraft({ origem: event.target.value })}
-                  placeholder="Indicacao, trafego, evento..."
-                  value={draft.origem}
-                />
-              </Field>
-
-              <Field label="Consultor">
-                <input
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    updateDraft({ consultor: event.target.value })
-                  }
-                  placeholder="Responsavel"
-                  value={draft.consultor}
-                />
-              </Field>
-
-              <Field label="Valor / credito desejado">
-                <input
-                  className={fieldInputClass}
-                  min={0}
-                  onChange={(event) =>
-                    updateDraft({ valorPretendido: Number(event.target.value) })
-                  }
-                  type="number"
-                  value={draft.valorPretendido}
-                />
-              </Field>
-
-              <Field label="Funil">
-                <select
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    handlePipelineChange(event.target.value as CrmPipeline)
-                  }
-                  value={draft.pipeline}
-                >
-                  {crmPipelines.map((pipeline) => (
-                    <option key={pipeline.key} value={pipeline.key}>
-                      {pipeline.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Temperatura">
-                <select
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    updateDraft({
-                      temperatura: event.target.value as CrmLeadInput["temperatura"],
-                    })
-                  }
-                  value={draft.temperatura}
-                >
-                  {Object.entries(crmTemperatureLabels).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Etapa">
-                <select
-                  className={fieldInputClass}
-                  onChange={(event) =>
-                    updateDraft({ etapa: event.target.value as CrmStage })
-                  }
-                  value={draft.etapa}
-                >
-                  {getStagesForPipeline(draft.pipeline).map((stage) => (
-                    <option key={stage.key} value={stage.key}>
-                      {stage.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <Field label="Observacoes atuais">
-              <textarea
-                className={cn(fieldInputClass, "min-h-32 resize-y")}
-                onChange={(event) =>
-                  updateDraft({ observacoes: event.target.value })
-                }
-                placeholder="Perfil, objetivos, objecoes, contexto familiar e combinados."
-                value={draft.observacoes}
-              />
-            </Field>
-          </ExecutiveDossierCard>
-
-          <ExecutiveDossierCard
-            description="Artefatos comerciais ja existentes no EVOLV."
-            eyebrow="Card 6"
-            title="Propostas e Simulacoes"
-          >
-            <div className="grid gap-3">
-              {proposals.length ? (
-                proposals.map((proposal) => (
-                  <GeneratedProposalItem
-                    key={`${proposal.generatedAt}-${proposal.fileName ?? "pdf"}`}
-                    proposal={proposal}
-                  />
-                ))
-              ) : (
-                <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                  Nenhuma proposta gerada nesta sessao.
-                </p>
-              )}
-            </div>
-          </ExecutiveDossierCard>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <Button type="submit">
-            <Plus className="h-4 w-4" aria-hidden />
-            Salvar lead
-          </Button>
-          <Button onClick={onCancel} type="button" variant="ghost">
-            Cancelar edicao
-          </Button>
-        </div>
+        {activeDossierTab === "calls" ? (
+          <div className="grid gap-4">
+            <DossierAreaHeader
+              description="Canal reservado para chamadas e telefonia futuras, sem integracao nesta sprint."
+              id="dossie-ligacoes"
+              title="Ligacoes"
+            />
+            <MultichannelPlaceholder
+              items={["Chamadas", "Telefonia"]}
+              title="Ligacoes"
+            />
+          </div>
+        ) : null}
       </form>
 
       {isNoteModalOpen ? (
@@ -1979,17 +1982,23 @@ function getLocalDateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-const dossierNavigationItems = [
-  { href: "#dossie-resumo", label: "Resumo" },
-  { href: "#dossie-timeline", label: "Timeline" },
-  { href: "#dossie-simulacoes", label: "Simulacoes" },
-  { href: "#dossie-tarefas-notas", label: "Tarefas e Notas" },
-  { href: "#dossie-comunicacoes", label: "Comunicacoes" },
-  { href: "#dossie-reunioes", label: "Reunioes" },
-  { href: "#dossie-ligacoes", label: "Ligacoes" },
+const dossierNavigationItems: Array<{ key: DossierTabKey; label: string }> = [
+  { key: "summary", label: "Resumo" },
+  { key: "timeline", label: "Timeline" },
+  { key: "simulations", label: "Simulacoes" },
+  { key: "tasks-notes", label: "Tarefas e Notas" },
+  { key: "communications", label: "Comunicacoes" },
+  { key: "meetings", label: "Reunioes" },
+  { key: "calls", label: "Ligacoes" },
 ];
 
-function DossierMultichannelNavigation() {
+function DossierMultichannelNavigation({
+  activeTab,
+  onChange,
+}: {
+  activeTab: DossierTabKey;
+  onChange: (tab: DossierTabKey) => void;
+}) {
   return (
     <nav
       aria-label="Navegacao do Dossie Multicanal"
@@ -1997,13 +2006,20 @@ function DossierMultichannelNavigation() {
     >
       <div className="flex flex-wrap gap-2">
         {dossierNavigationItems.map((item) => (
-          <a
-            className="rounded-md border bg-background px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
-            href={item.href}
-            key={item.href}
+          <button
+            aria-pressed={activeTab === item.key}
+            className={cn(
+              "rounded-md border px-3 py-2 text-xs font-medium transition",
+              activeTab === item.key
+                ? "border-primary/45 bg-primary/[0.06] text-foreground"
+                : "bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground",
+            )}
+            key={item.key}
+            onClick={() => onChange(item.key)}
+            type="button"
           >
             {item.label}
-          </a>
+          </button>
         ))}
       </div>
     </nav>
@@ -2638,6 +2654,63 @@ function LeadStrategicProfileCard({
             </Button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function LeadExecutiveSimulationSummary({
+  emptyText,
+  simulation,
+  title,
+}: {
+  emptyText: string;
+  simulation: CrmLeadSimulation | null;
+  title: string;
+}) {
+  const credit =
+    simulation?.commercialCredit ??
+    simulation?.updatedCredit ??
+    simulation?.totalCredit ??
+    null;
+
+  return (
+    <div className="rounded-md border bg-background/70 p-4 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {title}
+      </p>
+      {simulation ? (
+        <div className="mt-3 grid gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">
+                {simulation.title}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {leadSimulationTypeLabels[simulation.simulationType]}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground">
+              {dateFormatter.format(new Date(simulation.createdAt))}
+            </span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <LeadInfo
+              label="Credito"
+              value={typeof credit === "number" ? currencyFormatter.format(credit) : "-"}
+            />
+            <LeadInfo
+              label="Parcela"
+              value={
+                typeof simulation.monthlyPayment === "number"
+                  ? currencyFormatter.format(simulation.monthlyPayment)
+                  : "-"
+              }
+            />
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">{emptyText}</p>
       )}
     </div>
   );
