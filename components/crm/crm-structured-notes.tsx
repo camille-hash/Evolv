@@ -35,8 +35,20 @@ export function CrmStructuredNotesList({
           )}
           key={note.id}
         >
-          <p className="leading-6 text-foreground">{note.content}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <p
+            className={cn(
+              "text-foreground",
+              variant === "compact" ? "leading-5" : "leading-6",
+            )}
+          >
+            {note.content}
+          </p>
+          <div
+            className={cn(
+              "flex flex-wrap items-center gap-2 text-xs text-muted-foreground",
+              variant === "compact" ? "mt-2" : "mt-3",
+            )}
+          >
             <span>{note.author}</span>
             <span aria-hidden>-</span>
             <time dateTime={note.timestamp}>

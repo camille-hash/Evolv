@@ -110,7 +110,8 @@ export function CrmLeadDetail({
   onSave,
   proposals,
 }: CrmLeadDetailProps) {
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isTimelineOpen, setIsTimelineOpen] = useState(false);
+  const [isNotesHistoryOpen, setIsNotesHistoryOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -161,6 +162,8 @@ export function CrmLeadDetail({
     [lead.id, tasksState],
   );
   const persistedStructuredNotes = persistedNotes.map(mapLeadNoteToStructuredNote);
+  const latestPersistedNote = persistedStructuredNotes[0] ?? null;
+  const historicalPersistedNotes = persistedStructuredNotes.slice(1);
   const timelineEvents = useMemo(
     () =>
       timelineState?.leadId === lead.id ? timelineState.timeline.events : [],
@@ -542,7 +545,7 @@ export function CrmLeadDetail({
       });
       await refreshLeadTimeline(accessToken, lead.id);
       setNoteContent("");
-      setIsHistoryOpen(true);
+      setIsNotesHistoryOpen(false);
       setIsNoteModalOpen(false);
       setNoteSuccessMessage("Nota adicionada com sucesso.");
     } catch (error) {
@@ -866,7 +869,7 @@ export function CrmLeadDetail({
                 </p>
               ) : null}
             </div>
-            <div className="mt-4 grid gap-3 text-sm">
+            <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm">
               <LeadInfo label="Responsavel" value={lead.consultor || "-"} />
               <LeadInfo
                 label="Valor desejado"
@@ -967,9 +970,9 @@ export function CrmLeadDetail({
 
         <section className="executive-surface rounded-md p-5 text-card-foreground">
           <button
-            aria-expanded={isHistoryOpen}
+            aria-expanded={isTimelineOpen}
             className="flex w-full items-start justify-between gap-4 text-left"
-            onClick={() => setIsHistoryOpen((current) => !current)}
+            onClick={() => setIsTimelineOpen((current) => !current)}
             type="button"
           >
             <span>
@@ -983,7 +986,7 @@ export function CrmLeadDetail({
                 Notas e tarefas recentes deste lead, com autoria e horario.
               </span>
             </span>
-            {isHistoryOpen ? (
+            {isTimelineOpen ? (
               <ChevronUp className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
             ) : (
               <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -995,7 +998,7 @@ export function CrmLeadDetail({
               Adicionar Nota
             </Button>
           </div>
-          {isHistoryOpen ? (
+          {isTimelineOpen ? (
             <div className="mt-4">
               <CrmOperationalTimelineList
                 error={timelineError}
@@ -1019,7 +1022,17 @@ export function CrmLeadDetail({
         >
           <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
             <div className="rounded-md border bg-background/70 p-4 text-sm">
-              <p className="font-medium text-foreground">Proxima acao</p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-foreground">Proxima acao</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Execucao pendente prioritaria deste lead.
+                  </p>
+                </div>
+                <span className="rounded-full border bg-card px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Destaque
+                </span>
+              </div>
               <div className="mt-3">
                 {isLoadingTasks ? (
                   <p className="text-sm text-muted-foreground">
@@ -1051,12 +1064,70 @@ export function CrmLeadDetail({
                   Adicionar Nota
                 </Button>
               </div>
-              <div className="mt-4">
-                <CrmStructuredNotesList
-                  emptyText="Nenhuma nota operacional registrada ainda."
-                  notes={persistedStructuredNotes}
-                />
-              </div>
+              {latestPersistedNote ? (
+                <div className="mt-4 grid gap-3">
+                  <div className="rounded-md border bg-card p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                        Ultima nota
+                      </p>
+                      <time
+                        className="text-xs text-muted-foreground"
+                        dateTime={latestPersistedNote.timestamp}
+                      >
+                        {dateFormatter.format(new Date(latestPersistedNote.timestamp))}
+                      </time>
+                    </div>
+                    <p className="mt-3 leading-6 text-foreground">
+                      {latestPersistedNote.content}
+                    </p>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {latestPersistedNote.author}
+                    </p>
+                  </div>
+                  {historicalPersistedNotes.length ? (
+                    <div className="rounded-md border border-dashed bg-background/50 p-3">
+                      <button
+                        aria-expanded={isNotesHistoryOpen}
+                        className="flex w-full items-center justify-between gap-3 text-left"
+                        onClick={() => setIsNotesHistoryOpen((current) => !current)}
+                        type="button"
+                      >
+                        <span className="text-sm font-medium text-foreground">
+                          Ver historico ({historicalPersistedNotes.length})
+                        </span>
+                        {isNotesHistoryOpen ? (
+                          <ChevronUp
+                            aria-hidden
+                            className="h-4 w-4 shrink-0 text-muted-foreground"
+                          />
+                        ) : (
+                          <ChevronDown
+                            aria-hidden
+                            className="h-4 w-4 shrink-0 text-muted-foreground"
+                          />
+                        )}
+                      </button>
+                      {isNotesHistoryOpen ? (
+                        <div className="mt-3">
+                          <CrmStructuredNotesList
+                            emptyText="Nenhuma nota operacional registrada ainda."
+                            notes={historicalPersistedNotes}
+                            variant="compact"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <CrmStructuredNotesList
+                    emptyText="Nenhuma nota operacional registrada ainda."
+                    notes={persistedStructuredNotes}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </ExecutiveDossierCard>
@@ -1550,55 +1621,64 @@ function TaskNextAction({
 
   return (
     <div className="grid gap-3">
-      <div className="flex flex-wrap gap-2">
-        <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
-          {getTaskDueStatusLabel(task)}
-        </span>
-        <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
-          {getTaskTypeLabel(task.taskType)}
-        </span>
-        <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
-          Pendente
-        </span>
-      </div>
-      <div>
-        <p className="font-medium text-foreground">{task.title}</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          {formatTaskDueDate(task)}
-        </p>
-      </div>
-      {task.notes ? (
-        <p className="rounded-md border border-dashed bg-background/60 p-3 text-xs leading-5 text-muted-foreground">
-          {task.notes}
-        </p>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={isMutating}
-          onClick={() => onCompleteTask(task)}
-          type="button"
-        >
-          <CheckCircle2 className="h-4 w-4" aria-hidden />
-          {isCompleting ? "Concluindo..." : "Concluir acao"}
-        </Button>
-        <Button
-          disabled={isMutating}
-          onClick={() => onCancelTask(task)}
-          type="button"
-          variant="ghost"
-        >
-          <XCircle className="h-4 w-4" aria-hidden />
-          {isCanceling ? "Cancelando..." : "Cancelar acao"}
-        </Button>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+            {getTaskDueStatusLabel(task)}
+          </span>
+          <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+            {getTaskTypeLabel(task.taskType)}
+          </span>
+          <span className="rounded-full border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+            Pendente
+          </span>
+        </div>
         <Button
           disabled={isMutating}
           onClick={onCreateTask}
+          size="sm"
           type="button"
           variant="secondary"
         >
           <Plus className="h-4 w-4" aria-hidden />
           Nova acao
         </Button>
+      </div>
+      <div className="grid gap-2 rounded-md border bg-card p-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="font-medium text-foreground">{task.title}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {formatTaskDueDate(task)}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              disabled={isMutating}
+              onClick={() => onCompleteTask(task)}
+              size="sm"
+              type="button"
+            >
+              <CheckCircle2 className="h-4 w-4" aria-hidden />
+              {isCompleting ? "Concluindo..." : "Concluir"}
+            </Button>
+            <Button
+              disabled={isMutating}
+              onClick={() => onCancelTask(task)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <XCircle className="h-4 w-4" aria-hidden />
+              {isCanceling ? "Cancelando..." : "Cancelar"}
+            </Button>
+          </div>
+        </div>
+        {task.notes ? (
+          <p className="text-xs leading-5 text-muted-foreground">
+            {task.notes}
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -1749,23 +1829,34 @@ function MultichannelPlaceholder({
 }) {
   return (
     <ExecutiveDossierCard
-      description="Area reservada para evolucao futura do Dossie Multicanal."
-      eyebrow="Em definicao arquitetural"
+      description="Modulo reservado para evolucao futura, sem integracao ativa."
+      eyebrow="Canal futuro"
       title={title}
     >
       <div className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Em definicao arquitetural.</p>
-        <p className="mt-3">Canal reservado para:</p>
-        <ul className="mt-3 grid gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-medium text-foreground">Modulo em preparo</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Espaco reservado para centralizar este canal no Dossie.
+            </p>
+          </div>
+          <span className="rounded-full border bg-card px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Futuro
+          </span>
+        </div>
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
           {items.map((item) => (
-            <li className="flex items-center gap-2" key={item}>
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+            <li
+              className="rounded-md border bg-card px-3 py-2 text-foreground"
+              key={item}
+            >
               {item}
             </li>
           ))}
         </ul>
         <p className="mt-4 text-xs leading-5">
-          Nenhuma integracao externa foi criada nesta sprint.
+          Nenhuma integracao externa foi criada ou ativada nesta sprint.
         </p>
       </div>
     </ExecutiveDossierCard>
@@ -1783,11 +1874,16 @@ function TaskSummary({ task }: { task: CrmTask }) {
           {getTaskTypeLabel(task.taskType)}
         </span>
       </div>
-      <div>
+      <div className="rounded-md border bg-card p-3">
         <p className="font-medium text-foreground">{task.title}</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           {formatTaskDueDate(task)}
         </p>
+        {task.notes ? (
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            {task.notes}
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -2021,17 +2117,22 @@ function LeadGreenFlags({ flags }: { flags: CrmLeadGreenFlag[] }) {
   }
 
   return (
-    <ul className="grid gap-2">
+    <ul className="grid gap-3 md:grid-cols-2">
       {flags.map((flag) => (
         <li
-          className="flex items-start gap-2 rounded-md border bg-background/70 px-3 py-2 text-sm text-foreground"
+          className="flex items-start gap-3 rounded-md border bg-background/70 px-3 py-3 text-sm text-foreground"
           key={flag.type}
         >
           <CheckCircle2
             aria-hidden
             className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
           />
-          <span>{flag.description}</span>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-700">
+              Check Point
+            </p>
+            <p className="mt-1">{flag.description}</p>
+          </div>
         </li>
       ))}
     </ul>
