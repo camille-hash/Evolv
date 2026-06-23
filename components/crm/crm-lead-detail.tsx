@@ -2168,6 +2168,8 @@ function LeadSimulationHistoryItem({
 }
 
 function LeadGreenFlags({ flags }: { flags: CrmLeadGreenFlag[] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (!flags.length) {
     return (
       <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
@@ -2177,25 +2179,54 @@ function LeadGreenFlags({ flags }: { flags: CrmLeadGreenFlag[] }) {
   }
 
   return (
-    <ul className="grid gap-3 md:grid-cols-2">
-      {flags.map((flag) => (
-        <li
-          className="flex items-start gap-3 rounded-md border bg-background/70 px-3 py-3 text-sm text-foreground"
-          key={flag.type}
-        >
-          <CheckCircle2
-            aria-hidden
-            className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
-          />
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-700">
-              Check Point
-            </p>
-            <p className="mt-1">{flag.description}</p>
+    <div className="rounded-md border bg-background/70 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+              {flags.length} Check Points
+            </span>
           </div>
-        </li>
-      ))}
-    </ul>
+          <p className="mt-3 text-sm font-medium text-foreground">
+            {flags.length === 1
+              ? "1 sinal relevante identificado para este lead."
+              : `${flags.length} sinais relevantes identificados para este lead.`}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Os sinais individuais permanecem disponiveis sob demanda.
+          </p>
+        </div>
+        <button
+          aria-expanded={isExpanded}
+          className="shrink-0 text-sm font-medium text-primary transition hover:text-primary/80"
+          onClick={() => setIsExpanded((current) => !current)}
+          type="button"
+        >
+          {isExpanded ? "Ocultar detalhes" : "Ver detalhes"}
+        </button>
+      </div>
+      {isExpanded ? (
+        <ul className="mt-4 grid gap-3 md:grid-cols-2">
+          {flags.map((flag) => (
+            <li
+              className="flex items-start gap-3 rounded-md border bg-card px-3 py-3 text-sm text-foreground"
+              key={flag.type}
+            >
+              <CheckCircle2
+                aria-hidden
+                className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+              />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-700">
+                  Check Point
+                </p>
+                <p className="mt-1">{flag.description}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

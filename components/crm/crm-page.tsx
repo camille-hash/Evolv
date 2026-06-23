@@ -1712,6 +1712,10 @@ function MyDayGreenFlagsBlock({
   onOpen: (leadId: string) => void;
   title: string;
 }) {
+  const [expandedLeadIds, setExpandedLeadIds] = useState<Record<string, boolean>>(
+    {},
+  );
+
   return (
     <article className="executive-surface min-w-0 rounded-md p-5 text-card-foreground">
       <div className="flex items-center justify-between gap-3">
@@ -1723,31 +1727,58 @@ function MyDayGreenFlagsBlock({
       <div className="mt-4 grid gap-2">
         {items.length ? (
           items.map((item) => (
-            <button
-              className="min-w-0 rounded-md border bg-background/70 p-3 text-left transition hover:border-primary/45"
+            <div
+              className="min-w-0 rounded-md border bg-background/70 p-3"
               key={item.lead.id}
-              onClick={() => onOpen(item.lead.id)}
-              type="button"
             >
-              <div className="flex min-w-0 items-center justify-between gap-3">
-                <p className="min-w-0 truncate text-sm font-semibold text-foreground">
-                  {getLeadDisplayName(item.lead)}
-                </p>
-                <span className="shrink-0 text-xs font-medium text-emerald-700">
-                  {item.flags.length} Check Points
-                </span>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {item.flags.map((flag) => (
-                  <span
-                    className="max-w-full rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-xs leading-4 text-emerald-800"
-                    key={flag.type}
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <button
+                    className="min-w-0 text-left text-sm font-semibold text-foreground transition hover:text-primary"
+                    onClick={() => onOpen(item.lead.id)}
+                    type="button"
                   >
-                    {flag.description}
-                  </span>
-                ))}
+                    <span className="block truncate">{getLeadDisplayName(item.lead)}</span>
+                  </button>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      {item.flags.length} Check Points
+                    </span>
+                    <TemperatureBadge temperature={item.lead.temperatura} />
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {item.flags.length === 1
+                      ? "1 sinal ativo disponivel neste lead."
+                      : `${item.flags.length} sinais ativos disponiveis neste lead.`}
+                  </p>
+                </div>
+                <button
+                  aria-expanded={Boolean(expandedLeadIds[item.lead.id])}
+                  className="shrink-0 text-xs font-medium text-primary transition hover:text-primary/80"
+                  onClick={() =>
+                    setExpandedLeadIds((current) => ({
+                      ...current,
+                      [item.lead.id]: !current[item.lead.id],
+                    }))
+                  }
+                  type="button"
+                >
+                  {expandedLeadIds[item.lead.id] ? "Ocultar detalhes" : "Ver detalhes"}
+                </button>
               </div>
-            </button>
+              {expandedLeadIds[item.lead.id] ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {item.flags.map((flag) => (
+                    <span
+                      className="max-w-full rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-left text-xs leading-4 text-emerald-800"
+                      key={flag.type}
+                    >
+                      {flag.description}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ))
         ) : (
           <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
