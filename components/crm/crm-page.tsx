@@ -1682,105 +1682,128 @@ function OperationalKanban({
   onToggleColumn: (columnId: string) => void;
   pendingTasksByLeadId: Record<string, CrmTask[]>;
 }) {
+  const columnSections = groupOperationalColumnsBySection(columns);
+
   return (
     <section className="executive-surface min-w-0 overflow-hidden rounded-md p-3.5 sm:p-4">
       <div className="w-full min-w-0 overflow-x-auto pb-3">
         <div className="flex w-max items-start gap-3">
-          {columns.map((column, index) => {
-            const columnId = getOperationalColumnId(column);
-            const stageLeads = column.status
-              ? leads.filter((lead) => lead.status === column.status)
-              : leads.filter(
-                  (lead) =>
-                    isLeadInGroup(lead, column.group ?? group) &&
-                    normalizeKey(lead.etapa) === normalizeKey(column.stage),
-                );
-            const isExpanded = Boolean(expandedColumnIds[columnId]);
-            const visibleStageLeads = isExpanded
-              ? stageLeads
-              : stageLeads.slice(0, INITIAL_PIPELINE_CARDS_LIMIT);
-            const hasHiddenLeads =
-              stageLeads.length > INITIAL_PIPELINE_CARDS_LIMIT;
-            const isActiveDropTarget =
-              !column.status &&
-              dragTarget?.pipeline === column.pipeline &&
-              dragTarget.stage === column.stage;
-            const previousSection = columns[index - 1]?.section;
-            const shouldRenderSectionHeader =
-              Boolean(column.section) && column.section !== previousSection;
-
-            return (
-              <div className="flex flex-none items-start gap-3" key={columnId}>
-                {shouldRenderSectionHeader ? (
-                  <div className="flex w-28 flex-none flex-col justify-center self-stretch rounded-md border border-dashed border-border/70 bg-muted/30 px-3 py-4">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      {commercialSectionLabels[column.section!]}
-                    </span>
-                  </div>
-                ) : null}
-                <section
-                  className={cn(
-                    "w-[260px] flex-none rounded-md border bg-background/72 p-2.5 transition",
-                    column.section === "shared"
-                      ? "border-amber-300/70 bg-amber-50/60"
-                      : "border-border",
-                    isActiveDropTarget
-                      ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
-                      : null,
-                  )}
-                  onDragOver={(event) => {
-                    if (!column.status) {
-                      onDragOver(event, column.pipeline, column.stage);
-                    }
-                  }}
-                  onDrop={(event) => {
-                    if (!column.status) {
-                      onDrop(event, column.pipeline, column.stage);
-                    }
-                  }}
-                >
-                  <div className="flex min-w-0 items-center justify-between gap-2">
-                    <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
-                      {column.label}
-                    </h3>
-                    <span className="shrink-0 rounded-full border bg-card px-1.5 py-0.5 text-xs text-muted-foreground">
-                      {stageLeads.length}
-                    </span>
-                  </div>
-                  <div className="mt-2 grid gap-1.5">
-                    {stageLeads.length ? (
-                      visibleStageLeads.map((lead) => (
-                        <CompactLeadCard
-                          key={lead.id}
-                          lead={lead}
-                          pendingTasks={pendingTasksByLeadId[lead.id] ?? []}
-                          readOnly={Boolean(column.status)}
-                          onDragEnd={onDragEnd}
-                          onDragStart={onDragStart}
-                          onEdit={onEdit}
-                        />
-                      ))
-                    ) : (
-                      <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-                        Sem oportunidades.
-                      </div>
+          {columnSections.map((section) => (
+            <div
+              className={cn(
+                "flex flex-none flex-col gap-2",
+                section.section === "shared"
+                  ? "rounded-lg border border-amber-200/80 bg-amber-50/35 p-2"
+                  : null,
+              )}
+              key={section.id}
+            >
+              {section.label ? (
+                <div className="flex items-center gap-2 px-1">
+                  <span
+                    className={cn(
+                      "text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground",
+                      section.section === "shared" ? "text-amber-900/80" : null,
                     )}
-                    {hasHiddenLeads ? (
-                      <button
-                        className="mt-1 inline-flex w-fit items-center text-xs font-medium text-primary transition hover:text-primary/80"
-                        onClick={() => onToggleColumn(columnId)}
-                        type="button"
-                      >
-                        {isExpanded
-                          ? "Ver menos"
-                          : `Ver todos (${stageLeads.length})`}
-                      </button>
-                    ) : null}
-                  </div>
-                </section>
+                  >
+                    {section.label}
+                  </span>
+                  <div
+                    className={cn(
+                      "h-px flex-1 bg-border/70",
+                      section.section === "shared" ? "bg-amber-300/70" : null,
+                    )}
+                  />
+                </div>
+              ) : null}
+              <div className="flex items-start gap-3">
+                {section.columns.map((column) => {
+                  const columnId = getOperationalColumnId(column);
+                  const stageLeads = column.status
+                    ? leads.filter((lead) => lead.status === column.status)
+                    : leads.filter(
+                        (lead) =>
+                          isLeadInGroup(lead, column.group ?? group) &&
+                          normalizeKey(lead.etapa) === normalizeKey(column.stage),
+                      );
+                  const isExpanded = Boolean(expandedColumnIds[columnId]);
+                  const visibleStageLeads = isExpanded
+                    ? stageLeads
+                    : stageLeads.slice(0, INITIAL_PIPELINE_CARDS_LIMIT);
+                  const hasHiddenLeads =
+                    stageLeads.length > INITIAL_PIPELINE_CARDS_LIMIT;
+                  const isActiveDropTarget =
+                    !column.status &&
+                    dragTarget?.pipeline === column.pipeline &&
+                    dragTarget.stage === column.stage;
+
+                  return (
+                    <section
+                      className={cn(
+                        "w-[260px] flex-none rounded-md border bg-background/72 p-2.5 transition",
+                        column.section === "shared"
+                          ? "border-amber-300/70 bg-amber-50/60"
+                          : "border-border",
+                        isActiveDropTarget
+                          ? "border-primary/45 bg-primary/5 shadow-sm ring-2 ring-primary/15"
+                          : null,
+                      )}
+                      key={columnId}
+                      onDragOver={(event) => {
+                        if (!column.status) {
+                          onDragOver(event, column.pipeline, column.stage);
+                        }
+                      }}
+                      onDrop={(event) => {
+                        if (!column.status) {
+                          onDrop(event, column.pipeline, column.stage);
+                        }
+                      }}
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
+                          {column.label}
+                        </h3>
+                        <span className="shrink-0 rounded-full border bg-card px-1.5 py-0.5 text-xs text-muted-foreground">
+                          {stageLeads.length}
+                        </span>
+                      </div>
+                      <div className="mt-2 grid gap-1.5">
+                        {stageLeads.length ? (
+                          visibleStageLeads.map((lead) => (
+                            <CompactLeadCard
+                              key={lead.id}
+                              lead={lead}
+                              pendingTasks={pendingTasksByLeadId[lead.id] ?? []}
+                              readOnly={Boolean(column.status)}
+                              onDragEnd={onDragEnd}
+                              onDragStart={onDragStart}
+                              onEdit={onEdit}
+                            />
+                          ))
+                        ) : (
+                          <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                            Sem oportunidades.
+                          </div>
+                        )}
+                        {hasHiddenLeads ? (
+                          <button
+                            className="mt-1 inline-flex w-fit items-center text-xs font-medium text-primary transition hover:text-primary/80"
+                            onClick={() => onToggleColumn(columnId)}
+                            type="button"
+                          >
+                            {isExpanded
+                              ? "Ver menos"
+                              : `Ver todos (${stageLeads.length})`}
+                          </button>
+                        ) : null}
+                      </div>
+                    </section>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
     </section>
@@ -2868,6 +2891,35 @@ function getOperationalColumnId(column: OperationalColumn) {
     column.stage,
     column.status ?? "active",
   ].join(":");
+}
+
+function groupOperationalColumnsBySection(columns: OperationalColumn[]) {
+  const sections: Array<{
+    columns: OperationalColumn[];
+    id: string;
+    label: string | null;
+    section?: CommercialKanbanSection;
+  }> = [];
+
+  columns.forEach((column) => {
+    const currentSection = column.section;
+    const currentId = currentSection ?? "default";
+    const lastSection = sections[sections.length - 1];
+
+    if (lastSection?.id === currentId) {
+      lastSection.columns.push(column);
+      return;
+    }
+
+    sections.push({
+      columns: [column],
+      id: currentId,
+      label: currentSection ? commercialSectionLabels[currentSection] : null,
+      section: currentSection,
+    });
+  });
+
+  return sections;
 }
 
 function findCommercialColumn(
