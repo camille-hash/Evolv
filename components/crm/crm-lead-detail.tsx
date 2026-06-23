@@ -15,6 +15,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import {
+  createCrmLeadProfile,
+  fetchCrmLeadProfile,
+  updateCrmLeadProfile,
+} from "@/modules/crm/client/crm-lead-profiles-client";
+import {
   cancelCrmTask,
   completeCrmTask,
   createCrmTaskForLead,
@@ -40,6 +45,10 @@ import {
   type CrmLead,
   type CrmLeadInput,
   type CrmLeadNote,
+  type CrmLeadProfile,
+  type CrmLeadProfileCurrentMoment,
+  type CrmLeadProfilePrimaryGoal,
+  type CrmLeadProfileStrategicTopic,
   type CrmLeadSimulation,
   type CrmTask,
   type CrmTaskType,
@@ -49,6 +58,9 @@ import {
   type CrmPipeline,
   type CrmStage,
   type CrmStructuredNote,
+  crmLeadProfileCurrentMoments,
+  crmLeadProfilePrimaryGoals,
+  crmLeadProfileStrategicTopics,
 } from "@/modules/crm";
 import type { GeneratedProposalRecord } from "@/modules/proposal/proposal-history";
 import { generateMultiCotasCommercialPdf } from "@/modules/reports";
@@ -85,6 +97,13 @@ type TaskDraft = {
   title: string;
 };
 
+type StrategicProfileDraft = {
+  currentMoment: CrmLeadProfileCurrentMoment | "";
+  primaryGoal: CrmLeadProfilePrimaryGoal | "";
+  strategicNotes: string;
+  strategicTopics: CrmLeadProfileStrategicTopic[];
+};
+
 type CrmLeadDetailProps = {
   draft: CrmLeadInput;
   feedbackMessage?: string | null;
@@ -114,18 +133,31 @@ export function CrmLeadDetail({
   const [isNotesHistoryOpen, setIsNotesHistoryOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isStrategicProfileFormOpen, setIsStrategicProfileFormOpen] =
+    useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [isCompletingTask, setIsCompletingTask] = useState(false);
   const [isCancelingTask, setIsCancelingTask] = useState(false);
+  const [isLoadingStrategicProfile, setIsLoadingStrategicProfile] =
+    useState(false);
+  const [isSavingStrategicProfile, setIsSavingStrategicProfile] =
+    useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [taskDraft, setTaskDraft] = useState<TaskDraft>(() =>
     createDefaultTaskDraft(),
   );
+  const [strategicProfileDraft, setStrategicProfileDraft] =
+    useState<StrategicProfileDraft>(createEmptyStrategicProfileDraft);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [strategicProfileError, setStrategicProfileError] = useState<string | null>(
+    null,
+  );
   const [noteSuccessMessage, setNoteSuccessMessage] = useState<string | null>(null);
   const [taskSuccessMessage, setTaskSuccessMessage] = useState<string | null>(null);
+  const [strategicProfileSuccessMessage, setStrategicProfileSuccessMessage] =
+    useState<string | null>(null);
   const [notesState, setNotesState] = useState<{
     leadId: string;
     notes: CrmLeadNote[];
@@ -137,6 +169,10 @@ export function CrmLeadDetail({
   const [simulationsState, setSimulationsState] = useState<{
     leadId: string;
     simulations: CrmLeadSimulation[];
+  } | null>(null);
+  const [strategicProfileState, setStrategicProfileState] = useState<{
+    leadId: string;
+    profile: CrmLeadProfile | null;
   } | null>(null);
   const [timelineState, setTimelineState] = useState<{
     leadId: string;
@@ -154,6 +190,8 @@ export function CrmLeadDetail({
   const structuredNotes = buildTemporaryStructuredNotesFromLead(lead);
   const persistedNotes =
     notesState?.leadId === lead.id ? notesState.notes : [];
+  const strategicProfile =
+    strategicProfileState?.leadId === lead.id ? strategicProfileState.profile : null;
   const nextPendingTask = useMemo(
     () =>
       resolveNextPendingCrmTask(
@@ -286,6 +324,60 @@ export function CrmLeadDetail({
   useEffect(() => {
     let isActive = true;
 
+    async function loadStrategicProfile() {
+      setIsLoadingStrategicProfile(true);
+      setStrategicProfileError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setIsLoadingStrategicProfile(false);
+          setStrategicProfileError(
+            "Nao foi possivel carregar o perfil estrategico.",
+          );
+        }
+        return;
+      }
+
+      try {
+        const profile = await fetchCrmLeadProfile(accessToken, lead.id);
+
+        if (isActive) {
+          setStrategicProfileState({
+            leadId: lead.id,
+            profile,
+          });
+          setStrategicProfileDraft(
+            profile
+              ? mapStrategicProfileToDraft(profile)
+              : createEmptyStrategicProfileDraft(),
+          );
+          setIsStrategicProfileFormOpen(false);
+        }
+      } catch {
+        if (isActive) {
+          setStrategicProfileError(
+            "Nao foi possivel carregar o perfil estrategico.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingStrategicProfile(false);
+        }
+      }
+    }
+
+    void loadStrategicProfile();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
     async function loadTimeline() {
       setIsLoadingTimeline(true);
       setTimelineError(null);
@@ -396,6 +488,18 @@ export function CrmLeadDetail({
   }, [taskSuccessMessage]);
 
   useEffect(() => {
+    if (!strategicProfileSuccessMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setStrategicProfileSuccessMessage(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [strategicProfileSuccessMessage]);
+
+  useEffect(() => {
     if (!feedbackMessage || !onClearFeedbackMessage) {
       return;
     }
@@ -412,6 +516,15 @@ export function CrmLeadDetail({
       ...draft,
       ...patch,
     });
+  }
+
+  function updateStrategicProfileDraft(
+    patch: Partial<StrategicProfileDraft>,
+  ) {
+    setStrategicProfileDraft((current) => ({
+      ...current,
+      ...patch,
+    }));
   }
 
   function handlePipelineChange(pipeline: CrmPipeline) {
@@ -556,6 +669,52 @@ export function CrmLeadDetail({
       );
     } finally {
       setIsSavingNote(false);
+    }
+  }
+
+  async function handleSaveStrategicProfile() {
+    setIsSavingStrategicProfile(true);
+    setStrategicProfileError(null);
+    setStrategicProfileSuccessMessage(null);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      const payload = {
+        currentMoment: strategicProfileDraft.currentMoment || null,
+        leadId: lead.id,
+        primaryGoal: strategicProfileDraft.primaryGoal || null,
+        strategicNotes: strategicProfileDraft.strategicNotes || null,
+        strategicTopics: strategicProfileDraft.strategicTopics,
+      };
+
+      const profile = strategicProfile
+        ? await updateCrmLeadProfile(accessToken, payload)
+        : await createCrmLeadProfile(accessToken, payload);
+
+      setStrategicProfileState({
+        leadId: lead.id,
+        profile,
+      });
+      setStrategicProfileDraft(mapStrategicProfileToDraft(profile));
+      setIsStrategicProfileFormOpen(false);
+      setStrategicProfileSuccessMessage(
+        strategicProfile
+          ? "Perfil estrategico atualizado com sucesso."
+          : "Perfil estrategico criado com sucesso.",
+      );
+    } catch (error) {
+      setStrategicProfileError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar o perfil estrategico.",
+      );
+    } finally {
+      setIsSavingStrategicProfile(false);
     }
   }
 
@@ -756,6 +915,10 @@ export function CrmLeadDetail({
           <SuccessFeedback message={taskSuccessMessage} />
         ) : null}
 
+        {strategicProfileSuccessMessage ? (
+          <SuccessFeedback message={strategicProfileSuccessMessage} />
+        ) : null}
+
         <DossierAreaHeader
           description="Visao consolidada do relacionamento, situacao atual e leitura executiva do lead."
           id="dossie-resumo"
@@ -782,13 +945,42 @@ export function CrmLeadDetail({
           </ExecutiveDossierCard>
 
           <ExecutiveDossierCard
-            description="Primeira leitura do relacionamento, derivada temporariamente das informacoes atuais."
+            description="Camada persistente de contexto estrategico vinculada a este lead."
             eyebrow="Relacionamento"
-            title="Contexto Estrategico"
+            title="Perfil Estrategico"
           >
-            <CrmStructuredNotesList
-              emptyText="Nenhum contexto estrategico registrado ainda."
-              notes={structuredNotes.strategicContext}
+            <LeadStrategicProfileCard
+              draft={strategicProfileDraft}
+              error={strategicProfileError}
+              isEditing={isStrategicProfileFormOpen}
+              isLoading={isLoadingStrategicProfile}
+              isSaving={isSavingStrategicProfile}
+              onChange={updateStrategicProfileDraft}
+              onCreate={() => {
+                setStrategicProfileDraft(createEmptyStrategicProfileDraft());
+                setStrategicProfileError(null);
+                setIsStrategicProfileFormOpen(true);
+              }}
+              onEdit={() => {
+                setStrategicProfileDraft(
+                  strategicProfile
+                    ? mapStrategicProfileToDraft(strategicProfile)
+                    : createEmptyStrategicProfileDraft(),
+                );
+                setStrategicProfileError(null);
+                setIsStrategicProfileFormOpen(true);
+              }}
+              onCancel={() => {
+                setStrategicProfileDraft(
+                  strategicProfile
+                    ? mapStrategicProfileToDraft(strategicProfile)
+                    : createEmptyStrategicProfileDraft(),
+                );
+                setStrategicProfileError(null);
+                setIsStrategicProfileFormOpen(false);
+              }}
+              onSave={handleSaveStrategicProfile}
+              profile={strategicProfile}
             />
           </ExecutiveDossierCard>
         </div>
@@ -1705,6 +1897,26 @@ function createDefaultTaskDraft(): TaskDraft {
   };
 }
 
+function createEmptyStrategicProfileDraft(): StrategicProfileDraft {
+  return {
+    currentMoment: "",
+    primaryGoal: "",
+    strategicNotes: "",
+    strategicTopics: [],
+  };
+}
+
+function mapStrategicProfileToDraft(
+  profile: CrmLeadProfile,
+): StrategicProfileDraft {
+  return {
+    currentMoment: profile.currentMoment ?? "",
+    primaryGoal: profile.primaryGoal ?? "",
+    strategicNotes: profile.strategicNotes ?? "",
+    strategicTopics: profile.strategicTopics,
+  };
+}
+
 function getDefaultTaskTitle(taskType: CrmTaskType) {
   const titles: Record<CrmTaskType, string> = {
     call: "Entrar em contato",
@@ -2226,6 +2438,207 @@ function LeadGreenFlags({ flags }: { flags: CrmLeadGreenFlag[] }) {
           ))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+function LeadStrategicProfileCard({
+  draft,
+  error,
+  isEditing,
+  isLoading,
+  isSaving,
+  onCancel,
+  onChange,
+  onCreate,
+  onEdit,
+  onSave,
+  profile,
+}: {
+  draft: StrategicProfileDraft;
+  error: string | null;
+  isEditing: boolean;
+  isLoading: boolean;
+  isSaving: boolean;
+  onCancel: () => void;
+  onChange: (patch: Partial<StrategicProfileDraft>) => void;
+  onCreate: () => void;
+  onEdit: () => void;
+  onSave: () => void;
+  profile: CrmLeadProfile | null;
+}) {
+  if (isLoading) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        Carregando perfil estrategico...
+      </p>
+    );
+  }
+
+  if (!profile && !isEditing) {
+    return (
+      <div className="rounded-md border border-dashed bg-background/60 p-4 text-sm">
+        <p className="font-medium text-foreground">
+          Perfil Estrategico ainda nao preenchido.
+        </p>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Registre objetivo principal, momento atual, temas relevantes e contexto
+          estrategico deste lead.
+        </p>
+        {error ? (
+          <p className="mt-3 text-xs leading-5 text-destructive">{error}</p>
+        ) : null}
+        <div className="mt-4">
+          <Button onClick={onCreate} type="button" variant="secondary">
+            <Plus className="h-4 w-4" aria-hidden />
+            Criar Perfil Estrategico
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      {profile && !isEditing ? (
+        <div className="grid gap-4">
+          <div className="grid gap-3 text-sm md:grid-cols-2">
+            <LeadInfo
+              label="Objetivo Principal"
+              value={profile.primaryGoal || "-"}
+            />
+            <LeadInfo
+              label="Momento Atual"
+              value={profile.currentMoment || "-"}
+            />
+          </div>
+          <div className="rounded-md border bg-background/70 p-4 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Temas Relevantes
+            </p>
+            <p className="mt-2 leading-6 text-foreground">
+              {profile.strategicTopics.length
+                ? profile.strategicTopics.join(", ")
+                : "-"}
+            </p>
+          </div>
+          <div className="rounded-md border bg-background/70 p-4 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Observacoes Estrategicas
+            </p>
+            <p className="mt-2 whitespace-pre-wrap leading-6 text-foreground">
+              {profile.strategicNotes || "-"}
+            </p>
+          </div>
+          {error ? (
+            <p className="text-xs leading-5 text-destructive">{error}</p>
+          ) : null}
+          <div>
+            <Button onClick={onEdit} type="button" variant="secondary">
+              Editar Perfil Estrategico
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Objetivo Principal">
+              <select
+                className={fieldInputClass}
+                onChange={(event) =>
+                  onChange({
+                    primaryGoal: event.target.value as StrategicProfileDraft["primaryGoal"],
+                  })
+                }
+                value={draft.primaryGoal}
+              >
+                <option value="">Selecione</option>
+                {crmLeadProfilePrimaryGoals.map((goal) => (
+                  <option key={goal} value={goal}>
+                    {goal}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Momento Atual">
+              <select
+                className={fieldInputClass}
+                onChange={(event) =>
+                  onChange({
+                    currentMoment: event.target.value as StrategicProfileDraft["currentMoment"],
+                  })
+                }
+                value={draft.currentMoment}
+              >
+                <option value="">Selecione</option>
+                {crmLeadProfileCurrentMoments.map((moment) => (
+                  <option key={moment} value={moment}>
+                    {moment}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Temas Relevantes">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {crmLeadProfileStrategicTopics.map((topic) => {
+                const isSelected = draft.strategicTopics.includes(topic);
+
+                return (
+                  <label
+                    className={cn(
+                      "flex items-center gap-2 rounded-md border bg-background/70 px-3 py-2 text-sm",
+                      isSelected ? "border-primary/45 bg-primary/[0.04]" : null,
+                    )}
+                    key={topic}
+                  >
+                    <input
+                      checked={isSelected}
+                      className="h-4 w-4"
+                      onChange={(event) =>
+                        onChange({
+                          strategicTopics: event.target.checked
+                            ? [...draft.strategicTopics, topic]
+                            : draft.strategicTopics.filter((item) => item !== topic),
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>{topic}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </Field>
+
+          <Field label="Observacoes Estrategicas">
+            <textarea
+              className={cn(fieldInputClass, "min-h-28 resize-y")}
+              onChange={(event) =>
+                onChange({
+                  strategicNotes: event.target.value,
+                })
+              }
+              placeholder="Contexto patrimonial, momento de vida, preocupacoes recorrentes e temas de interesse."
+              value={draft.strategicNotes}
+            />
+          </Field>
+
+          {error ? (
+            <p className="text-xs leading-5 text-destructive">{error}</p>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={isSaving} onClick={onSave} type="button">
+              {isSaving ? "Salvando..." : profile ? "Salvar Perfil Estrategico" : "Criar Perfil Estrategico"}
+            </Button>
+            <Button disabled={isSaving} onClick={onCancel} type="button" variant="ghost">
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

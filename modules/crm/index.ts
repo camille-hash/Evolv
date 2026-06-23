@@ -11,6 +11,7 @@ export * from "./crm-lead-simulation-storage";
 export * from "./crm-lead-proposal-context";
 export * from "./crm-my-day";
 export * from "./crm-lead-notes";
+export * from "./crm-lead-profiles";
 export * from "./crm-lead-simulations";
 export * from "./crm-pipeline-engine";
 export * from "./crm-pipeline-storage";
