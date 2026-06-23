@@ -1979,8 +1979,12 @@ function LeadSimulationHistoryList({
   const [selectedSimulationId, setSelectedSimulationId] = useState<string | null>(
     null,
   );
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const orderedSimulations = [...simulations].sort(sortLeadSimulationsByCreatedAtDesc);
+  const latestSimulation = orderedSimulations[0] ?? null;
+  const historicalSimulations = orderedSimulations.slice(1);
   const selectedSimulation =
-    simulations.find((simulation) => simulation.id === selectedSimulationId) ??
+    orderedSimulations.find((simulation) => simulation.id === selectedSimulationId) ??
     null;
 
   if (isLoading) {
@@ -2009,20 +2013,76 @@ function LeadSimulationHistoryList({
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {simulations.map((simulation) => (
-          <LeadSimulationHistoryItem
-            isSelected={simulation.id === selectedSimulationId}
-            key={simulation.id}
-            onSelect={() =>
-              setSelectedSimulationId((current) =>
-                current === simulation.id ? null : simulation.id,
-              )
-            }
-            simulation={simulation}
-          />
-        ))}
-      </div>
+      {latestSimulation ? (
+        <div className="grid gap-3">
+          <div className="rounded-md border bg-card p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Ultima simulacao
+              </p>
+              <time
+                className="text-xs text-muted-foreground"
+                dateTime={latestSimulation.createdAt}
+              >
+                {dateFormatter.format(new Date(latestSimulation.createdAt))}
+              </time>
+            </div>
+            <div className="mt-3">
+              <LeadSimulationHistoryItem
+                isSelected={latestSimulation.id === selectedSimulationId}
+                onSelect={() =>
+                  setSelectedSimulationId((current) =>
+                    current === latestSimulation.id ? null : latestSimulation.id,
+                  )
+                }
+                simulation={latestSimulation}
+              />
+            </div>
+          </div>
+
+          {historicalSimulations.length ? (
+            <div className="rounded-md border border-dashed bg-background/50 p-3">
+              <button
+                aria-expanded={isHistoryOpen}
+                className="flex w-full items-center justify-between gap-3 text-left"
+                onClick={() => setIsHistoryOpen((current) => !current)}
+                type="button"
+              >
+                <span className="text-sm font-medium text-foreground">
+                  Ver historico ({historicalSimulations.length})
+                </span>
+                {isHistoryOpen ? (
+                  <ChevronUp
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                  />
+                ) : (
+                  <ChevronDown
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                  />
+                )}
+              </button>
+              {isHistoryOpen ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {historicalSimulations.map((simulation) => (
+                    <LeadSimulationHistoryItem
+                      isSelected={simulation.id === selectedSimulationId}
+                      key={simulation.id}
+                      onSelect={() =>
+                        setSelectedSimulationId((current) =>
+                          current === simulation.id ? null : simulation.id,
+                        )
+                      }
+                      simulation={simulation}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {selectedSimulation ? (
         <LeadSimulationReadDetail
           onClose={() => setSelectedSimulationId(null)}
@@ -2153,8 +2213,12 @@ function LeadMultiCotasSummary({
   const [selectedSimulationId, setSelectedSimulationId] = useState<string | null>(
     null,
   );
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const orderedSimulations = [...simulations].sort(sortLeadSimulationsByCreatedAtDesc);
+  const latestSimulation = orderedSimulations[0] ?? null;
+  const historicalSimulations = orderedSimulations.slice(1);
   const selectedSimulation =
-    simulations.find((simulation) => simulation.id === selectedSimulationId) ??
+    orderedSimulations.find((simulation) => simulation.id === selectedSimulationId) ??
     null;
 
   if (isLoading) {
@@ -2174,17 +2238,67 @@ function LeadMultiCotasSummary({
   }
 
   return (
-    <div className="grid gap-3">
-      <p className="text-sm text-muted-foreground">
-        {simulations.length} {simulations.length === 1 ? "estudo salvo" : "estudos salvos"}.
-      </p>
-      {simulations.map((simulation) => (
-        <LeadMultiCotasHistoryItem
-          key={simulation.id}
-          onOpen={() => setSelectedSimulationId(simulation.id)}
-          simulation={simulation}
-        />
-      ))}
+    <div className="grid gap-4">
+      {latestSimulation ? (
+        <div className="grid gap-3">
+          <div className="rounded-md border bg-card p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Ultimo estudo Multi-Cotas
+              </p>
+              <time
+                className="text-xs text-muted-foreground"
+                dateTime={latestSimulation.createdAt}
+              >
+                {dateFormatter.format(new Date(latestSimulation.createdAt))}
+              </time>
+            </div>
+            <div className="mt-3">
+              <LeadMultiCotasHistoryItem
+                onOpen={() => setSelectedSimulationId(latestSimulation.id)}
+                simulation={latestSimulation}
+              />
+            </div>
+          </div>
+
+          {historicalSimulations.length ? (
+            <div className="rounded-md border border-dashed bg-background/50 p-3">
+              <button
+                aria-expanded={isHistoryOpen}
+                className="flex w-full items-center justify-between gap-3 text-left"
+                onClick={() => setIsHistoryOpen((current) => !current)}
+                type="button"
+              >
+                <span className="text-sm font-medium text-foreground">
+                  Ver historico ({historicalSimulations.length})
+                </span>
+                {isHistoryOpen ? (
+                  <ChevronUp
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                  />
+                ) : (
+                  <ChevronDown
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                  />
+                )}
+              </button>
+              {isHistoryOpen ? (
+                <div className="mt-3 grid gap-3">
+                  {historicalSimulations.map((simulation) => (
+                    <LeadMultiCotasHistoryItem
+                      key={simulation.id}
+                      onOpen={() => setSelectedSimulationId(simulation.id)}
+                      simulation={simulation}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {selectedSimulation ? (
         <LeadMultiCotasReadDetail
           leadName={leadName}
