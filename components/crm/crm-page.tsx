@@ -8,7 +8,16 @@ import {
   type FormEvent,
 } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { AlertTriangle, Clock3, Flame, Pencil, Plus, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  Flame,
+  Pencil,
+  Plus,
+  Search,
+} from "lucide-react";
 import { AccessSettingsPage } from "@/components/access/access-settings-page";
 import { CrmExecutiveDashboard } from "@/components/crm/crm-executive-dashboard";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
@@ -1516,12 +1525,14 @@ function MyDayPanel({
         onOpen={onOpen}
         tasks={groups.overdue}
         title="Tarefas vencidas"
+        variant="overdue"
       />
       <MyDayTaskBlock
         emptyText="Nenhuma tarefa para hoje."
         onOpen={onOpen}
         tasks={groups.today}
         title="Tarefas com vencimento hoje"
+        variant="today"
       />
       <MyDayGreenFlagsBlock
         emptyText="Nenhum Check Point identificado."
@@ -1534,6 +1545,7 @@ function MyDayPanel({
         onOpen={onOpen}
         tasks={groups.future}
         title="Proximas acoes"
+        variant="future"
       />
     </section>
   );
@@ -1544,41 +1556,93 @@ function MyDayTaskBlock({
   onOpen,
   tasks,
   title,
+  variant,
 }: {
   emptyText: string;
   onOpen: (leadId: string) => void;
   tasks: MyDayTaskItem[];
   title: string;
+  variant: "overdue" | "today" | "future";
 }) {
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const spotlightEntries = buildMyDaySpotlightEntries(tasks, variant);
+  const spotlightTaskIds = new Set(
+    spotlightEntries.map((entry) => entry.item.task.id),
+  );
+  const historyTasks = tasks.filter((item) => !spotlightTaskIds.has(item.task.id));
+  const executiveSummary = buildMyDayTaskExecutiveSummary({
+    historyCount: historyTasks.length,
+    tasks,
+    variant,
+  });
+
   return (
     <article className="executive-surface rounded-md p-5 text-card-foreground">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="font-semibold">{title}</h3>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">{title}</h3>
+          {tasks.length ? (
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {executiveSummary}
+            </p>
+          ) : null}
+        </div>
         <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs text-muted-foreground">
           {tasks.length}
         </span>
       </div>
       <div className="mt-4 grid gap-2">
         {tasks.length ? (
-          tasks.map((item) => (
-            <button
-              className="rounded-md border bg-background/70 p-3 text-left transition hover:border-primary/45"
-              key={item.task.id}
-              onClick={() => onOpen(item.lead.id)}
-              type="button"
-            >
-              <p className="text-xs font-medium text-muted-foreground">
-                {item.relativeDueLabel}
-              </p>
-              <p className="mt-1 truncate text-sm font-semibold text-foreground">
-                {item.task.title}
-              </p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {getLeadDisplayName(item.lead)}
-                {item.task.dueTime ? ` - ${item.task.dueTime.slice(0, 5)}` : ""}
-              </p>
-            </button>
-          ))
+          <>
+            <div className="grid gap-2">
+              {spotlightEntries.map((entry) => (
+                <MyDayTaskCard
+                  item={entry.item}
+                  key={entry.item.task.id}
+                  labels={entry.labels}
+                  onOpen={onOpen}
+                  tone="spotlight"
+                />
+              ))}
+            </div>
+            {historyTasks.length ? (
+              <div className="rounded-md border border-dashed bg-background/50 p-3">
+                <button
+                  aria-expanded={isHistoryOpen}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                  onClick={() => setIsHistoryOpen((current) => !current)}
+                  type="button"
+                >
+                  <span className="text-sm font-medium text-foreground">
+                    Ver historico ({historyTasks.length})
+                  </span>
+                  {isHistoryOpen ? (
+                    <ChevronUp
+                      aria-hidden
+                      className="h-4 w-4 shrink-0 text-muted-foreground"
+                    />
+                  ) : (
+                    <ChevronDown
+                      aria-hidden
+                      className="h-4 w-4 shrink-0 text-muted-foreground"
+                    />
+                  )}
+                </button>
+                {isHistoryOpen ? (
+                  <div className="mt-3 grid gap-2">
+                    {historyTasks.map((item) => (
+                      <MyDayTaskCard
+                        item={item}
+                        key={item.task.id}
+                        onOpen={onOpen}
+                        tone="history"
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </>
         ) : (
           <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
             {emptyText}
@@ -1586,6 +1650,54 @@ function MyDayTaskBlock({
         )}
       </div>
     </article>
+  );
+}
+
+function MyDayTaskCard({
+  item,
+  labels = [],
+  onOpen,
+  tone,
+}: {
+  item: MyDayTaskItem;
+  labels?: string[];
+  onOpen: (leadId: string) => void;
+  tone: "history" | "spotlight";
+}) {
+  return (
+    <button
+      className={cn(
+        "rounded-md border p-3 text-left transition hover:border-primary/45",
+        tone === "spotlight"
+          ? "bg-background/80 shadow-sm"
+          : "bg-background/60",
+      )}
+      onClick={() => onOpen(item.lead.id)}
+      type="button"
+    >
+      {labels.length ? (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {labels.map((label) => (
+            <span
+              className="rounded-full border bg-card px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+              key={label}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <p className="text-xs font-medium text-muted-foreground">
+        {item.relativeDueLabel}
+      </p>
+      <p className="mt-1 truncate text-sm font-semibold text-foreground">
+        {item.task.title}
+      </p>
+      <p className="mt-1 truncate text-xs text-muted-foreground">
+        {getLeadDisplayName(item.lead)}
+        {item.task.dueTime ? ` - ${item.task.dueTime.slice(0, 5)}` : ""}
+      </p>
+    </button>
   );
 }
 
@@ -2518,6 +2630,11 @@ type MyDayTaskItem = {
   task: CrmTask;
 };
 
+type MyDaySpotlightEntry = {
+  item: MyDayTaskItem;
+  labels: string[];
+};
+
 type MyDayGreenFlagItem = {
   flags: CrmMyDayView["greenFlagsByLeadId"][string];
   lead: CrmLead;
@@ -2591,6 +2708,74 @@ function buildMyDayGroups(
     today: dueToday,
     total: overdue.length + dueToday.length + greenFlags.length + future.length,
   };
+}
+
+function buildMyDaySpotlightEntries(
+  tasks: MyDayTaskItem[],
+  variant: "overdue" | "today" | "future",
+): MyDaySpotlightEntry[] {
+  if (!tasks.length) {
+    return [];
+  }
+
+  const entries = new Map<string, MyDaySpotlightEntry>();
+
+  function addEntry(item: MyDayTaskItem, label: string) {
+    const existing = entries.get(item.task.id);
+
+    if (existing) {
+      existing.labels.push(label);
+      return;
+    }
+
+    entries.set(item.task.id, {
+      item,
+      labels: [label],
+    });
+  }
+
+  if (variant === "overdue") {
+    addEntry(tasks[0], "Tarefa mais urgente");
+    const oldestTask = [...tasks].sort((first, second) =>
+      first.task.createdAt.localeCompare(second.task.createdAt),
+    )[0];
+
+    if (oldestTask) {
+      addEntry(oldestTask, "Tarefa mais antiga");
+    }
+  } else if (variant === "today") {
+    addEntry(tasks[0], "Item prioritario");
+  } else {
+    addEntry(tasks[0], "Proxima acao");
+  }
+
+  return Array.from(entries.values());
+}
+
+function buildMyDayTaskExecutiveSummary({
+  historyCount,
+  tasks,
+  variant,
+}: {
+  historyCount: number;
+  tasks: MyDayTaskItem[];
+  variant: "overdue" | "today" | "future";
+}) {
+  if (variant === "overdue") {
+    return tasks.length === 1
+      ? "1 tarefa vencida em destaque."
+      : `${tasks.length} tarefas vencidas. Exibindo a mais urgente e a mais antiga; ${historyCount} permanecem no historico.`;
+  }
+
+  if (variant === "today") {
+    return tasks.length === 1
+      ? "1 tarefa prevista para hoje em destaque."
+      : `${tasks.length} tarefas previstas para hoje. O item prioritario fica expandido e ${historyCount} permanecem no historico.`;
+  }
+
+  return tasks.length === 1
+    ? "1 proxima acao agendada em destaque."
+    : `${tasks.length} proximas acoes agendadas. A mais proxima fica expandida e ${historyCount} permanecem no historico.`;
 }
 
 function compareTaskDueDate(first: CrmTask, second: CrmTask) {
