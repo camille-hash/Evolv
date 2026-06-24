@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
+import type { ConvertLeadToClientInput } from "@/modules/client-context";
 import {
   createCrmLeadProfile,
   fetchCrmLeadProfile,
@@ -116,9 +117,8 @@ type CrmLeadDetailProps = {
   lead: CrmLead;
   onCancel: () => void;
   onClearFeedbackMessage?: () => void;
+  onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
   onDraftChange: (draft: CrmLeadInput) => void;
-  onGenerateMultiCotas?: (lead: CrmLead) => void;
-  onGenerateSimulation?: (lead: CrmLead) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   proposals: GeneratedProposalRecord[];
 };
@@ -129,9 +129,8 @@ export function CrmLeadDetail({
   lead,
   onCancel,
   onClearFeedbackMessage,
+  onConvertToClient,
   onDraftChange,
-  onGenerateMultiCotas,
-  onGenerateSimulation,
   onSave,
   proposals,
 }: CrmLeadDetailProps) {
@@ -251,6 +250,11 @@ export function CrmLeadDetail({
     lead.produtoInteresse ||
     lead.tituloOportunidade ||
     currencyFormatter.format(lead.valorPretendido);
+  const canConvertToClient =
+    lead.status === "ganha" &&
+    !isLoadingStrategicProfile &&
+    !isLoadingSimulations &&
+    Boolean(onConvertToClient);
 
   useEffect(() => {
     let isActive = true;
@@ -529,6 +533,28 @@ export function CrmLeadDetail({
     onDraftChange({
       ...draft,
       ...patch,
+    });
+  }
+
+  async function handleConvertToClient() {
+    if (!onConvertToClient || lead.status !== "ganha") {
+      return;
+    }
+
+    await onConvertToClient({
+      convertedBy: {
+        name: "EVOLV",
+        userId: null,
+      },
+      latestCommercialSimulation,
+      latestMultiCotasStudy: latestMultiCotasSimulation,
+      lead: {
+        email: lead.email,
+        id: lead.id,
+        nome: lead.nome,
+        telefone: lead.telefone,
+      },
+      strategicProfile,
     });
   }
 
@@ -899,10 +925,24 @@ export function CrmLeadDetail({
             </p>
           </div>
 
-          <Button onClick={onCancel} type="button" variant="ghost">
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-            Voltar ao pipeline
-          </Button>
+          <div className="flex flex-wrap justify-end gap-3">
+            {lead.status === "ganha" ? (
+              <Button
+                disabled={!canConvertToClient}
+                onClick={handleConvertToClient}
+                type="button"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                {isLoadingStrategicProfile || isLoadingSimulations
+                  ? "Preparando conversao..."
+                  : "Converter para Cliente"}
+              </Button>
+            ) : null}
+            <Button onClick={onCancel} type="button" variant="ghost">
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              Voltar ao pipeline
+            </Button>
+          </div>
         </div>
       </section>
 

@@ -23,6 +23,7 @@ import { CrmExecutiveDashboard } from "@/components/crm/crm-executive-dashboard"
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
 import { CrmSourceIndicator } from "@/components/crm/crm-source-indicator";
 import { Button } from "@/components/ui/button";
+import type { ConvertLeadToClientInput } from "@/modules/client-context";
 import {
   addCrmStageToPipeline,
   buildCrmCommercialSignalSummary,
@@ -209,9 +210,11 @@ const dateWindowWithNoSimulationOptions = [
 ] as const;
 
 export function CrmPage({
+  onConvertToClient,
   onGenerateMultiCotas,
   onGenerateSimulation,
 }: {
+  onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
   onGenerateMultiCotas?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
@@ -512,9 +515,8 @@ export function CrmPage({
           setDraft(emptyCrmLeadInput);
         }}
         onClearFeedbackMessage={() => setSuccessMessage(null)}
+        onConvertToClient={onConvertToClient}
         onDraftChange={setDraft}
-        onGenerateMultiCotas={(lead: CrmLead) => onGenerateMultiCotas?.(lead)}
-        onGenerateSimulation={(lead: CrmLead) => onGenerateSimulation?.(lead)}
         onSave={handleSaveSelectedLead}
         proposals={[]}
       />

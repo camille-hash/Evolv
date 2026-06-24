@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   emptyClientContext,
   loadClientContext,
+  loadCurrentClientRecord,
   saveClientContext,
+  type ClientCommercialArtifactSummary,
   type ClientContext,
+  type ClientRecord,
 } from "@/modules/client-context";
 import { generateEvolvMasterReport } from "@/modules/reports";
 
@@ -35,13 +38,18 @@ export function ClientPage({
   const [formState, setFormState] = useState<ClientFormState>(
     toFormState(emptyClientContext),
   );
+  const [currentClientRecord, setCurrentClientRecord] = useState<ClientRecord | null>(
+    null,
+  );
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       const savedContext = loadClientContext();
+      const savedClientRecord = loadCurrentClientRecord();
 
       setFormState(toFormState(savedContext));
+      setCurrentClientRecord(savedClientRecord);
       onClientContextChange(savedContext);
       setIsLoaded(true);
     }, 0);
@@ -50,6 +58,16 @@ export function ClientPage({
   }, [onClientContextChange]);
 
   const clientContext = useMemo(() => toClientContext(formState), [formState]);
+  const clientRecordView = useMemo(
+    () =>
+      currentClientRecord
+        ? {
+            ...currentClientRecord,
+            context: clientContext,
+          }
+        : null,
+    [clientContext, currentClientRecord],
+  );
 
   useEffect(() => {
     if (!isLoaded) {
@@ -91,6 +109,38 @@ export function ClientPage({
         </div>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+          {clientRecordView ? (
+            <div className="rounded-md border bg-background/70 p-5 xl:col-span-2">
+              <h3 className="text-base font-semibold text-foreground">
+                Conversao CRM {"->"} Cliente
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Evento oficial de conversao que preserva o historico de aquisicao no
+                CRM e inicia a jornada patrimonial no modulo Cliente.
+              </p>
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <ClientSummaryItem
+                  label="Lead de origem"
+                  value={clientRecordView.context.nome || "Nao informado"}
+                />
+                <ClientSummaryItem
+                  label="Convertido em"
+                  value={dateTimeFormatter.format(
+                    new Date(clientRecordView.convertedAt),
+                  )}
+                />
+                <ClientSummaryItem
+                  label="Responsavel"
+                  value={clientRecordView.convertedByName}
+                />
+                <ClientSummaryItem
+                  label="Perfil herdado"
+                  value={clientRecordView.context.perfil || "Nao informado"}
+                />
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-md border bg-background/70 p-5">
             <h3 className="text-base font-semibold text-foreground">
               Identificacao
@@ -167,6 +217,59 @@ export function ClientPage({
             </div>
           </div>
         </div>
+
+        {clientRecordView ? (
+          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr]">
+            <div className="rounded-md border bg-background/70 p-5">
+              <h3 className="text-base font-semibold text-foreground">
+                Perfil Estrategico Herdado
+              </h3>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <ClientSummaryItem
+                  label="Objetivo Principal"
+                  value={clientRecordView.strategicProfile.primaryGoal || "Nao informado"}
+                />
+                <ClientSummaryItem
+                  label="Momento Atual"
+                  value={clientRecordView.strategicProfile.currentMoment || "Nao informado"}
+                />
+                <ClientSummaryItem
+                  label="Temas Relevantes"
+                  value={
+                    clientRecordView.strategicProfile.strategicTopics.length
+                      ? clientRecordView.strategicProfile.strategicTopics.join(", ")
+                      : "Nenhum tema registrado"
+                  }
+                />
+                <ClientSummaryItem
+                  label="Observacoes Estrategicas"
+                  value={
+                    clientRecordView.strategicProfile.strategicNotes ||
+                    "Nenhuma observacao estrategica"
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="rounded-md border bg-background/70 p-5">
+              <h3 className="text-base font-semibold text-foreground">
+                Contexto Comercial Herdado
+              </h3>
+              <div className="mt-5 grid gap-3">
+                <ClientCommercialArtifactCard
+                  artifact={clientRecordView.latestCommercialSimulation}
+                  emptyText="Nenhuma simulacao comercial herdada."
+                  title="Ultima Simulacao"
+                />
+                <ClientCommercialArtifactCard
+                  artifact={clientRecordView.latestMultiCotasStudy}
+                  emptyText="Nenhum estudo Multi-Cotas herdado."
+                  title="Ultimo Estudo Multi-Cotas"
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -194,6 +297,11 @@ export function ClientPage({
     setFormState((current) => ({ ...current, ...partialState }));
   }
 }
+
+const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
+  dateStyle: "short",
+  timeStyle: "short",
+});
 
 function ClientInput({
   inputMode = "text",
@@ -255,6 +363,72 @@ function ClientSummaryCard({ label, value }: { label: string; value: string }) {
       </p>
       <p className="mt-2 text-xl font-semibold text-foreground">{value}</p>
     </article>
+  );
+}
+
+function ClientSummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-card p-3">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-sm leading-6 text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ClientCommercialArtifactCard({
+  artifact,
+  emptyText,
+  title,
+}: {
+  artifact: ClientCommercialArtifactSummary | null;
+  emptyText: string;
+  title: string;
+}) {
+  return (
+    <div className="rounded-md border bg-card p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {title}
+      </p>
+      {artifact ? (
+        <div className="mt-3 grid gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">{artifact.title}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {artifact.simulationType === "multi_cotas"
+                  ? "Multi-Cotas"
+                  : "Simulacao Comercial"}
+              </p>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {dateTimeFormatter.format(new Date(artifact.createdAt))}
+            </span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <ClientSummaryItem
+              label="Credito"
+              value={
+                artifact.commercialCredit
+                  ? currencyFormatter.format(artifact.commercialCredit)
+                  : "-"
+              }
+            />
+            <ClientSummaryItem
+              label="Parcela"
+              value={
+                artifact.monthlyPayment
+                  ? currencyFormatter.format(artifact.monthlyPayment)
+                  : "-"
+              }
+            />
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">{emptyText}</p>
+      )}
+    </div>
   );
 }
 

@@ -33,8 +33,10 @@ import {
   type CrmLeadProposalContext,
 } from "@/modules/crm";
 import {
+  convertLeadToClient,
   emptyClientContext,
   loadClientContext,
+  type ConvertLeadToClientInput,
   type ClientContext,
 } from "@/modules/client-context";
 import {
@@ -264,6 +266,19 @@ export default function Home() {
     setLeadProposalContext(null);
   }
 
+  function handleConvertLeadToClient(input: ConvertLeadToClientInput) {
+    const nextClientRecord = convertLeadToClient({
+      ...input,
+      convertedBy: {
+        name: currentUser?.nome || input.convertedBy.name,
+        userId: currentUser?.id ?? input.convertedBy.userId,
+      },
+    });
+
+    setClientContext(nextClientRecord.context);
+    setActiveSection("client");
+  }
+
   if (!accessReady) {
     return null;
   }
@@ -318,6 +333,7 @@ export default function Home() {
 
         {visibleActiveSection === "crm" ? (
           <CrmPage
+            onConvertToClient={handleConvertLeadToClient}
             onGenerateMultiCotas={
               canCurrentUserGenerateLeadSimulation
                 ? (lead) => handleGenerateSimulationFromLead(lead, "multi_cotas")
