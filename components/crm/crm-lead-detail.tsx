@@ -14,6 +14,11 @@ import { Button } from "@/components/ui/button";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import type { ConvertLeadToClientInput } from "@/modules/client-context";
 import {
+  archiveCrmLeadKnowledgeItem,
+  createCrmLeadKnowledgeItem,
+  fetchCrmLeadKnowledgeItems,
+} from "@/modules/crm/client/crm-lead-knowledge-client";
+import {
   createCrmLeadProfile,
   fetchCrmLeadProfile,
   updateCrmLeadProfile,
@@ -38,6 +43,9 @@ import {
   resolveCrmLeadOperationalPriority,
   resolveCrmTaskTemporalStatus,
   resolveNextPendingCrmTask,
+  type CrmLeadKnowledgeConfidence,
+  type CrmLeadKnowledgeItem,
+  type CrmLeadKnowledgeType,
   type CrmCommercialSignal,
   type CrmLeadGreenFlag,
   type CrmLead,
@@ -102,6 +110,13 @@ type StrategicProfileDraft = {
   strategicTopics: CrmLeadProfileStrategicTopic[];
 };
 
+type KnowledgeDraft = {
+  confidence: CrmLeadKnowledgeConfidence;
+  knowledgeType: CrmLeadKnowledgeType;
+  summary: string;
+  title: string;
+};
+
 type DossierTabKey =
   | "summary"
   | "timeline"
@@ -137,6 +152,7 @@ export function CrmLeadDetail({
   const [isNotesHistoryOpen, setIsNotesHistoryOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isKnowledgeFormOpen, setIsKnowledgeFormOpen] = useState(false);
   const [activeDossierTab, setActiveDossierTab] =
     useState<DossierTabKey>("summary");
   const [isCommercialDataOpen, setIsCommercialDataOpen] = useState(false);
@@ -150,19 +166,30 @@ export function CrmLeadDetail({
     useState(false);
   const [isSavingStrategicProfile, setIsSavingStrategicProfile] =
     useState(false);
+  const [isCreatingKnowledge, setIsCreatingKnowledge] = useState(false);
+  const [archivingKnowledgeId, setArchivingKnowledgeId] = useState<string | null>(
+    null,
+  );
   const [noteContent, setNoteContent] = useState("");
   const [taskDraft, setTaskDraft] = useState<TaskDraft>(() =>
     createDefaultTaskDraft(),
+  );
+  const [knowledgeDraft, setKnowledgeDraft] = useState<KnowledgeDraft>(() =>
+    createDefaultKnowledgeDraft(),
   );
   const [strategicProfileDraft, setStrategicProfileDraft] =
     useState<StrategicProfileDraft>(createEmptyStrategicProfileDraft);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
   const [strategicProfileError, setStrategicProfileError] = useState<string | null>(
     null,
   );
   const [noteSuccessMessage, setNoteSuccessMessage] = useState<string | null>(null);
   const [taskSuccessMessage, setTaskSuccessMessage] = useState<string | null>(null);
+  const [knowledgeSuccessMessage, setKnowledgeSuccessMessage] = useState<
+    string | null
+  >(null);
   const [strategicProfileSuccessMessage, setStrategicProfileSuccessMessage] =
     useState<string | null>(null);
   const [notesState, setNotesState] = useState<{
@@ -172,6 +199,10 @@ export function CrmLeadDetail({
   const [tasksState, setTasksState] = useState<{
     leadId: string;
     tasks: CrmTask[];
+  } | null>(null);
+  const [knowledgeState, setKnowledgeState] = useState<{
+    items: CrmLeadKnowledgeItem[];
+    leadId: string;
   } | null>(null);
   const [simulationsState, setSimulationsState] = useState<{
     leadId: string;
@@ -186,9 +217,13 @@ export function CrmLeadDetail({
     timeline: CrmTimelineReadModel;
   } | null>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [isLoadingKnowledge, setIsLoadingKnowledge] = useState(false);
   const [isLoadingSimulations, setIsLoadingSimulations] = useState(false);
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [taskLoadError, setTaskLoadError] = useState<string | null>(null);
+  const [knowledgeLoadError, setKnowledgeLoadError] = useState<string | null>(
+    null,
+  );
   const [taskActionError, setTaskActionError] = useState<string | null>(null);
   const [simulationsError, setSimulationsError] = useState<string | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
@@ -196,6 +231,8 @@ export function CrmLeadDetail({
   const structuredNotes = buildTemporaryStructuredNotesFromLead(lead);
   const persistedNotes =
     notesState?.leadId === lead.id ? notesState.notes : [];
+  const knowledgeItems =
+    knowledgeState?.leadId === lead.id ? knowledgeState.items : [];
   const strategicProfile =
     strategicProfileState?.leadId === lead.id ? strategicProfileState.profile : null;
   const nextPendingTask = useMemo(
@@ -289,6 +326,55 @@ export function CrmLeadDetail({
     }
 
     void loadNotes();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadKnowledgeItems() {
+      setIsLoadingKnowledge(true);
+      setKnowledgeLoadError(null);
+      setKnowledgeError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setIsLoadingKnowledge(false);
+          setKnowledgeLoadError(
+            "Nao foi possivel carregar a memoria organizacional.",
+          );
+        }
+        return;
+      }
+
+      try {
+        const items = await fetchCrmLeadKnowledgeItems(accessToken, lead.id);
+
+        if (isActive) {
+          setKnowledgeState({
+            items,
+            leadId: lead.id,
+          });
+        }
+      } catch {
+        if (isActive) {
+          setKnowledgeLoadError(
+            "Nao foi possivel carregar a memoria organizacional.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingKnowledge(false);
+        }
+      }
+    }
+
+    void loadKnowledgeItems();
 
     return () => {
       isActive = false;
@@ -506,6 +592,18 @@ export function CrmLeadDetail({
   }, [taskSuccessMessage]);
 
   useEffect(() => {
+    if (!knowledgeSuccessMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setKnowledgeSuccessMessage(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [knowledgeSuccessMessage]);
+
+  useEffect(() => {
     if (!strategicProfileSuccessMessage) {
       return;
     }
@@ -610,6 +708,13 @@ export function CrmLeadDetail({
 
   function updateTaskDraft(patch: Partial<TaskDraft>) {
     setTaskDraft((current) => ({
+      ...current,
+      ...patch,
+    }));
+  }
+
+  function updateKnowledgeDraft(patch: Partial<KnowledgeDraft>) {
+    setKnowledgeDraft((current) => ({
       ...current,
       ...patch,
     }));
@@ -747,6 +852,92 @@ export function CrmLeadDetail({
       );
     } finally {
       setIsSavingStrategicProfile(false);
+    }
+  }
+
+  async function handleCreateKnowledgeItem() {
+    const title = knowledgeDraft.title.trim();
+
+    if (!title) {
+      setKnowledgeError("Titulo e obrigatorio.");
+      return;
+    }
+
+    setIsCreatingKnowledge(true);
+    setKnowledgeError(null);
+    setKnowledgeSuccessMessage(null);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      const item = await createCrmLeadKnowledgeItem(accessToken, {
+        confidence: knowledgeDraft.confidence,
+        knowledgeCategory: "DECLARED",
+        knowledgeType: knowledgeDraft.knowledgeType,
+        leadId: lead.id,
+        summary: knowledgeDraft.summary || undefined,
+        title,
+      });
+
+      setKnowledgeState((current) => ({
+        items:
+          current?.leadId === lead.id
+            ? [item, ...current.items.filter((entry) => entry.id !== item.id)]
+            : [item],
+        leadId: lead.id,
+      }));
+      setKnowledgeDraft(createDefaultKnowledgeDraft());
+      setIsKnowledgeFormOpen(false);
+      setKnowledgeSuccessMessage("Conhecimento registrado.");
+    } catch (error) {
+      setKnowledgeError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel criar o conhecimento.",
+      );
+    } finally {
+      setIsCreatingKnowledge(false);
+    }
+  }
+
+  async function handleArchiveKnowledgeItem(item: CrmLeadKnowledgeItem) {
+    if (archivingKnowledgeId) {
+      return;
+    }
+
+    setArchivingKnowledgeId(item.id);
+    setKnowledgeError(null);
+    setKnowledgeSuccessMessage(null);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      await archiveCrmLeadKnowledgeItem(accessToken, item.id);
+
+      setKnowledgeState((current) => ({
+        items:
+          current?.leadId === lead.id
+            ? current.items.filter((entry) => entry.id !== item.id)
+            : [],
+        leadId: lead.id,
+      }));
+      setKnowledgeSuccessMessage("Conhecimento arquivado.");
+    } catch (error) {
+      setKnowledgeError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel arquivar o conhecimento.",
+      );
+    } finally {
+      setArchivingKnowledgeId(null);
     }
   }
 
@@ -964,6 +1155,10 @@ export function CrmLeadDetail({
           <SuccessFeedback message={taskSuccessMessage} />
         ) : null}
 
+        {knowledgeSuccessMessage ? (
+          <SuccessFeedback message={knowledgeSuccessMessage} />
+        ) : null}
+
         {strategicProfileSuccessMessage ? (
           <SuccessFeedback message={strategicProfileSuccessMessage} />
         ) : null}
@@ -1035,6 +1230,36 @@ export function CrmLeadDetail({
                 />
               </ExecutiveDossierCard>
             </div>
+
+            <ExecutiveDossierCard
+              description="Conhecimento estrategico estruturado e vinculado a este lead."
+              eyebrow="Organizational Memory"
+              title="Memória Organizacional"
+            >
+              <LeadKnowledgeRegistry
+                archivingItemId={archivingKnowledgeId}
+                draft={knowledgeDraft}
+                error={knowledgeError ?? knowledgeLoadError}
+                isCreating={isCreatingKnowledge}
+                isFormOpen={isKnowledgeFormOpen}
+                isLoading={isLoadingKnowledge}
+                items={knowledgeItems}
+                onArchive={handleArchiveKnowledgeItem}
+                onChange={updateKnowledgeDraft}
+                onCloseForm={() => {
+                  setKnowledgeDraft(createDefaultKnowledgeDraft());
+                  setKnowledgeError(null);
+                  setIsKnowledgeFormOpen(false);
+                }}
+                onCreate={handleCreateKnowledgeItem}
+                onOpenForm={() => {
+                  setKnowledgeDraft(createDefaultKnowledgeDraft());
+                  setKnowledgeError(null);
+                  setKnowledgeSuccessMessage(null);
+                  setIsKnowledgeFormOpen(true);
+                }}
+              />
+            </ExecutiveDossierCard>
 
             <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
               <ExecutiveDossierCard
@@ -1930,6 +2155,51 @@ const taskTypeOptions: Array<{ label: string; value: CrmTaskType }> = [
   { label: "Outro", value: "other" },
 ];
 
+const knowledgeTypeOptions: Array<{
+  label: string;
+  value: CrmLeadKnowledgeType;
+}> = [
+  { label: "Financeiro", value: "financial" },
+  { label: "Comportamental", value: "behavioral" },
+  { label: "Comercial", value: "commercial" },
+  { label: "Relacionamento", value: "relationship" },
+  { label: "Estrategico", value: "strategic" },
+  { label: "Patrimonial", value: "wealth" },
+  { label: "Risco", value: "risk" },
+  { label: "Objetivo", value: "objective" },
+  { label: "Comunicacao", value: "communication" },
+  { label: "Objecao", value: "objection" },
+  { label: "Motivacao", value: "motivation" },
+  { label: "Timing", value: "timing" },
+  { label: "Perfil", value: "profile" },
+];
+
+const knowledgeTypeLabels = knowledgeTypeOptions.reduce(
+  (labels, option) => ({
+    ...labels,
+    [option.value]: option.label,
+  }),
+  {} as Record<CrmLeadKnowledgeType, string>,
+);
+
+const knowledgeConfidenceOptions: Array<{
+  label: string;
+  value: CrmLeadKnowledgeConfidence;
+}> = [
+  { label: "Alta", value: "HIGH" },
+  { label: "Media", value: "MEDIUM" },
+  { label: "Baixa", value: "LOW" },
+  { label: "Desconhecida", value: "UNKNOWN" },
+];
+
+const knowledgeConfidenceLabels = knowledgeConfidenceOptions.reduce(
+  (labels, option) => ({
+    ...labels,
+    [option.value]: option.label,
+  }),
+  {} as Record<CrmLeadKnowledgeConfidence, string>,
+);
+
 function createDefaultTaskDraft(): TaskDraft {
   return {
     dueDate: getLocalDateKey(new Date()),
@@ -1937,6 +2207,15 @@ function createDefaultTaskDraft(): TaskDraft {
     notes: "",
     taskType: defaultTaskType,
     title: getDefaultTaskTitle(defaultTaskType),
+  };
+}
+
+function createDefaultKnowledgeDraft(): KnowledgeDraft {
+  return {
+    confidence: "MEDIUM",
+    knowledgeType: "strategic",
+    summary: "",
+    title: "",
   };
 }
 
@@ -2153,6 +2432,194 @@ function TaskSummary({ task }: { task: CrmTask }) {
           </p>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function LeadKnowledgeRegistry({
+  archivingItemId,
+  draft,
+  error,
+  isCreating,
+  isFormOpen,
+  isLoading,
+  items,
+  onArchive,
+  onChange,
+  onCloseForm,
+  onCreate,
+  onOpenForm,
+}: {
+  archivingItemId: string | null;
+  draft: KnowledgeDraft;
+  error: string | null;
+  isCreating: boolean;
+  isFormOpen: boolean;
+  isLoading: boolean;
+  items: CrmLeadKnowledgeItem[];
+  onArchive: (item: CrmLeadKnowledgeItem) => void;
+  onChange: (patch: Partial<KnowledgeDraft>) => void;
+  onCloseForm: () => void;
+  onCreate: () => void;
+  onOpenForm: () => void;
+}) {
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            Registro estruturado por lead
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Fatos estrategicos declarados pelo consultor, sem inferencia automatica.
+          </p>
+        </div>
+        {!isFormOpen ? (
+          <Button onClick={onOpenForm} type="button" variant="secondary">
+            <Plus className="h-4 w-4" aria-hidden />
+            Adicionar conhecimento
+          </Button>
+        ) : null}
+      </div>
+
+      {isFormOpen ? (
+        <div className="rounded-md border bg-background/70 p-4">
+          <div className="grid gap-4 md:grid-cols-[1fr_220px_160px]">
+            <Field label="Titulo">
+              <input
+                className={fieldInputClass}
+                disabled={isCreating}
+                onChange={(event) => onChange({ title: event.target.value })}
+                placeholder="Ex.: objetivo patrimonial familiar"
+                value={draft.title}
+              />
+            </Field>
+
+            <Field label="Tipo">
+              <select
+                className={fieldInputClass}
+                disabled={isCreating}
+                onChange={(event) =>
+                  onChange({
+                    knowledgeType: event.target.value as CrmLeadKnowledgeType,
+                  })
+                }
+                value={draft.knowledgeType}
+              >
+                {knowledgeTypeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Confianca">
+              <select
+                className={fieldInputClass}
+                disabled={isCreating}
+                onChange={(event) =>
+                  onChange({
+                    confidence: event.target.value as CrmLeadKnowledgeConfidence,
+                  })
+                }
+                value={draft.confidence}
+              >
+                {knowledgeConfidenceOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Resumo">
+            <textarea
+              className={cn(fieldInputClass, "min-h-20 resize-y")}
+              disabled={isCreating}
+              onChange={(event) => onChange({ summary: event.target.value })}
+              placeholder="Contexto relevante para decisoes comerciais futuras."
+              value={draft.summary}
+            />
+          </Field>
+
+          <div className="mt-4 flex flex-wrap justify-end gap-3">
+            <Button
+              disabled={isCreating}
+              onClick={onCloseForm}
+              type="button"
+              variant="ghost"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isCreating || !draft.title.trim()}
+              onClick={onCreate}
+              type="button"
+            >
+              {isCreating ? "Salvando..." : "Salvar conhecimento"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      {isLoading ? (
+        <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+          Carregando memoria organizacional...
+        </p>
+      ) : items.length ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {items.map((item) => (
+            <article
+              className="rounded-md border bg-background/70 p-4 text-sm"
+              key={item.id}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">{item.title}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                      {knowledgeTypeLabels[item.knowledgeType]}
+                    </span>
+                    <span className="rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                      {knowledgeConfidenceLabels[item.confidence]}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  disabled={archivingItemId === item.id}
+                  onClick={() => onArchive(item)}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  {archivingItemId === item.id ? "Arquivando..." : "Arquivar"}
+                </Button>
+              </div>
+              {item.summary ? (
+                <p className="mt-3 leading-6 text-foreground/85">
+                  {item.summary}
+                </p>
+              ) : (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Sem resumo registrado.
+                </p>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+          Nenhum conhecimento organizacional registrado para este lead.
+        </p>
+      )}
     </div>
   );
 }
