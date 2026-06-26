@@ -6,6 +6,7 @@ export * from "./crm-operational-priority";
 export * from "./crm-dashboard-engine";
 export * from "./crm-executive-briefing";
 export * from "./crm-executive-dashboard";
+export * from "./crm-friction-map";
 export * from "./crm-detail-engine";
 export * from "./crm-detail-storage";
 export * from "./crm-lead-simulation-storage";

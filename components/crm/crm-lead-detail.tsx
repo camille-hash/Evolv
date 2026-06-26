@@ -75,6 +75,7 @@ import {
   crmLeadProfilePrimaryGoals,
   crmLeadProfileStrategicTopics,
   buildExecutiveBriefing,
+  buildFrictionMap,
 } from "@/modules/crm";
 import type { GeneratedProposalRecord } from "@/modules/proposal/proposal-history";
 import { generateMultiCotasCommercialPdf } from "@/modules/reports";
@@ -310,6 +311,19 @@ export function CrmLeadDetail({
     nextPendingTask,
     strategicProfile,
     timelineEvents,
+  });
+  const frictionMapItems = buildFrictionMap({
+    knowledgeItems,
+    leadSimulations,
+    latestMovement,
+    nextPendingTask,
+  });
+  const knowledgeGapItems = buildKnowledgeGaps({
+    commercialSimulations,
+    knowledgeItems,
+    lead,
+    multiCotasSimulations,
+    strategicProfile,
   });
   const leadObjective =
     lead.produtoInteresse ||
@@ -1200,6 +1214,10 @@ export function CrmLeadDetail({
             />
 
             <ExecutiveBriefing items={executiveBriefingItems} />
+
+            <FrictionMap items={frictionMapItems} />
+
+            <KnowledgeGaps items={knowledgeGapItems} />
 
             <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
               <ExecutiveDossierCard
@@ -3409,6 +3427,186 @@ function ExecutiveBriefing({
       </dl>
     </section>
   );
+}
+
+function FrictionMap({ items }: { items: ReturnType<typeof buildFrictionMap> }) {
+  return (
+    <section className="rounded-md border bg-background/70 p-4 text-card-foreground">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Friction Map
+          </p>
+          <h3 className="mt-1 text-sm font-semibold text-foreground">
+            O que impede a evolucao agora
+          </h3>
+        </div>
+        <span className="text-xs font-medium text-muted-foreground">
+          Ate 3 atritos
+        </span>
+      </div>
+
+      {items.length ? (
+        <ul className="mt-4 grid gap-3 md:grid-cols-3">
+          {items.map((item) => (
+            <li
+              className="rounded-md border bg-card px-3 py-3 text-sm text-foreground"
+              key={item.title}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Atrito
+              </p>
+              <p className="mt-1 font-medium">{item.title}</p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {item.description}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-4 rounded-md border border-dashed bg-card px-3 py-3 text-sm text-muted-foreground">
+          Nenhum atrito evidente com os dados atuais.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function KnowledgeGaps({ items }: { items: KnowledgeGapItem[] }) {
+  return (
+    <section className="rounded-md border bg-background/70 p-4 text-card-foreground">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Knowledge Gaps
+          </p>
+          <h3 className="mt-1 text-sm font-semibold text-foreground">
+            O que ainda precisamos descobrir
+          </h3>
+        </div>
+        <span className="text-xs font-medium text-muted-foreground">
+          Ate 5 lacunas
+        </span>
+      </div>
+
+      {items.length ? (
+        <ul className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((item) => (
+            <li
+              className="rounded-md border bg-card px-3 py-3 text-sm text-foreground"
+              key={item.title}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Lacuna
+              </p>
+              <p className="mt-1 font-medium">{item.title}</p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {item.description}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-4 rounded-md border border-dashed bg-card px-3 py-3 text-sm text-muted-foreground">
+          Nenhuma lacuna relevante identificada com os dados atuais.
+        </p>
+      )}
+    </section>
+  );
+}
+
+type KnowledgeGapItem = {
+  description: string;
+  title: string;
+};
+
+function buildKnowledgeGaps({
+  commercialSimulations,
+  knowledgeItems,
+  lead,
+  multiCotasSimulations,
+  strategicProfile,
+}: {
+  commercialSimulations: CrmLeadSimulation[];
+  knowledgeItems: CrmLeadKnowledgeItem[];
+  lead: CrmLead;
+  multiCotasSimulations: CrmLeadSimulation[];
+  strategicProfile: CrmLeadProfile | null;
+}): KnowledgeGapItem[] {
+  const gaps: KnowledgeGapItem[] = [];
+
+  if (!hasLeadObjectiveData(lead)) {
+    gaps.push({
+      description: "Produto, oportunidade e credito desejado ainda nao orientam o relacionamento.",
+      title: "Objetivo comercial nao registrado",
+    });
+  }
+
+  if (!strategicProfile?.primaryGoal) {
+    gaps.push({
+      description: "O Perfil Estrategico ainda nao informa o objetivo principal.",
+      title: "Objetivo estrategico nao definido",
+    });
+  }
+
+  if (!strategicProfile?.currentMoment) {
+    gaps.push({
+      description: "O momento atual do cliente ainda nao esta registrado.",
+      title: "Momento atual nao definido",
+    });
+  }
+
+  if (!strategicProfile?.strategicTopics.length) {
+    gaps.push({
+      description: "Nao ha temas patrimoniais marcados no Perfil Estrategico.",
+      title: "Temas patrimoniais nao mapeados",
+    });
+  }
+
+  if (!knowledgeItems.length) {
+    gaps.push({
+      description: "A Memoria Organizacional ainda nao possui itens ativos.",
+      title: "Memoria Organizacional vazia",
+    });
+  }
+
+  if (!hasKnowledgeType(knowledgeItems, ["financial", "wealth"])) {
+    gaps.push({
+      description: "Nao ha conhecimento financeiro ou patrimonial estruturado.",
+      title: "Contexto patrimonial nao registrado",
+    });
+  }
+
+  if (!commercialSimulations.length && !multiCotasSimulations.length) {
+    gaps.push({
+      description: "Nenhuma simulacao foi salva para materializar o cenario.",
+      title: "Cenario de simulacao ausente",
+    });
+  }
+
+  if (commercialSimulations.length && !multiCotasSimulations.length) {
+    gaps.push({
+      description: "Ha simulacao comercial, mas nenhum estudo Multi-Cotas salvo.",
+      title: "Multi-Cotas ainda nao registrado",
+    });
+  }
+
+  return gaps.slice(0, 5);
+}
+
+function hasLeadObjectiveData(lead: CrmLead) {
+  return Boolean(
+    lead.produtoInteresse.trim() ||
+      lead.tituloOportunidade?.trim() ||
+      lead.valorPretendido > 0,
+  );
+}
+
+function hasKnowledgeType(
+  items: CrmLeadKnowledgeItem[],
+  types: CrmLeadKnowledgeItem["knowledgeType"][],
+) {
+  return items.some((item) => types.includes(item.knowledgeType));
 }
 
 function LeadStrategicProfileCard({
