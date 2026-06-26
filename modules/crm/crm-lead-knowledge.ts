@@ -104,3 +104,63 @@ export function isCrmLeadKnowledgeStatus(
     crmLeadKnowledgeStatuses.includes(value as CrmLeadKnowledgeStatus)
   );
 }
+
+export const knowledgeEvidenceTypes = [
+  "note",
+  "task",
+  "simulation",
+  "document",
+  "conversation",
+  "manual",
+] as const;
+
+export type KnowledgeEvidenceType = (typeof knowledgeEvidenceTypes)[number];
+
+export const knowledgeEvidenceStatuses = ["ACTIVE", "ARCHIVED"] as const;
+
+export type KnowledgeEvidenceStatus =
+  (typeof knowledgeEvidenceStatuses)[number];
+
+export type KnowledgeEvidence = {
+  archivedAt: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  evidenceType: KnowledgeEvidenceType;
+  id: string;
+  knowledgeItemId: string;
+  leadId: string;
+  organizationId: string;
+  source: string;
+  sourceReference: string | null;
+  status: KnowledgeEvidenceStatus;
+  summary: string | null;
+  title: string;
+  updatedAt: string;
+};
+
+export type CreateKnowledgeEvidenceInput = {
+  evidenceType: KnowledgeEvidenceType;
+  knowledgeItemId: string;
+  source?: string | null;
+  sourceReference?: string | null;
+  summary?: string | null;
+  title: string;
+};
+
+export function isKnowledgeEvidenceType(
+  value: unknown,
+): value is KnowledgeEvidenceType {
+  return (
+    typeof value === "string" &&
+    knowledgeEvidenceTypes.includes(value as KnowledgeEvidenceType)
+  );
+}
+
+export function isKnowledgeEvidenceStatus(
+  value: unknown,
+): value is KnowledgeEvidenceStatus {
+  return (
+    typeof value === "string" &&
+    knowledgeEvidenceStatuses.includes(value as KnowledgeEvidenceStatus)
+  );
+}

@@ -19,6 +19,11 @@ import {
   fetchCrmLeadKnowledgeItems,
 } from "@/modules/crm/client/crm-lead-knowledge-client";
 import {
+  archiveKnowledgeEvidence,
+  createKnowledgeEvidence,
+  fetchKnowledgeEvidence,
+} from "@/modules/crm/client/knowledge-evidence-client";
+import {
   createCrmLeadProfile,
   fetchCrmLeadProfile,
   updateCrmLeadProfile,
@@ -46,6 +51,8 @@ import {
   type CrmLeadKnowledgeConfidence,
   type CrmLeadKnowledgeItem,
   type CrmLeadKnowledgeType,
+  type KnowledgeEvidence,
+  type KnowledgeEvidenceType,
   type CrmCommercialSignal,
   type CrmLeadGreenFlag,
   type CrmLead,
@@ -113,6 +120,14 @@ type StrategicProfileDraft = {
 type KnowledgeDraft = {
   confidence: CrmLeadKnowledgeConfidence;
   knowledgeType: CrmLeadKnowledgeType;
+  summary: string;
+  title: string;
+};
+
+type EvidenceDraft = {
+  evidenceType: KnowledgeEvidenceType;
+  source: string;
+  sourceReference: string;
   summary: string;
   title: string;
 };
@@ -2200,6 +2215,26 @@ const knowledgeConfidenceLabels = knowledgeConfidenceOptions.reduce(
   {} as Record<CrmLeadKnowledgeConfidence, string>,
 );
 
+const evidenceTypeOptions: Array<{
+  label: string;
+  value: KnowledgeEvidenceType;
+}> = [
+  { label: "Manual", value: "manual" },
+  { label: "Nota", value: "note" },
+  { label: "Tarefa", value: "task" },
+  { label: "Simulacao", value: "simulation" },
+  { label: "Documento", value: "document" },
+  { label: "Conversa", value: "conversation" },
+];
+
+const evidenceTypeLabels = evidenceTypeOptions.reduce(
+  (labels, option) => ({
+    ...labels,
+    [option.value]: option.label,
+  }),
+  {} as Record<KnowledgeEvidenceType, string>,
+);
+
 function createDefaultTaskDraft(): TaskDraft {
   return {
     dueDate: getLocalDateKey(new Date()),
@@ -2214,6 +2249,16 @@ function createDefaultKnowledgeDraft(): KnowledgeDraft {
   return {
     confidence: "MEDIUM",
     knowledgeType: "strategic",
+    summary: "",
+    title: "",
+  };
+}
+
+function createDefaultEvidenceDraft(): EvidenceDraft {
+  return {
+    evidenceType: "manual",
+    source: "Manual",
+    sourceReference: "",
     summary: "",
     title: "",
   };
@@ -2463,6 +2508,156 @@ function LeadKnowledgeRegistry({
   onCreate: () => void;
   onOpenForm: () => void;
 }) {
+  const [openEvidenceItemId, setOpenEvidenceItemId] = useState<string | null>(null);
+  const [evidenceByKnowledgeId, setEvidenceByKnowledgeId] = useState<
+    Record<string, KnowledgeEvidence[]>
+  >({});
+  const [evidenceDraft, setEvidenceDraft] = useState<EvidenceDraft>(() =>
+    createDefaultEvidenceDraft(),
+  );
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [loadingEvidenceItemId, setLoadingEvidenceItemId] = useState<string | null>(
+    null,
+  );
+  const [creatingEvidenceItemId, setCreatingEvidenceItemId] = useState<
+    string | null
+  >(null);
+  const [archivingEvidenceId, setArchivingEvidenceId] = useState<string | null>(
+    null,
+  );
+
+  async function handleToggleEvidence(item: CrmLeadKnowledgeItem) {
+    if (openEvidenceItemId === item.id) {
+      setOpenEvidenceItemId(null);
+      setEvidenceError(null);
+      setEvidenceDraft(createDefaultEvidenceDraft());
+      return;
+    }
+
+    setOpenEvidenceItemId(item.id);
+    setEvidenceError(null);
+    setEvidenceDraft(createDefaultEvidenceDraft());
+
+    if (evidenceByKnowledgeId[item.id]) {
+      return;
+    }
+
+    setLoadingEvidenceItemId(item.id);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      const evidence = await fetchKnowledgeEvidence(accessToken, item.id);
+
+      setEvidenceByKnowledgeId((current) => ({
+        ...current,
+        [item.id]: evidence,
+      }));
+    } catch (error) {
+      setEvidenceError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel carregar as evidencias.",
+      );
+    } finally {
+      setLoadingEvidenceItemId(null);
+    }
+  }
+
+  function updateEvidenceDraft(patch: Partial<EvidenceDraft>) {
+    setEvidenceDraft((current) => ({
+      ...current,
+      ...patch,
+    }));
+  }
+
+  async function handleCreateEvidence(item: CrmLeadKnowledgeItem) {
+    const title = evidenceDraft.title.trim();
+
+    if (!title) {
+      setEvidenceError("Titulo da evidencia e obrigatorio.");
+      return;
+    }
+
+    setCreatingEvidenceItemId(item.id);
+    setEvidenceError(null);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      const evidence = await createKnowledgeEvidence(accessToken, {
+        evidenceType: evidenceDraft.evidenceType,
+        knowledgeItemId: item.id,
+        source: evidenceDraft.source || "Manual",
+        sourceReference: evidenceDraft.sourceReference || undefined,
+        summary: evidenceDraft.summary || undefined,
+        title,
+      });
+
+      setEvidenceByKnowledgeId((current) => ({
+        ...current,
+        [item.id]: [
+          evidence,
+          ...(current[item.id] ?? []).filter((entry) => entry.id !== evidence.id),
+        ],
+      }));
+      setEvidenceDraft(createDefaultEvidenceDraft());
+    } catch (error) {
+      setEvidenceError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel criar a evidencia.",
+      );
+    } finally {
+      setCreatingEvidenceItemId(null);
+    }
+  }
+
+  async function handleArchiveEvidence(
+    item: CrmLeadKnowledgeItem,
+    evidence: KnowledgeEvidence,
+  ) {
+    if (archivingEvidenceId) {
+      return;
+    }
+
+    setArchivingEvidenceId(evidence.id);
+    setEvidenceError(null);
+
+    try {
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        throw new Error("Sessao invalida.");
+      }
+
+      await archiveKnowledgeEvidence(accessToken, evidence.id);
+
+      setEvidenceByKnowledgeId((current) => ({
+        ...current,
+        [item.id]: (current[item.id] ?? []).filter(
+          (entry) => entry.id !== evidence.id,
+        ),
+      }));
+    } catch (error) {
+      setEvidenceError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel arquivar a evidencia.",
+      );
+    } finally {
+      setArchivingEvidenceId(null);
+    }
+  }
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2612,12 +2807,208 @@ function LeadKnowledgeRegistry({
                   Sem resumo registrado.
                 </p>
               )}
+              <div className="mt-4 border-t pt-3">
+                <Button
+                  onClick={() => handleToggleEvidence(item)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {openEvidenceItemId === item.id
+                    ? "Ocultar evidencias"
+                    : "Ver evidencias"}
+                </Button>
+              </div>
+              {openEvidenceItemId === item.id ? (
+                <KnowledgeEvidencePanel
+                  archivingEvidenceId={archivingEvidenceId}
+                  draft={evidenceDraft}
+                  error={evidenceError}
+                  evidence={evidenceByKnowledgeId[item.id] ?? []}
+                  isCreating={creatingEvidenceItemId === item.id}
+                  isLoading={loadingEvidenceItemId === item.id}
+                  onArchive={(evidence) => handleArchiveEvidence(item, evidence)}
+                  onChange={updateEvidenceDraft}
+                  onCreate={() => handleCreateEvidence(item)}
+                />
+              ) : null}
             </article>
           ))}
         </div>
       ) : (
         <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
           Nenhum conhecimento organizacional registrado para este lead.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function KnowledgeEvidencePanel({
+  archivingEvidenceId,
+  draft,
+  error,
+  evidence,
+  isCreating,
+  isLoading,
+  onArchive,
+  onChange,
+  onCreate,
+}: {
+  archivingEvidenceId: string | null;
+  draft: EvidenceDraft;
+  error: string | null;
+  evidence: KnowledgeEvidence[];
+  isCreating: boolean;
+  isLoading: boolean;
+  onArchive: (evidence: KnowledgeEvidence) => void;
+  onChange: (patch: Partial<EvidenceDraft>) => void;
+  onCreate: () => void;
+}) {
+  return (
+    <div className="mt-4 grid gap-3 rounded-md border bg-card/70 p-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          Cadeia de evidencias
+        </p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Registros que sustentam este conhecimento. Evidencias arquivadas nao
+          aparecem na listagem ativa.
+        </p>
+      </div>
+
+      <div className="rounded-md border bg-background/70 p-3">
+        <div className="grid gap-3 md:grid-cols-[1fr_160px]">
+          <Field label="Titulo da evidencia">
+            <input
+              className={fieldInputClass}
+              disabled={isCreating}
+              onChange={(event) => onChange({ title: event.target.value })}
+              placeholder="Ex.: declaracao em reuniao"
+              value={draft.title}
+            />
+          </Field>
+
+          <Field label="Tipo">
+            <select
+              className={fieldInputClass}
+              disabled={isCreating}
+              onChange={(event) =>
+                onChange({
+                  evidenceType: event.target.value as KnowledgeEvidenceType,
+                })
+              }
+              value={draft.evidenceType}
+            >
+              {evidenceTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Fonte">
+            <input
+              className={fieldInputClass}
+              disabled={isCreating}
+              onChange={(event) => onChange({ source: event.target.value })}
+              placeholder="Manual"
+              value={draft.source}
+            />
+          </Field>
+
+          <Field label="Referencia">
+            <input
+              className={fieldInputClass}
+              disabled={isCreating}
+              onChange={(event) =>
+                onChange({ sourceReference: event.target.value })
+              }
+              placeholder="Opcional"
+              value={draft.sourceReference}
+            />
+          </Field>
+        </div>
+
+        <Field label="Resumo">
+          <textarea
+            className={cn(fieldInputClass, "min-h-20 resize-y")}
+            disabled={isCreating}
+            onChange={(event) => onChange({ summary: event.target.value })}
+            placeholder="O que esta evidencia comprova?"
+            value={draft.summary}
+          />
+        </Field>
+
+        <div className="mt-3 flex justify-end">
+          <Button
+            disabled={isCreating || !draft.title.trim()}
+            onClick={onCreate}
+            size="sm"
+            type="button"
+          >
+            {isCreating ? "Salvando..." : "Adicionar evidencia"}
+          </Button>
+        </div>
+      </div>
+
+      {error ? (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      {isLoading ? (
+        <p className="rounded-md border border-dashed bg-background/60 p-3 text-xs text-muted-foreground">
+          Carregando evidencias...
+        </p>
+      ) : evidence.length ? (
+        <div className="grid gap-2">
+          {evidence.map((item) => (
+            <article className="rounded-md border bg-background/70 p-3" key={item.id}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {item.title}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                      {evidenceTypeLabels[item.evidenceType]}
+                    </span>
+                    <span className="rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                      {item.source}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  disabled={archivingEvidenceId === item.id}
+                  onClick={() => onArchive(item)}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  {archivingEvidenceId === item.id ? "Arquivando..." : "Arquivar"}
+                </Button>
+              </div>
+              {item.summary ? (
+                <p className="mt-3 text-xs leading-5 text-foreground/85">
+                  {item.summary}
+                </p>
+              ) : null}
+              {item.sourceReference ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Referencia: {item.sourceReference}
+                </p>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-md border border-dashed bg-background/60 p-3 text-xs text-muted-foreground">
+          Nenhuma evidencia ativa registrada para este conhecimento.
         </p>
       )}
     </div>
