@@ -74,6 +74,7 @@ import {
   crmLeadProfileCurrentMoments,
   crmLeadProfilePrimaryGoals,
   crmLeadProfileStrategicTopics,
+  buildExecutiveBriefing,
 } from "@/modules/crm";
 import type { GeneratedProposalRecord } from "@/modules/proposal/proposal-history";
 import { generateMultiCotasCommercialPdf } from "@/modules/reports";
@@ -298,6 +299,18 @@ export function CrmLeadDetail({
       }),
     [lead.id, leadSimulations, tasksState, timelineEvents],
   );
+  const executiveBriefingItems = buildExecutiveBriefing({
+    greenFlags,
+    knowledgeItems,
+    latestCommercialSimulation,
+    latestMovement,
+    latestMultiCotasSimulation,
+    lead,
+    leadSimulations,
+    nextPendingTask,
+    strategicProfile,
+    timelineEvents,
+  });
   const leadObjective =
     lead.produtoInteresse ||
     lead.tituloOportunidade ||
@@ -1185,6 +1198,8 @@ export function CrmLeadDetail({
               id="dossie-resumo"
               title="Resumo"
             />
+
+            <ExecutiveBriefing items={executiveBriefingItems} />
 
             <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
               <ExecutiveDossierCard
@@ -3353,6 +3368,46 @@ function LeadGreenFlags({ flags }: { flags: CrmLeadGreenFlag[] }) {
         </ul>
       ) : null}
     </div>
+  );
+}
+
+function ExecutiveBriefing({
+  items,
+}: {
+  items: ReturnType<typeof buildExecutiveBriefing>;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-4 text-card-foreground">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Executive Briefing
+          </p>
+          <h3 className="mt-1 text-base font-semibold text-foreground">
+            O que esta acontecendo agora
+          </h3>
+        </div>
+        <span className="text-xs font-medium text-muted-foreground">
+          Leitura rapida
+        </span>
+      </div>
+
+      <dl className="mt-4 grid gap-2">
+        {items.map((item) => (
+          <div
+            className="grid gap-1 rounded-md border bg-background/70 px-3 py-2 sm:grid-cols-[170px_1fr] sm:items-center"
+            key={item.label}
+          >
+            <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              {item.label}
+            </dt>
+            <dd className="text-sm font-medium leading-5 text-foreground">
+              {item.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
