@@ -1,3 +1,17 @@
+import type {
+  ConflictSeverity,
+  EvidencePolarity,
+  EvidenceRelevance,
+  EvidenceSource,
+  EvidenceType,
+  OpportunityType,
+  RiskSeverity,
+  AttentionLevel,
+  SituationMomentum,
+  SituationPriority,
+  SituationState,
+} from "../types";
+
 export type CognitiveArtifactType =
   | "collected_context"
   | "normalized_context"
@@ -69,6 +83,7 @@ export type CollectedContext = CognitiveArtifact<{
 export type NormalizedContext = CognitiveArtifact<{
   records: NormalizedRecord[];
   sourceMap: Record<string, string[]>;
+  sources: CognitiveSource[];
   stats: {
     inputRecords: number;
     normalizedRecords: number;
@@ -87,25 +102,124 @@ export type NormalizedRecord = {
 export type Evidence = {
   confidence: CognitiveConfidence;
   content: Record<string, unknown>;
+  description?: string;
   evidenceId: string;
+  evidenceType: EvidenceType;
   metadata?: Record<string, unknown>;
-  observedAt?: string;
-  source: CognitiveSource;
+  occurredAt?: string;
+  polarity: EvidencePolarity;
+  relevance: EvidenceRelevance;
+  source: EvidenceSource;
+  sourceId?: string;
+  tags: string[];
+  title: string;
 };
 
 export type EvidenceSet = CognitiveArtifact<{
   evidence: Evidence[];
+  groups: {
+    byPolarity: Record<string, number>;
+    byRelevance: Record<string, number>;
+    bySource: Record<string, number>;
+    byType: Record<string, number>;
+  };
+  statistics: {
+    attentionRequired: number;
+    missing: number;
+    negative: number;
+    neutral: number;
+    positive: number;
+    total: number;
+  };
 }>;
 
 export type SituationContext = CognitiveArtifact<{
   evidenceSet: EvidenceSet;
-  normalizedContext: NormalizedContext;
-  signals: Record<string, unknown>[];
+  evidenceCoverage: EvidenceCoverage;
+  momentum: SituationMomentum;
+  opportunities: SituationOpportunity[];
+  patterns: SituationPattern[];
+  risks: SituationRisk[];
+  state: SituationState;
+  unresolvedConflicts: SituationConflict[];
 }>;
 
+export type SituationPattern = {
+  description: string;
+  evidenceIds: string[];
+  patternId: string;
+  state: SituationState;
+};
+
+export type SituationRisk = {
+  description: string;
+  evidenceIds: string[];
+  riskId: string;
+  severity: RiskSeverity;
+};
+
+export type SituationOpportunity = {
+  description: string;
+  evidenceIds: string[];
+  opportunityId: string;
+  opportunityType: OpportunityType;
+};
+
+export type SituationConflict = {
+  conflictId: string;
+  description: string;
+  evidenceIds: string[];
+  severity: ConflictSeverity;
+};
+
+export type EvidenceCoverage = {
+  available: number;
+  consumed: string[];
+  ignored: string[];
+};
+
 export type ExecutiveSituation = CognitiveArtifact<{
-  gaps: string[];
-  highlights: string[];
-  risks: string[];
-  summaryLines: string[];
+  currentState: SituationState;
+  evidenceTrace: EvidenceReference[];
+  momentum: SituationMomentum;
+  narrative: SituationNarrative;
+  opportunities: SituationOpportunity[];
+  priority: SituationPriority;
+  recommendedAttention: RecommendedAttention;
+  risks: SituationRisk[];
 }>;
+
+export type RecommendedAttention = {
+  evidenceIds: string[];
+  level: AttentionLevel;
+  reason: string;
+};
+
+export type SituationNarrative = {
+  evidenceIds: string[];
+  summary: string;
+};
+
+export type EvidenceReference = {
+  contribution?:
+    | "state"
+    | "priority"
+    | "momentum"
+    | "risk"
+    | "opportunity"
+    | "recommendation"
+    | "narrative";
+  evidenceId: string;
+  relation:
+    | "pattern"
+    | "risk"
+    | "opportunity"
+    | "conflict";
+  sourceId: string;
+};
+
+export type TraceAssemblyInput = {
+  evidenceSet: EvidenceSet;
+  executiveSituation: ExecutiveSituation;
+  situationContext: SituationContext;
+};

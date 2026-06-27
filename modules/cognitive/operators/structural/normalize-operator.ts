@@ -26,6 +26,7 @@ export const NormalizeOperator: CognitiveOperator<
       payload: {
         records,
         sourceMap,
+        sources: input.payload.sources,
         stats: {
           inputRecords: input.payload.records.length,
           normalizedRecords: records.length,
