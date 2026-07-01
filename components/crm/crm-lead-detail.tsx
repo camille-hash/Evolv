@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import type { ConvertLeadToClientInput } from "@/modules/client-context";
+import type { CommercialAttentionProductDecision } from "@/modules/decision-models/dm001-product-surface";
 import {
   archiveCrmLeadKnowledgeItem,
   createCrmLeadKnowledgeItem,
@@ -233,10 +234,16 @@ export function CrmLeadDetail({
     leadId: string;
     timeline: CrmTimelineReadModel;
   } | null>(null);
+  const [commercialAttentionState, setCommercialAttentionState] = useState<{
+    decision: CommercialAttentionProductDecision | null;
+    leadId: string;
+  } | null>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [isLoadingKnowledge, setIsLoadingKnowledge] = useState(false);
   const [isLoadingSimulations, setIsLoadingSimulations] = useState(false);
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
+  const [isLoadingCommercialAttention, setIsLoadingCommercialAttention] =
+    useState(false);
   const [taskLoadError, setTaskLoadError] = useState<string | null>(null);
   const [knowledgeLoadError, setKnowledgeLoadError] = useState<string | null>(
     null,
@@ -244,6 +251,9 @@ export function CrmLeadDetail({
   const [taskActionError, setTaskActionError] = useState<string | null>(null);
   const [simulationsError, setSimulationsError] = useState<string | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [commercialAttentionError, setCommercialAttentionError] = useState<
+    string | null
+  >(null);
   const leadDisplayName = useMemo(() => getLeadDisplayName(lead), [lead]);
   const structuredNotes = buildTemporaryStructuredNotesFromLead(lead);
   const persistedNotes =
@@ -267,6 +277,10 @@ export function CrmLeadDetail({
       timelineState?.leadId === lead.id ? timelineState.timeline.events : [],
     [lead.id, timelineState],
   );
+  const commercialAttentionDecision =
+    commercialAttentionState?.leadId === lead.id
+      ? commercialAttentionState.decision
+      : null;
   const leadSimulations = useMemo(
     () =>
       simulationsState?.leadId === lead.id
@@ -559,6 +573,57 @@ export function CrmLeadDetail({
     }
 
     void loadTimeline();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadCommercialAttention() {
+      setIsLoadingCommercialAttention(true);
+      setCommercialAttentionError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setIsLoadingCommercialAttention(false);
+          setCommercialAttentionError(
+            "Nao foi possivel carregar a atencao comercial.",
+          );
+        }
+        return;
+      }
+
+      try {
+        const decision = await fetchLeadCommercialAttention(
+          accessToken,
+          lead.id,
+        );
+
+        if (isActive) {
+          setCommercialAttentionState({
+            decision,
+            leadId: lead.id,
+          });
+        }
+      } catch {
+        if (isActive) {
+          setCommercialAttentionError(
+            "Nao foi possivel carregar a atencao comercial.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingCommercialAttention(false);
+        }
+      }
+    }
+
+    void loadCommercialAttention();
 
     return () => {
       isActive = false;
@@ -1214,6 +1279,12 @@ export function CrmLeadDetail({
             />
 
             <ExecutiveBriefing items={executiveBriefingItems} />
+
+            <CommercialAttentionDecisionCard
+              decision={commercialAttentionDecision}
+              error={commercialAttentionError}
+              isLoading={isLoadingCommercialAttention}
+            />
 
             <FrictionMap items={frictionMapItems} />
 
@@ -2089,6 +2160,43 @@ async function fetchLeadSimulations(accessToken: string, leadId: string) {
   }
 
   return payload.simulations;
+}
+
+async function fetchLeadCommercialAttention(
+  accessToken: string,
+  leadId: string,
+) {
+  const response = await fetch(
+    `/api/crm/lead-commercial-attention?leadId=${encodeURIComponent(leadId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as {
+    decision?: CommercialAttentionProductDecision | null;
+    error?: string;
+  } | null;
+
+  if (!response.ok) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel carregar a atencao comercial.",
+    );
+  }
+
+  return payload?.decision ?? null;
+}
+
+function formatCommercialAttentionGeneratedAt(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return dateFormatter.format(date);
 }
 
 function getLeadDisplayName(lead: Pick<CrmLead, "nome" | "telefone" | "email">) {
@@ -3425,6 +3533,84 @@ function ExecutiveBriefing({
           </div>
         ))}
       </dl>
+    </section>
+  );
+}
+
+function CommercialAttentionDecisionCard({
+  decision,
+  error,
+  isLoading,
+}: {
+  decision: CommercialAttentionProductDecision | null;
+  error: string | null;
+  isLoading: boolean;
+}) {
+  return (
+    <section className="rounded-md border bg-background/70 p-4 text-card-foreground">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            DM-001
+          </p>
+          <h3 className="mt-1 text-sm font-semibold text-foreground">
+            Atencao Comercial
+          </h3>
+        </div>
+        <span className="text-xs font-medium text-muted-foreground">
+          Decision Model
+        </span>
+      </div>
+
+      {isLoading ? (
+        <p className="mt-4 rounded-md border border-dashed bg-card px-3 py-3 text-sm text-muted-foreground">
+          Carregando decisao comercial...
+        </p>
+      ) : error ? (
+        <p className="mt-4 rounded-md border border-dashed bg-card px-3 py-3 text-sm text-muted-foreground">
+          {error}
+        </p>
+      ) : decision ? (
+        <div className="mt-4 grid gap-3">
+          <div className="grid gap-2 md:grid-cols-3">
+            <LeadInfo label="Decisao" value={decision.decision} />
+            <LeadInfo
+              label="Score"
+              value={
+                decision.attentionScore === null
+                  ? "Nao calculado"
+                  : String(decision.attentionScore)
+              }
+            />
+            <LeadInfo label="Confianca" value={decision.confidence} />
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <LeadInfo
+              label="Acao recomendada"
+              value={decision.recommendedAction}
+            />
+            <LeadInfo
+              label="Gerado em"
+              value={formatCommercialAttentionGeneratedAt(decision.generatedAt)}
+            />
+          </div>
+          <div className="rounded-md border bg-card px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Racional
+            </p>
+            <p className="mt-1 text-sm leading-5 text-foreground">
+              {decision.rationaleSummary}
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Modelo {decision.modelVersion}
+          </p>
+        </div>
+      ) : (
+        <p className="mt-4 rounded-md border border-dashed bg-card px-3 py-3 text-sm text-muted-foreground">
+          Nenhuma decisao comercial registrada para este lead.
+        </p>
+      )}
     </section>
   );
 }

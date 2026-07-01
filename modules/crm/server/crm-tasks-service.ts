@@ -1,4 +1,5 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+import { triggerDm001RecalculationAfterCrmEvent } from "../../decision-models/dm-001/event-hooks";
 import {
   isCrmTaskStatus,
   isCrmTaskType,
@@ -294,9 +295,16 @@ export async function createCommercialTask(
     };
   }
 
+  const task = mapCrmTaskRow(data as unknown as CrmTaskRow);
+  await triggerDm001RecalculationAfterCrmEvent({
+    accessToken,
+    leadId: task.leadId,
+    reason: "task_created",
+  });
+
   return {
     ok: true,
-    task: mapCrmTaskRow(data as unknown as CrmTaskRow),
+    task,
   };
 }
 
@@ -356,9 +364,16 @@ export async function completeCommercialTask(
     };
   }
 
+  const task = mapCrmTaskRow(data as unknown as CrmTaskRow);
+  await triggerDm001RecalculationAfterCrmEvent({
+    accessToken,
+    leadId: task.leadId,
+    reason: "task_completed",
+  });
+
   return {
     ok: true,
-    task: mapCrmTaskRow(data as unknown as CrmTaskRow),
+    task,
   };
 }
 
@@ -418,9 +433,16 @@ export async function cancelCommercialTask(
     };
   }
 
+  const task = mapCrmTaskRow(data as unknown as CrmTaskRow);
+  await triggerDm001RecalculationAfterCrmEvent({
+    accessToken,
+    leadId: task.leadId,
+    reason: "task_updated",
+  });
+
   return {
     ok: true,
-    task: mapCrmTaskRow(data as unknown as CrmTaskRow),
+    task,
   };
 }
 

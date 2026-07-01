@@ -1,4 +1,5 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+import { triggerDm001RecalculationAfterCrmEvent } from "../../decision-models/dm-001/event-hooks";
 import {
   isCrmLeadKnowledgeCategory,
   isCrmLeadKnowledgeConfidence,
@@ -212,8 +213,15 @@ export async function createKnowledgeItem(
     };
   }
 
+  const item = mapLeadKnowledgeRow(data as unknown as CrmLeadKnowledgeRow);
+  await triggerDm001RecalculationAfterCrmEvent({
+    accessToken,
+    leadId: item.leadId,
+    reason: "knowledge_item_updated",
+  });
+
   return {
-    item: mapLeadKnowledgeRow(data as unknown as CrmLeadKnowledgeRow),
+    item,
     ok: true,
   };
 }
@@ -273,8 +281,15 @@ export async function archiveKnowledgeItem(
     };
   }
 
+  const item = mapLeadKnowledgeRow(data as unknown as CrmLeadKnowledgeRow);
+  await triggerDm001RecalculationAfterCrmEvent({
+    accessToken,
+    leadId: item.leadId,
+    reason: "knowledge_item_updated",
+  });
+
   return {
-    item: mapLeadKnowledgeRow(data as unknown as CrmLeadKnowledgeRow),
+    item,
     ok: true,
   };
 }

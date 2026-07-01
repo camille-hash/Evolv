@@ -16,6 +16,7 @@ const expectedCognitiveSources = [
   "check_points",
   "knowledge_gaps",
   "executive_briefing",
+  "decision_outputs",
 ] as const;
 
 type ExpectedCognitiveSource = (typeof expectedCognitiveSources)[number];

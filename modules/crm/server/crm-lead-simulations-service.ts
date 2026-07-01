@@ -1,4 +1,5 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+import { triggerDm001RecalculationAfterCrmEvent } from "../../decision-models/dm-001/event-hooks";
 import {
   isCrmLeadSimulationSource,
   isCrmLeadSimulationStatus,
@@ -318,9 +319,16 @@ export async function createLeadSimulation(
     };
   }
 
+  const simulation = mapCrmLeadSimulationRow(data as unknown as CrmLeadSimulationRow);
+  await triggerDm001RecalculationAfterCrmEvent({
+    accessToken,
+    leadId: simulation.leadId,
+    reason: "simulation_created",
+  });
+
   return {
     ok: true,
-    simulation: mapCrmLeadSimulationRow(data as unknown as CrmLeadSimulationRow),
+    simulation,
   };
 }
 

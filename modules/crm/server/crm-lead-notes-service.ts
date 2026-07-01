@@ -1,4 +1,5 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+import { triggerDm001RecalculationAfterCrmEvent } from "../../decision-models/dm-001/event-hooks";
 import type { CreateCrmLeadNoteInput, CrmLeadNote, CrmLeadNoteType } from "../crm-lead-notes";
 
 type CrmLeadNotesProfile = {
@@ -153,8 +154,15 @@ export async function createLeadNote(
     };
   }
 
+  const note = mapCrmLeadNoteRow(data as unknown as CrmLeadNoteRow);
+  await triggerDm001RecalculationAfterCrmEvent({
+    accessToken,
+    leadId: note.leadId,
+    reason: "note_created",
+  });
+
   return {
-    note: mapCrmLeadNoteRow(data as unknown as CrmLeadNoteRow),
+    note,
     ok: true,
   };
 }

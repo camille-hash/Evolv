@@ -8,6 +8,7 @@ export type EvidenceType =
   | "check_point"
   | "knowledge_gap"
   | "executive_briefing"
+  | "decision_output"
   | "missing_information"
   | "missing_next_action"
   | "missing_simulation";
@@ -21,7 +22,8 @@ export type EvidenceSource =
   | "multi_quota"
   | "check_points"
   | "knowledge_gaps"
-  | "executive_briefing";
+  | "executive_briefing"
+  | "decision_outputs";
 
 export type EvidencePolarity =
   | "positive"

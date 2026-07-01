@@ -8,14 +8,12 @@ import type {
   SituationContext,
   TraceAssemblyInput,
 } from "../../contracts";
-import {
-  CollectOperator,
-  EvidenceBuilderOperator,
-  ExecutiveSynthesisOperator,
-  NormalizeOperator,
-  SituationAnalysisOperator,
-  TraceAssemblyOperator,
-} from "../../operators";
+import { TraceAssemblyOperator } from "../../operators/infrastructure/trace-assembly-operator.ts";
+import { SituationAnalysisOperator } from "../../operators/reasoning/situation-analysis-operator.ts";
+import { EvidenceBuilderOperator } from "../../operators/semantic/evidence-builder-operator.ts";
+import { ExecutiveSynthesisOperator } from "../../operators/synthesis/executive-synthesis-operator.ts";
+import { CollectOperator } from "../../operators/structural/collect-operator.ts";
+import { NormalizeOperator } from "../../operators/structural/normalize-operator.ts";
 
 const collectOperator = CollectOperator as SyncCognitiveOperator<
   OperationalContext,

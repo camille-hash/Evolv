@@ -21,10 +21,12 @@ const evidenceSources = [
   "check_points",
   "knowledge_gaps",
   "executive_briefing",
+  "decision_outputs",
 ] as const satisfies readonly EvidenceSource[];
 
 const evidenceTypeBySource: Record<EvidenceSource, EvidenceType> = {
   check_points: "check_point",
+  decision_outputs: "decision_output",
   executive_briefing: "executive_briefing",
   knowledge_gaps: "knowledge_gap",
   lead: "lead_profile",
