@@ -16,7 +16,9 @@ export default function DecisionInspectorPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState("Verificando sessao...");
-  const [decisionOutputId, setDecisionOutputId] = useState("");
+  const [decisionOutputId, setDecisionOutputId] = useState(() =>
+    readInitialDecisionOutputId(),
+  );
   const [inspection, setInspection] = useState<DecisionOutputInspection | null>(
     null,
   );
@@ -69,16 +71,6 @@ export default function DecisionInspectorPage() {
       listener.subscription.unsubscribe();
     };
   }, [supabase]);
-
-  useEffect(() => {
-    const outputId = new URLSearchParams(window.location.search)
-      .get("outputId")
-      ?.trim();
-
-    if (outputId) {
-      setDecisionOutputId(outputId);
-    }
-  }, []);
 
   async function inspectDecisionOutput() {
     if (!accessToken || !decisionOutputId.trim()) {
@@ -317,6 +309,16 @@ function createSupabaseBrowserClient() {
       persistSession: true,
     },
   });
+}
+
+function readInitialDecisionOutputId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return (
+    new URLSearchParams(window.location.search).get("outputId")?.trim() ?? ""
+  );
 }
 
 function isInspectionPayload(
