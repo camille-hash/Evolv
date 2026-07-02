@@ -126,16 +126,24 @@ export default function Home() {
     useState(false);
   const inactivityTimeoutRef = useRef<number | null>(null);
   const logoutTimeoutRef = useRef<number | null>(null);
+  const canCurrentUserGenerateLeadBoundCommercialSimulation = currentUser
+    ? canAccessSection(currentUser.role, "crm")
+    : false;
+  const canCurrentUserUseSimulationTools = currentUser
+    ? canAccessSection(currentUser.role, "presentation")
+    : false;
+  const canViewLeadBoundCommercialSimulation =
+    activeSection === "presentation" &&
+    leadProposalContext?.intent === "simulation" &&
+    canCurrentUserGenerateLeadBoundCommercialSimulation;
   const visibleActiveSection =
     currentUser &&
-    canAccessSection(currentUser.role, activeSection as AccessSection)
+    (canAccessSection(currentUser.role, activeSection as AccessSection) ||
+      canViewLeadBoundCommercialSimulation)
       ? activeSection
       : "dashboard";
   const currentSimulatorPage = simulatorPageBySection[visibleActiveSection];
   const pageTitle = pageTitles[visibleActiveSection];
-  const canCurrentUserGenerateLeadSimulation = currentUser
-    ? canAccessSection(currentUser.role, "presentation")
-    : false;
   const handleClientContextChange = useCallback((context: ClientContext) => {
     setClientContext(context);
   }, []);
@@ -256,6 +264,13 @@ export default function Home() {
     });
 
     setLeadProposalContext(nextContext);
+    if (intent === "simulation") {
+      if (canCurrentUserGenerateLeadBoundCommercialSimulation) {
+        setActiveSection("presentation");
+      }
+      return;
+    }
+
     handleNavigate(intent === "multi_cotas" ? "multiCotas" : "presentation");
   }
 
@@ -333,17 +348,17 @@ export default function Home() {
           <CrmPage
             onConvertToClient={handleConvertLeadToClient}
             onGenerateMultiCotas={
-              canCurrentUserGenerateLeadSimulation
+              canCurrentUserUseSimulationTools
                 ? (lead) => handleGenerateSimulationFromLead(lead, "multi_cotas")
                 : undefined
             }
             onGenerateSimulation={
-              canCurrentUserGenerateLeadSimulation
+              canCurrentUserGenerateLeadBoundCommercialSimulation
                 ? (lead) => handleGenerateSimulationFromLead(lead, "simulation")
                 : undefined
             }
             onGenerateProposal={
-              canCurrentUserGenerateLeadSimulation
+              canCurrentUserUseSimulationTools
                 ? (lead) => handleGenerateSimulationFromLead(lead, "proposal")
                 : undefined
             }
