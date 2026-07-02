@@ -61,6 +61,20 @@ type CrmTimelineSimulationRow = {
   title: string | null;
 };
 
+type CrmTimelineContractRow = {
+  administrator_id: string | null;
+  client_id: string | null;
+  commission_plan_id: string | null;
+  contract_number: string | null;
+  created_at: string | null;
+  created_by: string | null;
+  credit_amount: number | string | null;
+  id: string;
+  lead_id: string | null;
+  organization_id: string;
+  status: string | null;
+};
+
 type RequestContext = {
   profile: CrmTimelineProfile & {
     is_active: true;
@@ -117,6 +131,20 @@ const crmTimelineSimulationColumns = [
   "created_at",
 ].join(",");
 
+const crmTimelineContractColumns = [
+  "id",
+  "organization_id",
+  "lead_id",
+  "client_id",
+  "administrator_id",
+  "commission_plan_id",
+  "contract_number",
+  "status",
+  "credit_amount",
+  "created_at",
+  "created_by",
+].join(",");
+
 const taskTypeLabels: Record<CrmTaskType, string> = {
   call: "Ligar",
   follow_up: "Follow-up",
@@ -131,10 +159,11 @@ const taskTypeLabels: Record<CrmTaskType, string> = {
 const timelineTypePriority: Record<CrmOperationalTimelineEventType, number> = {
   commercial_simulation_created: 0,
   multi_cotas_created: 1,
-  task_completed: 2,
-  task_cancelled: 3,
-  note_created: 4,
-  task_created: 5,
+  contract_created: 2,
+  task_completed: 3,
+  task_cancelled: 4,
+  note_created: 5,
+  task_created: 6,
 };
 
 export async function getLeadTimeline(
@@ -161,11 +190,13 @@ export async function getLeadTimeline(
     return leadValidation;
   }
 
-  const [notesResult, tasksResult, simulationsResult] = await Promise.all([
-    listTimelineNotes(context, leadId),
-    listTimelineTasks(context, leadId),
-    listTimelineSimulations(context, leadId),
-  ]);
+  const [notesResult, tasksResult, simulationsResult, contractsResult] =
+    await Promise.all([
+      listTimelineNotes(context, leadId),
+      listTimelineTasks(context, leadId),
+      listTimelineSimulations(context, leadId),
+      listTimelineContracts(context, leadId),
+    ]);
 
   if (!notesResult.ok) {
     return notesResult;
@@ -179,10 +210,15 @@ export async function getLeadTimeline(
     return simulationsResult;
   }
 
+  if (!contractsResult.ok) {
+    return contractsResult;
+  }
+
   const events = [
     ...notesResult.notes.map(mapNoteEvent),
     ...tasksResult.tasks.flatMap(mapTaskEvents),
     ...simulationsResult.simulations.flatMap(mapSimulationEvents),
+    ...contractsResult.contracts.flatMap(mapContractEvents),
   ];
   const authors = await resolveAuthorNames(context, events);
   const enrichedEvents = sortTimelineEvents(
@@ -374,6 +410,26 @@ async function listTimelineSimulations(
   };
 }
 
+async function listTimelineContracts(context: RequestContext, leadId: string) {
+  const { data, error } = await context.supabase
+    .from("contracts")
+    .select(crmTimelineContractColumns)
+    .eq("lead_id", leadId);
+
+  if (error) {
+    return {
+      error: genericAccessError,
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  return {
+    contracts: (data ?? []) as unknown as CrmTimelineContractRow[],
+    ok: true as const,
+  };
+}
+
 async function resolveAuthorNames(
   context: RequestContext,
   events: CrmOperationalTimelineEvent[],
@@ -536,6 +592,43 @@ function mapSimulationEvents(
   return [];
 }
 
+function mapContractEvents(
+  contract: CrmTimelineContractRow,
+): CrmOperationalTimelineEvent[] {
+  if (!contract.created_at || !contract.lead_id) {
+    return [];
+  }
+
+  return [
+    {
+      authorName: unknownAuthorName,
+      authorProfileId: contract.created_by,
+      description: formatContractDescription(contract),
+      id: createTimelineEventId(
+        "contract_created",
+        "contracts",
+        contract.id,
+      ),
+      leadId: contract.lead_id,
+      metadata: {
+        administratorId: contract.administrator_id,
+        clientId: contract.client_id,
+        commissionPlanId: contract.commission_plan_id,
+        contractId: contract.id,
+        creditAmount: normalizeNumber(contract.credit_amount) ?? 0,
+        source: "contract_operations",
+        status: contract.status ?? "draft",
+        type: "contract_created",
+      },
+      occurredAt: contract.created_at,
+      source: "contracts",
+      sourceId: contract.id,
+      title: "Contrato criado a partir do lead",
+      type: "contract_created",
+    },
+  ];
+}
+
 function sortTimelineEvents(events: CrmOperationalTimelineEvent[]) {
   return [...events].sort((left, right) => {
     const occurredDifference =
@@ -639,4 +732,30 @@ function normalizeText(value: string | null) {
 
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function formatContractDescription(contract: CrmTimelineContractRow) {
+  const parts = [
+    normalizeText(contract.contract_number)
+      ? `Contrato ${normalizeText(contract.contract_number)}`
+      : null,
+    `Status: ${contract.status ?? "draft"}`,
+    `Credito: ${normalizeNumber(contract.credit_amount) ?? 0}`,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.join(" - ");
+}
+
+function normalizeNumber(value: number | string | null) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 }

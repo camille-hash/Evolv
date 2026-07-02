@@ -2,6 +2,7 @@ export type CrmOperationalTimelineEventType =
   | "note_created"
   | "commercial_simulation_created"
   | "multi_cotas_created"
+  | "contract_created"
   | "task_created"
   | "task_completed"
   | "task_cancelled";
@@ -9,7 +10,8 @@ export type CrmOperationalTimelineEventType =
 export type CrmOperationalTimelineEventSource =
   | "crm_lead_notes"
   | "crm_lead_simulations"
-  | "crm_tasks";
+  | "crm_tasks"
+  | "contracts";
 
 export type CrmOperationalTimelineEvent = {
   authorName: string;

@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LeadContractsCard } from "@/components/crm/lead-contracts-card";
 import { PrimaryJourneyAction } from "@/components/crm/primary-journey-action";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import type { ConvertLeadToClientInput } from "@/modules/client-context";
@@ -84,6 +85,8 @@ import {
   buildFrictionMap,
 } from "@/modules/crm";
 import type { GeneratedProposalRecord } from "@/modules/proposal/proposal-history";
+import { fetchLeadContracts } from "@/modules/contracts/client";
+import type { LeadContractSummary } from "@/modules/contracts/types";
 import { generateMultiCotasCommercialPdf } from "@/modules/reports";
 import { cn } from "@/lib/utils";
 
@@ -247,6 +250,10 @@ export function CrmLeadDetail({
     leadId: string;
     simulations: CrmLeadSimulation[];
   } | null>(null);
+  const [contractsState, setContractsState] = useState<{
+    contracts: LeadContractSummary[];
+    leadId: string;
+  } | null>(null);
   const [strategicProfileState, setStrategicProfileState] = useState<{
     leadId: string;
     profile: CrmLeadProfile | null;
@@ -262,6 +269,7 @@ export function CrmLeadDetail({
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [isLoadingKnowledge, setIsLoadingKnowledge] = useState(false);
   const [isLoadingSimulations, setIsLoadingSimulations] = useState(false);
+  const [isLoadingContracts, setIsLoadingContracts] = useState(false);
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [isLoadingCommercialAttention, setIsLoadingCommercialAttention] =
     useState(false);
@@ -271,6 +279,7 @@ export function CrmLeadDetail({
   );
   const [taskActionError, setTaskActionError] = useState<string | null>(null);
   const [simulationsError, setSimulationsError] = useState<string | null>(null);
+  const [contractsError, setContractsError] = useState<string | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [commercialAttentionError, setCommercialAttentionError] = useState<
     string | null
@@ -309,6 +318,8 @@ export function CrmLeadDetail({
         : [],
     [lead.id, simulationsState],
   );
+  const leadContracts =
+    contractsState?.leadId === lead.id ? contractsState.contracts : [];
   const commercialSimulations = leadSimulations.filter(
     (simulation) => simulation.simulationType === "commercial",
   );
@@ -498,6 +509,50 @@ export function CrmLeadDetail({
     }
 
     void loadSimulations();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadContracts() {
+      setIsLoadingContracts(true);
+      setContractsError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setIsLoadingContracts(false);
+          setContractsError("Nao foi possivel carregar os contratos.");
+        }
+        return;
+      }
+
+      try {
+        const contracts = await fetchLeadContracts(accessToken, lead.id);
+
+        if (isActive) {
+          setContractsState({
+            contracts,
+            leadId: lead.id,
+          });
+        }
+      } catch {
+        if (isActive) {
+          setContractsError("Nao foi possivel carregar os contratos.");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingContracts(false);
+        }
+      }
+    }
+
+    void loadContracts();
 
     return () => {
       isActive = false;
@@ -1763,6 +1818,19 @@ export function CrmLeadDetail({
                 isLoading={isLoadingSimulations}
                 leadName={leadDisplayName}
                 simulations={multiCotasSimulations}
+              />
+            </ExecutiveDossierCard>
+
+            <ExecutiveDossierCard
+              description="Contratos persistidos originados deste lead."
+              eyebrow="Contract Operations"
+              title="Contratos"
+            >
+              <LeadContractsCard
+                contracts={leadContracts}
+                error={contractsError}
+                isLoading={isLoadingContracts}
+                leadId={lead.id}
               />
             </ExecutiveDossierCard>
           </div>
@@ -4612,6 +4680,7 @@ const timelineEventToneClassNames: Record<
   string
 > = {
   commercial_simulation_created: "border-l-4 border-l-violet-200",
+  contract_created: "border-l-4 border-l-emerald-300",
   multi_cotas_created: "border-l-4 border-l-teal-200",
   note_created: "border-l-4 border-l-sky-200",
   task_cancelled: "border-l-4 border-l-stone-300",
@@ -4624,6 +4693,7 @@ const timelineEventTypeLabels: Record<
   string
 > = {
   commercial_simulation_created: "Simulacao Comercial criada",
+  contract_created: "Contrato criado",
   multi_cotas_created: "Estudo Multi-Cotas criado",
   note_created: "Nota adicionada",
   task_cancelled: "Tarefa cancelada",
