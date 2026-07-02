@@ -786,6 +786,10 @@ export function CrmLeadDetail({
     });
   }
 
+  function handleGenerateLeadSimulation() {
+    onGenerateSimulation?.(lead);
+  }
+
   function updateStrategicProfileDraft(
     patch: Partial<StrategicProfileDraft>,
   ) {
@@ -1210,7 +1214,7 @@ export function CrmLeadDetail({
   return (
     <section className="grid gap-4">
       {onGenerateSimulation ? (
-        <PrimaryJourneyAction onClick={() => onGenerateSimulation(lead)} />
+        <PrimaryJourneyAction onClick={handleGenerateLeadSimulation} />
       ) : null}
 
       <section className="executive-surface rounded-md p-5 sm:p-6">
@@ -1733,7 +1737,7 @@ export function CrmLeadDetail({
                     </p>
                   </div>
                   <Button
-                    onClick={() => onGenerateSimulation(lead)}
+                    onClick={handleGenerateLeadSimulation}
                     type="button"
                     variant="secondary"
                   >

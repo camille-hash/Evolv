@@ -28,10 +28,14 @@ export function saveCrmLeadProposalContext(input: {
   };
 
   if (typeof window !== "undefined") {
-    window.sessionStorage.setItem(
-      CRM_LEAD_PROPOSAL_CONTEXT_KEY,
-      JSON.stringify(context),
-    );
+    try {
+      window.sessionStorage.setItem(
+        CRM_LEAD_PROPOSAL_CONTEXT_KEY,
+        JSON.stringify(context),
+      );
+    } catch {
+      // The in-memory context returned below is enough to continue the lead-bound flow.
+    }
   }
 
   return context;
