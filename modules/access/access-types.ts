@@ -6,6 +6,7 @@ export type AccessSection =
   | "client"
   | "presentation"
   | "multiCotas"
+  | "operations"
   | "portfolio"
   | "strategies"
   | "wealth"

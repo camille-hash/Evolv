@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   Brain,
   CalendarClock,
+  ClipboardList,
   FolderClock,
   Handshake,
   Landmark,
@@ -30,6 +31,7 @@ export type PlatformSection =
   | "client"
   | "presentation"
   | "multiCotas"
+  | "operations"
   | "portfolio"
   | "strategies"
   | "wealth"
@@ -41,12 +43,19 @@ export type PlatformSection =
 
 const navigationItems: Array<{
   key: PlatformSection;
+  href?: string;
   label: string;
   icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
 }> = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3 },
   { key: "crm", label: "CRM", icon: Handshake },
   { key: "client", label: "Cliente", icon: UserRound },
+  {
+    key: "operations",
+    href: "/operations",
+    label: "Operations",
+    icon: ClipboardList,
+  },
   { key: "presentation", label: "Simulacao Comercial", icon: Presentation },
   { key: "multiCotas", label: "Multi-Cotas", icon: Layers3 },
   { key: "portfolio", label: "Carteira", icon: BriefcaseBusiness },
@@ -133,7 +142,14 @@ export function AppSidebar({
                   : "border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-background/80 hover:text-foreground",
               )}
               key={item.key}
-              onClick={() => onNavigate(item.key)}
+              onClick={() => {
+                if (item.href) {
+                  window.location.assign(item.href);
+                  return;
+                }
+
+                onNavigate(item.key);
+              }}
               type="button"
             >
               <Icon className="h-4 w-4" aria-hidden />

@@ -65,7 +65,7 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   },
   client: {
     title: "Cliente atual",
-    subtitle: "Contexto comercial e patrimonial persistido neste navegador",
+    subtitle: "Cliente persistido, contratos vinculados e leitura operacional",
   },
   crm: {
     title: "CRM",
@@ -78,6 +78,10 @@ const pageTitles: Record<PlatformSection, { title: string; subtitle: string }> =
   multiCotas: {
     title: "Multi-Cotas",
     subtitle: "Simulacao de multiplas cartas com contemplacoes escalonadas",
+  },
+  operations: {
+    title: "Operations",
+    subtitle: "Workspace operacional para contratos, receita e portfolio",
   },
   portfolio: {
     title: "Carteira patrimonial",
@@ -136,10 +140,15 @@ export default function Home() {
     activeSection === "presentation" &&
     leadProposalContext?.intent === "simulation" &&
     canCurrentUserGenerateLeadBoundCommercialSimulation;
+  const canViewConvertedClient =
+    activeSection === "client" &&
+    Boolean(clientContext.nome.trim()) &&
+    Boolean(currentUser && canAccessSection(currentUser.role, "crm"));
   const visibleActiveSection =
     currentUser &&
     (canAccessSection(currentUser.role, activeSection as AccessSection) ||
-      canViewLeadBoundCommercialSimulation)
+      canViewLeadBoundCommercialSimulation ||
+      canViewConvertedClient)
       ? activeSection
       : "dashboard";
   const currentSimulatorPage = simulatorPageBySection[visibleActiveSection];

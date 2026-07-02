@@ -95,6 +95,7 @@ const adminSections: AccessSection[] = [
   "client",
   "presentation",
   "multiCotas",
+  "operations",
   "portfolio",
   "strategies",
   "wealth",
