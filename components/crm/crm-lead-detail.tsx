@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PrimaryJourneyAction } from "@/components/crm/primary-journey-action";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import type { ConvertLeadToClientInput } from "@/modules/client-context";
 import type { CommercialAttentionProductDecision } from "@/modules/decision-models/dm001-product-surface";
@@ -1188,6 +1189,10 @@ export function CrmLeadDetail({
 
   return (
     <section className="grid gap-4">
+      {onGenerateSimulation ? (
+        <PrimaryJourneyAction onClick={() => onGenerateSimulation(lead)} />
+      ) : null}
+
       <section className="executive-surface rounded-md p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
