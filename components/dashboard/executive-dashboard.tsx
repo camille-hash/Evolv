@@ -261,7 +261,7 @@ export function ExecutiveDashboard({
             type="button"
           >
             <Plus className="h-4 w-4" aria-hidden />
-            Criar simulacao
+            Criar lead para simular
           </button>
           <button
             className="inline-flex h-11 w-fit items-center justify-center rounded-md border border-primary-foreground/18 bg-primary-foreground/8 px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-foreground/14"

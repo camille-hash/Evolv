@@ -517,6 +517,7 @@ export function CrmPage({
         onClearFeedbackMessage={() => setSuccessMessage(null)}
         onConvertToClient={onConvertToClient}
         onDraftChange={setDraft}
+        onGenerateSimulation={onGenerateSimulation}
         onSave={handleSaveSelectedLead}
         proposals={[]}
       />

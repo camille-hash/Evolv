@@ -152,6 +152,7 @@ type CrmLeadDetailProps = {
   onClearFeedbackMessage?: () => void;
   onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
   onDraftChange: (draft: CrmLeadInput) => void;
+  onGenerateSimulation?: (lead: CrmLead) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   proposals: GeneratedProposalRecord[];
 };
@@ -164,6 +165,7 @@ export function CrmLeadDetail({
   onClearFeedbackMessage,
   onConvertToClient,
   onDraftChange,
+  onGenerateSimulation,
   onSave,
   proposals,
 }: CrmLeadDetailProps) {
@@ -1695,6 +1697,26 @@ export function CrmLeadDetail({
               eyebrow="Simulacoes"
               title="Simulacoes Salvas"
             >
+              {onGenerateSimulation ? (
+                <div className="mb-4 flex flex-col gap-3 rounded-md border bg-background/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Criar Simulacao Comercial
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Abre a simulacao com este lead como contexto obrigatório.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => onGenerateSimulation(lead)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Criar Simulacao Comercial
+                  </Button>
+                </div>
+              ) : null}
               <LeadSimulationHistoryList
                 error={simulationsError}
                 isLoading={isLoadingSimulations}

@@ -15,7 +15,6 @@ import {
 import { ClientPage } from "@/components/client/client-page";
 import { CrmPage } from "@/components/crm/crm-page";
 import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
-import { ClientPresentationPage } from "@/components/presentation/client-presentation-page";
 import { FollowUpPage } from "@/components/followup/followup-page";
 import { MultiCotasPage } from "@/components/multi-cotas/multi-cotas-page";
 import { PortfolioPage } from "@/components/portfolio/portfolio-page";
@@ -53,7 +52,6 @@ import {
 const simulatorPageBySection: Partial<Record<PlatformSection, SimulatorPanelPage>> = {
   wealth: "journey",
   intelligence: "intelligence",
-  history: "saved",
 };
 
 const inactivityTimeoutMs = 60 * 60 * 1000;
@@ -323,7 +321,7 @@ export default function Home() {
         {visibleActiveSection === "dashboard" ? (
           <ExecutiveDashboard
             clientContext={clientContext}
-            onCreateSimulation={() => handleNavigate("presentation")}
+            onCreateSimulation={() => handleNavigate("crm")}
           />
         ) : null}
 
@@ -360,7 +358,7 @@ export default function Home() {
               onClearLeadProposalContext={handleClearLeadProposalContext}
             />
           ) : (
-            <ClientPresentationPage />
+            <LeadBoundSimulationGuidance onOpenCrm={() => handleNavigate("crm")} />
           )
         ) : null}
 
@@ -382,6 +380,10 @@ export default function Home() {
         {visibleActiveSection === "roadmap" ? <RoadmapPage /> : null}
 
         {visibleActiveSection === "followup" ? <FollowUpPage /> : null}
+
+        {visibleActiveSection === "history" ? (
+          <LeadBoundSimulationGuidance onOpenCrm={() => handleNavigate("crm")} />
+        ) : null}
 
         {visibleActiveSection === "settings" ? <AccessSettingsPage /> : null}
 
@@ -421,5 +423,32 @@ export default function Home() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function LeadBoundSimulationGuidance({
+  onOpenCrm,
+}: {
+  onOpenCrm: () => void;
+}) {
+  return (
+    <section className="executive-surface rounded-md p-5 text-card-foreground sm:p-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        Simulacao vinculada ao lead
+      </p>
+      <h2 className="mt-3 text-2xl font-semibold text-foreground">
+        Crie ou selecione um lead antes de simular.
+      </h2>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+        Toda Simulacao Comercial do EVOLV deve nascer no Dossie de um lead. Se o
+        contato nao veio de uma integracao, adicione o lead manualmente no CRM e
+        depois acesse a aba Simulacoes para criar a simulacao.
+      </p>
+      <div className="mt-5">
+        <Button onClick={onOpenCrm} type="button">
+          Ir para o CRM
+        </Button>
+      </div>
+    </section>
   );
 }
