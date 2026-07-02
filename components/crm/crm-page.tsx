@@ -1869,6 +1869,7 @@ function OperationalKanban({
                     ? leads.filter((lead) => lead.status === column.status)
                     : leads.filter(
                         (lead) =>
+                          lead.status === "ativa" &&
                           isLeadInGroup(lead, column.group ?? group) &&
                           normalizeKey(lead.etapa) === normalizeKey(column.stage),
                       );
