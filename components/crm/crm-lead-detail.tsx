@@ -14,6 +14,10 @@ import { Button } from "@/components/ui/button";
 import { PrimaryJourneyAction } from "@/components/crm/primary-journey-action";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
 import type { ConvertLeadToClientInput } from "@/modules/client-context";
+import {
+  buildDualPipelineSnapshot,
+  buildRevenueRecognitionSnapshot,
+} from "@/modules/crm-domain";
 import type { CommercialAttentionProductDecision } from "@/modules/decision-models/dm001-product-surface";
 import {
   archiveCrmLeadKnowledgeItem,
@@ -144,6 +148,20 @@ type DossierTabKey =
   | "communications"
   | "meetings"
   | "calls";
+
+function canLeadConvertToClientByBusinessState(lead: CrmLead) {
+  const pipelineSnapshot = buildDualPipelineSnapshot(lead);
+  const revenueSnapshot = buildRevenueRecognitionSnapshot(lead);
+
+  return (
+    lead.status === "ganha" ||
+    revenueSnapshot.status === "recognized" ||
+    Boolean(revenueSnapshot.salesClosedAt) ||
+    pipelineSnapshot.stageDomain === "venda_concluida" ||
+    pipelineSnapshot.stageDomain === "primeiro_boleto_pago" ||
+    pipelineSnapshot.stageDomain === "aprovacao_administradora"
+  );
+}
 
 type CrmLeadDetailProps = {
   draft: CrmLeadInput;
@@ -346,8 +364,10 @@ export function CrmLeadDetail({
     lead.produtoInteresse ||
     lead.tituloOportunidade ||
     currencyFormatter.format(lead.valorPretendido);
+  const canLeadConvertByBusinessState =
+    canLeadConvertToClientByBusinessState(lead);
   const canConvertToClient =
-    lead.status === "ganha" &&
+    canLeadConvertByBusinessState &&
     !isLoadingStrategicProfile &&
     !isLoadingSimulations &&
     Boolean(onConvertToClient);
@@ -745,7 +765,7 @@ export function CrmLeadDetail({
   }
 
   async function handleConvertToClient() {
-    if (!onConvertToClient || lead.status !== "ganha") {
+    if (!onConvertToClient || !canLeadConvertByBusinessState) {
       return;
     }
 
@@ -1231,7 +1251,7 @@ export function CrmLeadDetail({
           </div>
 
           <div className="flex flex-wrap justify-end gap-3">
-            {lead.status === "ganha" ? (
+            {canLeadConvertByBusinessState ? (
               <Button
                 disabled={!canConvertToClient}
                 onClick={handleConvertToClient}
