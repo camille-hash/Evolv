@@ -76,7 +76,15 @@ function logLeadConversionRouteDebug(
   stage: string,
   payload: Record<string, unknown>,
 ) {
-  console.info("[EVOLV clients] convert-to-client route", {
+  if (stage === "caught_exception") {
+    console.error("[EVOLV clients]", {
+      ...payload,
+      stage,
+    });
+    return;
+  }
+
+  console.info("[EVOLV clients]", {
     ...payload,
     stage,
   });

@@ -1,9 +1,15 @@
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import type { OperationsContractsResponse } from "./contracts-types";
 
-export async function fetchOperationsContracts(accessToken: string) {
+export async function fetchOperationsContracts(accessToken?: string | null) {
+  const resolvedAccessToken =
+    accessToken ??
+    (await requireSupabaseAccessToken(
+      "Sessao invalida para carregar os contratos operacionais.",
+    ));
   const response = await fetch("/api/operations/contracts", {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
     },
   });
 

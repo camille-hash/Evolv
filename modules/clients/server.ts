@@ -63,11 +63,11 @@ type RequestContext = {
 
 export type ClientListResult =
   | { clients: ClientListItem[]; ok: true }
-  | { error: string; ok: false; status: number };
+  | { details?: unknown; error: string; ok: false; status: number };
 
 export type ClientDetailResult =
   | ({ ok: true } & ClientDetailResponse)
-  | { error: string; ok: false; status: number };
+  | { details?: unknown; error: string; ok: false; status: number };
 
 export type LeadClientConversionResult =
   | ({ ok: true } & LeadClientConversion)
@@ -113,6 +113,13 @@ export async function listClients(
   }
 
   const normalizedFilters = normalizeClientListFilters(filters);
+  logClientReadDebug("query_payload", {
+    filters: normalizedFilters,
+    organizationId: context.profile.organization_id,
+    route: "GET /api/clients",
+    table: "clients",
+  });
+
   let query = context.supabase
     .from("clients")
     .select(clientColumns)
@@ -139,8 +146,16 @@ export async function listClients(
     normalizedFilters.offset + normalizedFilters.limit - 1,
   );
 
+  logClientReadDebug("query_result", {
+    error: formatSupabaseDebugError(error),
+    found: Array.isArray(data) && data.length > 0,
+    route: "GET /api/clients",
+    rows: Array.isArray(data) ? data.length : null,
+  });
+
   if (error) {
     return {
+      details: formatSupabaseDebugError(error),
       error: "Nao foi possivel carregar os clientes.",
       ok: false,
       status: 500,
@@ -154,10 +169,6 @@ export async function listClients(
     context,
     clients.map((client) => client.id),
   );
-
-  if (!contractsByClientId.ok) {
-    return contractsByClientId;
-  }
 
   return {
     clients: clients.map((client) =>
@@ -185,14 +196,31 @@ export async function getClientById(
     return context;
   }
 
+  logClientReadDebug("query_payload", {
+    clientId,
+    organizationId: context.profile.organization_id,
+    route: "GET /api/clients/[id]",
+    table: "clients",
+  });
+
   const { data, error } = await context.supabase
     .from("clients")
     .select(clientColumns)
     .eq("id", clientId)
+    .eq("organization_id", context.profile.organization_id)
     .maybeSingle<ClientRow>();
+
+  logClientReadDebug("query_result", {
+    clientId: data?.id ?? null,
+    error: formatSupabaseDebugError(error),
+    found: Boolean(data),
+    organizationId: data?.organization_id ?? null,
+    route: "GET /api/clients/[id]",
+  });
 
   if (error || !data?.organization_id) {
     return {
+      details: formatSupabaseDebugError(error),
       error: "Cliente nao encontrado.",
       ok: false,
       status: 404,
@@ -208,10 +236,6 @@ export async function getClientById(
   }
 
   const contractsResult = await listContractsForClient(context, data.id);
-
-  if (!contractsResult.ok) {
-    return contractsResult;
-  }
 
   const contracts = contractsResult.contracts.map(mapClientContract);
 
@@ -250,13 +274,6 @@ export async function convertLeadToClient(
     return context;
   }
 
-  logClientConversionDebug("profile", {
-    organizationId: context.profile.organization_id,
-    profileId: context.profile.id,
-    role: context.profile.role,
-    userId: context.user.id,
-  });
-
   const leadResult = await getLeadFromCurrentOrganization(context, leadId);
 
   if (!leadResult.ok) {
@@ -266,14 +283,6 @@ export async function convertLeadToClient(
     });
     return leadResult;
   }
-
-  logClientConversionDebug("lead_lookup", {
-    hasEmail: Boolean(leadResult.lead.email),
-    hasName: Boolean(leadResult.lead.nome),
-    hasPhone: Boolean(leadResult.lead.telefone),
-    leadId: leadResult.lead.id,
-    organizationId: leadResult.lead.organization_id,
-  });
 
   const existingClient = await findExistingClientForLead(context, leadResult.lead);
 
@@ -285,7 +294,7 @@ export async function convertLeadToClient(
     return existingClient;
   }
 
-  logClientConversionDebug("existing_client_lookup", {
+  logClientConversionDebug("existing_client_lookup_result", {
     clientId: existingClient.client?.id ?? null,
     found: Boolean(existingClient.client),
   });
@@ -363,7 +372,9 @@ async function resolveClientRequestContext(accessToken: string | null) {
   if (!accessToken) {
     logClientConversionDebug("session_resolved", {
       hasAccessToken: false,
+      hasSession: false,
       ok: false,
+      userId: null,
     });
 
     return {
@@ -379,9 +390,10 @@ async function resolveClientRequestContext(accessToken: string | null) {
       await supabase.auth.getUser(accessToken);
 
     logClientConversionDebug("session_resolved", {
-      authenticatedUserId: userData.user?.id ?? null,
+      hasSession: Boolean(userData.user && !userError),
       error: formatSupabaseDebugError(userError),
       ok: Boolean(userData.user && !userError),
+      userId: userData.user?.id ?? null,
     });
 
     if (userError || !userData.user) {
@@ -455,10 +467,15 @@ async function listContractsGroupedByClient(
     .in("client_id", clientIds);
 
   if (error) {
+    logClientReadDebug("contracts_enrichment_error", {
+      clientIds,
+      error: formatSupabaseDebugError(error),
+      route: "GET /api/clients",
+    });
+
     return {
-      error: "Nao foi possivel carregar os contratos dos clientes.",
-      ok: false as const,
-      status: 500,
+      contracts: contractsByClientId,
+      ok: true as const,
     };
   }
 
@@ -496,10 +513,15 @@ async function listContractsForClient(
     .order("created_at", { ascending: false });
 
   if (error) {
+    logClientReadDebug("contracts_enrichment_error", {
+      clientId,
+      error: formatSupabaseDebugError(error),
+      route: "GET /api/clients/[id]",
+    });
+
     return {
-      error: "Nao foi possivel carregar os contratos do cliente.",
-      ok: false as const,
-      status: 500,
+      contracts: [] as ClientContractRow[],
+      ok: true as const,
     };
   }
 
@@ -639,7 +661,7 @@ async function getLeadFromCurrentOrganization(
 
   logClientConversionDebug("lead_lookup_result", {
     error: formatSupabaseDebugError(error),
-    hasData: Boolean(data),
+    found: Boolean(data),
     leadId: data?.id ?? null,
     organizationId: data?.organization_id ?? null,
   });
@@ -691,7 +713,7 @@ async function findExistingClientForLead(context: RequestContext, lead: LeadRow)
     .order("updated_at", { ascending: false })
     .limit(1);
 
-  logClientConversionDebug("existing_client_lookup_result", {
+  logClientConversionDebug("existing_client_lookup_query_result", {
     error: formatSupabaseDebugError(error),
     rows: Array.isArray(data) ? data.length : null,
   });
@@ -715,30 +737,32 @@ async function findExistingClientForLead(context: RequestContext, lead: LeadRow)
 }
 
 async function createClientFromLead(context: RequestContext, lead: LeadRow) {
+  const payload = {
+    email: normalizeNullableText(lead.email),
+    name: normalizeNullableText(lead.nome) ?? "Cliente sem nome",
+    organization_id: context.profile.organization_id,
+    phone: normalizeNullableText(lead.telefone),
+    status: "active",
+    created_by: context.profile.id,
+    updated_by: context.profile.id,
+  };
+
   logClientConversionDebug("insert_attempt", {
     leadId: lead.id,
     organizationId: context.profile.organization_id,
-    profileId: context.profile.id,
+    payload,
   });
 
   const { data, error } = await context.supabase
     .from("clients")
-    .insert({
-      email: normalizeNullableText(lead.email),
-      name: normalizeNullableText(lead.nome) ?? "Cliente sem nome",
-      organization_id: context.profile.organization_id,
-      owner_profile_id: context.profile.id,
-      phone: normalizeNullableText(lead.telefone),
-      status: "active",
-    })
+    .insert(payload)
     .select(clientColumns)
     .single<ClientRow>();
 
   if (error || !data?.organization_id) {
     logClientConversionDebug("insert_result", {
-      error: formatSupabaseDebugError(error),
-      hasData: Boolean(data),
-      organizationId: data?.organization_id ?? null,
+      data,
+      error,
     });
 
     return {
@@ -757,8 +781,8 @@ async function createClientFromLead(context: RequestContext, lead: LeadRow) {
   }
 
   logClientConversionDebug("insert_result", {
-    clientId: data.id,
-    organizationId: data.organization_id,
+    data,
+    error,
   });
 
   return {
@@ -783,6 +807,7 @@ async function updateClientFromLead(
       phone:
         normalizeNullableText(client.phone) ?? normalizeNullableText(lead.telefone),
       status: normalizeNullableText(client.status) ?? "active",
+      updated_by: context.profile.id,
     })
     .eq("id", client.id)
     .eq("organization_id", context.profile.organization_id)
@@ -861,11 +886,25 @@ function logClientConversionDebug(
   stage: string,
   payload: Record<string, unknown>,
 ) {
+  const logPayload = {
+    ...payload,
+    stage,
+  };
+
+  if (stage === "caught_exception") {
+    console.error("[EVOLV clients]", logPayload);
+    return;
+  }
+
+  console.info("[EVOLV clients]", logPayload);
+}
+
+function logClientReadDebug(stage: string, payload: Record<string, unknown>) {
   if (process.env.NODE_ENV === "production") {
     return;
   }
 
-  console.info("[EVOLV clients] lead conversion", {
+  console.info("[EVOLV clients]", {
     ...payload,
     stage,
   });

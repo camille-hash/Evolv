@@ -1,3 +1,4 @@
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import type {
   ExpectedRevenueInput,
   RevenueEntry,
@@ -6,16 +7,17 @@ import type {
 } from "./types";
 
 export async function generateContractRevenue(
-  accessToken: string,
+  accessToken: string | null | undefined,
   contractId: string,
   mode: RevenueGenerationMode = "create_missing",
 ) {
+  const resolvedAccessToken = await requireRevenueAccessToken(accessToken);
   const response = await fetch(
     `/api/contracts/${encodeURIComponent(contractId)}/generate-revenue`,
     {
       body: JSON.stringify({ mode }),
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
         "Content-Type": "application/json",
       },
       method: "POST",
@@ -38,14 +40,15 @@ export async function generateContractRevenue(
 }
 
 export async function fetchContractRevenue(
-  accessToken: string,
+  accessToken: string | null | undefined,
   contractId: string,
 ) {
+  const resolvedAccessToken = await requireRevenueAccessToken(accessToken);
   const response = await fetch(
     `/api/contracts/${encodeURIComponent(contractId)}/revenue`,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
       },
     },
   );
@@ -62,12 +65,16 @@ export async function fetchContractRevenue(
   return payload.revenueEntries;
 }
 
-export async function fetchClientRevenue(accessToken: string, clientId: string) {
+export async function fetchClientRevenue(
+  accessToken: string | null | undefined,
+  clientId: string,
+) {
+  const resolvedAccessToken = await requireRevenueAccessToken(accessToken);
   const response = await fetch(
     `/api/clients/${encodeURIComponent(clientId)}/revenue`,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
       },
     },
   );
@@ -85,16 +92,17 @@ export async function fetchClientRevenue(accessToken: string, clientId: string) 
 }
 
 export async function createExpectedContractRevenue(
-  accessToken: string,
+  accessToken: string | null | undefined,
   contractId: string,
   input: ExpectedRevenueInput,
 ) {
+  const resolvedAccessToken = await requireRevenueAccessToken(accessToken);
   const response = await fetch(
     `/api/contracts/${encodeURIComponent(contractId)}/expected-revenue`,
     {
       body: JSON.stringify(input),
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
         "Content-Type": "application/json",
       },
       method: "POST",
@@ -113,4 +121,10 @@ export async function createExpectedContractRevenue(
   }
 
   return payload.revenueEntry;
+}
+
+function requireRevenueAccessToken(accessToken: string | null | undefined) {
+  return accessToken
+    ? Promise.resolve(accessToken)
+    : requireSupabaseAccessToken("Sessao invalida para acessar receitas.");
 }

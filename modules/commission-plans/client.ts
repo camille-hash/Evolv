@@ -1,3 +1,4 @@
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import type {
   CommissionPlan,
   CommissionPlanCreateInput,
@@ -6,14 +7,15 @@ import type {
 } from "./types";
 
 export async function fetchCommissionPlans(
-  accessToken: string,
+  accessToken: string | null | undefined,
   filters: CommissionPlanListFilters = {},
 ) {
+  const resolvedAccessToken = await requireCommissionPlansAccessToken(accessToken);
   const response = await fetch(
     `/api/commission-plans?${createCommissionPlanQuery(filters)}`,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
       },
     },
   );
@@ -33,14 +35,15 @@ export async function fetchCommissionPlans(
 }
 
 export async function fetchCommissionPlan(
-  accessToken: string,
+  accessToken: string | null | undefined,
   commissionPlanId: string,
 ) {
+  const resolvedAccessToken = await requireCommissionPlansAccessToken(accessToken);
   const response = await fetch(
     `/api/commission-plans/${encodeURIComponent(commissionPlanId)}`,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
       },
     },
   );
@@ -60,13 +63,14 @@ export async function fetchCommissionPlan(
 }
 
 export async function createCommissionPlan(
-  accessToken: string,
+  accessToken: string | null | undefined,
   input: CommissionPlanCreateInput,
 ) {
+  const resolvedAccessToken = await requireCommissionPlansAccessToken(accessToken);
   const response = await fetch("/api/commission-plans", {
     body: JSON.stringify(input),
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
       "Content-Type": "application/json",
     },
     method: "POST",
@@ -87,16 +91,17 @@ export async function createCommissionPlan(
 }
 
 export async function updateCommissionPlan(
-  accessToken: string,
+  accessToken: string | null | undefined,
   commissionPlanId: string,
   input: CommissionPlanUpdateInput,
 ) {
+  const resolvedAccessToken = await requireCommissionPlansAccessToken(accessToken);
   const response = await fetch(
     `/api/commission-plans/${encodeURIComponent(commissionPlanId)}`,
     {
       body: JSON.stringify(input),
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
         "Content-Type": "application/json",
       },
       method: "PATCH",
@@ -115,6 +120,16 @@ export async function updateCommissionPlan(
   }
 
   return payload.commissionPlan;
+}
+
+function requireCommissionPlansAccessToken(
+  accessToken: string | null | undefined,
+) {
+  return accessToken
+    ? Promise.resolve(accessToken)
+    : requireSupabaseAccessToken(
+        "Sessao invalida para acessar planos de comissao.",
+      );
 }
 
 function createCommissionPlanQuery(filters: CommissionPlanListFilters) {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { fetchOperationsRevenue } from "@/modules/operations/revenue-client";
 import type { OperationsRevenueResponse } from "@/modules/operations/revenue-types";
 import { OperationalEmptyState } from "../operational-empty-state";
@@ -21,25 +20,19 @@ export function OperationsRevenuePage() {
       setIsLoading(true);
       setError(null);
 
-      const accessToken = await readSupabaseAccessToken();
-
-      if (!accessToken) {
-        if (isActive) {
-          setError("Nao foi possivel carregar as receitas operacionais.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
-        const loadedRevenue = await fetchOperationsRevenue(accessToken);
+        const loadedRevenue = await fetchOperationsRevenue();
 
         if (isActive) {
           setRevenueResponse(loadedRevenue);
         }
-      } catch {
+      } catch (error) {
         if (isActive) {
-          setError("Nao foi possivel carregar as receitas operacionais.");
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel carregar as receitas operacionais.",
+          );
         }
       } finally {
         if (isActive) {
@@ -97,30 +90,4 @@ export function OperationsRevenuePage() {
       <OperationsRevenueList entries={entries} />
     </div>
   );
-}
-
-async function readSupabaseAccessToken() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
-    return null;
-  }
-
-  return data.session.access_token;
 }

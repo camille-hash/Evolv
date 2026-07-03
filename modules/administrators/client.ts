@@ -1,3 +1,4 @@
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import type {
   Administrator,
   AdministratorCreateInput,
@@ -6,14 +7,15 @@ import type {
 } from "./types";
 
 export async function fetchAdministrators(
-  accessToken: string,
+  accessToken: string | null | undefined,
   filters: AdministratorListFilters = {},
 ) {
+  const resolvedAccessToken = await requireAdministratorsAccessToken(accessToken);
   const response = await fetch(
     `/api/administrators?${createAdministratorQuery(filters)}`,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
       },
     },
   );
@@ -33,14 +35,15 @@ export async function fetchAdministrators(
 }
 
 export async function fetchAdministrator(
-  accessToken: string,
+  accessToken: string | null | undefined,
   administratorId: string,
 ) {
+  const resolvedAccessToken = await requireAdministratorsAccessToken(accessToken);
   const response = await fetch(
     `/api/administrators/${encodeURIComponent(administratorId)}`,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
       },
     },
   );
@@ -60,13 +63,14 @@ export async function fetchAdministrator(
 }
 
 export async function createAdministrator(
-  accessToken: string,
+  accessToken: string | null | undefined,
   input: AdministratorCreateInput,
 ) {
+  const resolvedAccessToken = await requireAdministratorsAccessToken(accessToken);
   const response = await fetch("/api/administrators", {
     body: JSON.stringify(input),
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
       "Content-Type": "application/json",
     },
     method: "POST",
@@ -87,16 +91,17 @@ export async function createAdministrator(
 }
 
 export async function updateAdministrator(
-  accessToken: string,
+  accessToken: string | null | undefined,
   administratorId: string,
   input: AdministratorUpdateInput,
 ) {
+  const resolvedAccessToken = await requireAdministratorsAccessToken(accessToken);
   const response = await fetch(
     `/api/administrators/${encodeURIComponent(administratorId)}`,
     {
       body: JSON.stringify(input),
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
         "Content-Type": "application/json",
       },
       method: "PATCH",
@@ -115,6 +120,16 @@ export async function updateAdministrator(
   }
 
   return payload.administrator;
+}
+
+function requireAdministratorsAccessToken(
+  accessToken: string | null | undefined,
+) {
+  return accessToken
+    ? Promise.resolve(accessToken)
+    : requireSupabaseAccessToken(
+        "Sessao invalida para acessar administradoras.",
+      );
 }
 
 function createAdministratorQuery(filters: AdministratorListFilters) {

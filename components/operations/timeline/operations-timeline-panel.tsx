@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { fetchOperationsTimeline } from "@/modules/operations/timeline-client";
 import type { OperationsTimelineResponse } from "@/modules/operations/timeline-types";
 import { OperationalEmptyState } from "../operational-empty-state";
@@ -21,25 +20,19 @@ export function OperationsTimelinePanel() {
       setIsLoading(true);
       setError(null);
 
-      const accessToken = await readSupabaseAccessToken();
-
-      if (!accessToken) {
-        if (isActive) {
-          setError("Nao foi possivel carregar a timeline operacional.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
-        const loadedTimeline = await fetchOperationsTimeline(accessToken);
+        const loadedTimeline = await fetchOperationsTimeline();
 
         if (isActive) {
           setTimeline(loadedTimeline);
         }
-      } catch {
+      } catch (error) {
         if (isActive) {
-          setError("Nao foi possivel carregar a timeline operacional.");
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel carregar a timeline operacional.",
+          );
         }
       } finally {
         if (isActive) {
@@ -84,30 +77,4 @@ export function OperationsTimelinePanel() {
       </div>
     </section>
   );
-}
-
-async function readSupabaseAccessToken() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
-    return null;
-  }
-
-  return data.session.access_token;
 }

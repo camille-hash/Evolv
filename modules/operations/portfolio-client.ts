@@ -1,9 +1,15 @@
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import type { OperationsPortfolioResponse } from "./portfolio-types";
 
-export async function fetchOperationsPortfolio(accessToken: string) {
+export async function fetchOperationsPortfolio(accessToken?: string | null) {
+  const resolvedAccessToken =
+    accessToken ??
+    (await requireSupabaseAccessToken(
+      "Sessao invalida para carregar a carteira operacional.",
+    ));
   const response = await fetch("/api/operations/portfolio", {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
     },
   });
 

@@ -1,9 +1,15 @@
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import type { OperationsTimelineResponse } from "./timeline-types";
 
-export async function fetchOperationsTimeline(accessToken: string) {
+export async function fetchOperationsTimeline(accessToken?: string | null) {
+  const resolvedAccessToken =
+    accessToken ??
+    (await requireSupabaseAccessToken(
+      "Sessao invalida para carregar a timeline operacional.",
+    ));
   const response = await fetch("/api/operations/timeline", {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
     },
   });
 

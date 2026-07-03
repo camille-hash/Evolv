@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { fetchOperationsSummary } from "@/modules/operations/client";
 import type { OperationsSummary } from "@/modules/operations/types";
 import { OperationalEmptyState } from "./operational-empty-state";
@@ -25,25 +24,19 @@ export function OperationsOverviewPage() {
       setIsLoading(true);
       setError(null);
 
-      const accessToken = await readSupabaseAccessToken();
-
-      if (!accessToken) {
-        if (isActive) {
-          setError("Sessao invalida para carregar a operacao.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
-        const loadedSummary = await fetchOperationsSummary(accessToken);
+        const loadedSummary = await fetchOperationsSummary();
 
         if (isActive) {
           setSummary(loadedSummary);
         }
-      } catch {
+      } catch (error) {
         if (isActive) {
-          setError("Nao foi possivel carregar a operacao.");
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel carregar a operacao.",
+          );
         }
       } finally {
         if (isActive) {
@@ -116,30 +109,4 @@ export function OperationsOverviewPage() {
       ) : null}
     </>
   );
-}
-
-async function readSupabaseAccessToken() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
-    return null;
-  }
-
-  return data.session.access_token;
 }

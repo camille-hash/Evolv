@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { readSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import {
   createAdministrator,
   fetchAdministrators,
@@ -131,7 +131,7 @@ export function ClientPage({
       if (!accessToken) {
         if (isActive) {
           setIsLoadingClients(false);
-          setClientsError("Nao foi possivel carregar os clientes.");
+          setClientsError("Sessao invalida para carregar os clientes.");
           onClientContextChange(emptyClientContext);
         }
         return;
@@ -164,9 +164,9 @@ export function ClientPage({
           setSelectedClientDetail(null);
           onClientContextChange(emptyClientContext);
         }
-      } catch {
+      } catch (error) {
         if (isActive) {
-          setClientsError("Nao foi possivel carregar os clientes.");
+          setClientsError(resolveClientPageError(error, "Nao foi possivel carregar os clientes."));
           onClientContextChange(emptyClientContext);
         }
       } finally {
@@ -200,7 +200,7 @@ export function ClientPage({
       if (!accessToken) {
         if (isActive) {
           setIsLoadingDetail(false);
-          setDetailError("Nao foi possivel carregar o cliente.");
+          setDetailError("Sessao invalida para carregar o cliente.");
           onClientContextChange(emptyClientContext);
         }
         return;
@@ -213,9 +213,9 @@ export function ClientPage({
           setSelectedClientDetail(detail);
           onClientContextChange(toClientContext(detail));
         }
-      } catch {
+      } catch (error) {
         if (isActive) {
-          setDetailError("Nao foi possivel carregar o cliente.");
+          setDetailError(resolveClientPageError(error, "Nao foi possivel carregar o cliente."));
           onClientContextChange(emptyClientContext);
         }
       } finally {
@@ -1017,32 +1017,6 @@ function ClientSummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-async function readSupabaseAccessToken() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
-    return null;
-  }
-
-  return data.session.access_token;
-}
-
 function toClientContext(detail: ClientDetailResponse | null): ClientContext {
   if (!detail) {
     return emptyClientContext;
@@ -1057,6 +1031,12 @@ function toClientContext(detail: ClientDetailResponse | null): ClientContext {
       : "Cliente persistido sem contratos vinculados.",
     telefone: detail.client.phone ?? "",
   };
+}
+
+function resolveClientPageError(error: unknown, fallback: string) {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : fallback;
 }
 
 function formatDate(value: string) {

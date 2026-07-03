@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { fetchOperationsSummary } from "@/modules/operations/client";
 import type { OperationsSummary } from "@/modules/operations/types";
 import { OperationalEmptyState } from "./operational-empty-state";
@@ -20,25 +19,19 @@ export function OperationsAttentionPage() {
       setIsLoading(true);
       setError(null);
 
-      const accessToken = await readSupabaseAccessToken();
-
-      if (!accessToken) {
-        if (isActive) {
-          setError("Não foi possível carregar as pendências operacionais.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
-        const loadedSummary = await fetchOperationsSummary(accessToken);
+        const loadedSummary = await fetchOperationsSummary();
 
         if (isActive) {
           setSummary(loadedSummary);
         }
-      } catch {
+      } catch (loadError) {
         if (isActive) {
-          setError("Não foi possível carregar as pendências operacionais.");
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Nao foi possivel carregar as pendencias operacionais.",
+          );
         }
       } finally {
         if (isActive) {
@@ -57,8 +50,8 @@ export function OperationsAttentionPage() {
   if (isLoading) {
     return (
       <OperationalEmptyState
-        description="Carregando pendências operacionais..."
-        title="Pendências"
+        description="Carregando pendencias operacionais..."
+        title="Pendencias"
       />
     );
   }
@@ -76,10 +69,10 @@ export function OperationsAttentionPage() {
           Operational Attention
         </p>
         <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-          Pendências
+          Pendencias
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
-          Centralize pontos operacionais que exigem correção, validação ou
+          Centralize pontos operacionais que exigem correcao, validacao ou
           acompanhamento com base nos read models existentes.
         </p>
       </section>
@@ -88,30 +81,4 @@ export function OperationsAttentionPage() {
       <OperationsAttentionList items={attentionItems} />
     </div>
   );
-}
-
-async function readSupabaseAccessToken() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
-    return null;
-  }
-
-  return data.session.access_token;
 }

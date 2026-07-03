@@ -1,9 +1,15 @@
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import type { OperationsRevenueResponse } from "./revenue-types";
 
-export async function fetchOperationsRevenue(accessToken: string) {
+export async function fetchOperationsRevenue(accessToken?: string | null) {
+  const resolvedAccessToken =
+    accessToken ??
+    (await requireSupabaseAccessToken(
+      "Sessao invalida para carregar as receitas operacionais.",
+    ));
   const response = await fetch("/api/operations/revenue", {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
     },
   });
 

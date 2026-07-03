@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { fetchOperationsAdministrators } from "@/modules/operations/administrators-client";
 import type { OperationsAdministratorsResponse } from "@/modules/operations/administrators-types";
 import { OperationalEmptyState } from "../operational-empty-state";
@@ -21,26 +20,20 @@ export function OperationsAdministratorsPage() {
       setIsLoading(true);
       setError(null);
 
-      const accessToken = await readSupabaseAccessToken();
-
-      if (!accessToken) {
-        if (isActive) {
-          setError("Nao foi possivel carregar as administradoras operacionais.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
         const loadedAdministrators =
-          await fetchOperationsAdministrators(accessToken);
+          await fetchOperationsAdministrators();
 
         if (isActive) {
           setAdministratorsResponse(loadedAdministrators);
         }
-      } catch {
+      } catch (error) {
         if (isActive) {
-          setError("Nao foi possivel carregar as administradoras operacionais.");
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel carregar as administradoras operacionais.",
+          );
         }
       } finally {
         if (isActive) {
@@ -101,30 +94,4 @@ export function OperationsAdministratorsPage() {
       <OperationsAdministratorsList administrators={administrators} />
     </div>
   );
-}
-
-async function readSupabaseAccessToken() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
-    return null;
-  }
-
-  return data.session.access_token;
 }

@@ -4,14 +4,16 @@ import type {
   ClientListItem,
   LeadClientConversion,
 } from "./types";
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 
 export async function fetchClients(
-  accessToken: string,
+  accessToken?: string | null,
   filters: ClientListFilters = {},
 ) {
+  const resolvedAccessToken = await requireClientAccessToken(accessToken);
   const response = await fetch(`/api/clients?${createClientQuery(filters)}`, {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
     },
   });
 
@@ -27,10 +29,14 @@ export async function fetchClients(
   return payload.clients;
 }
 
-export async function fetchClientById(accessToken: string, clientId: string) {
+export async function fetchClientById(
+  accessToken: string | null | undefined,
+  clientId: string,
+) {
+  const resolvedAccessToken = await requireClientAccessToken(accessToken);
   const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}`, {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
     },
   });
 
@@ -46,14 +52,15 @@ export async function fetchClientById(accessToken: string, clientId: string) {
 }
 
 export async function convertLeadToPersistedClient(
-  accessToken: string,
+  accessToken: string | null | undefined,
   leadId: string,
 ) {
+  const resolvedAccessToken = await requireClientAccessToken(accessToken);
   const response = await fetch(
     `/api/crm/leads/${encodeURIComponent(leadId)}/convert-to-client`,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
       },
       method: "POST",
     },
@@ -68,6 +75,14 @@ export async function convertLeadToPersistedClient(
   }
 
   return payload as LeadClientConversion;
+}
+
+function requireClientAccessToken(accessToken: string | null | undefined) {
+  return accessToken
+    ? Promise.resolve(accessToken)
+    : requireSupabaseAccessToken(
+        "Sessao invalida para acessar clientes persistidos.",
+      );
 }
 
 function createClientQuery(filters: ClientListFilters) {

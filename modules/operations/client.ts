@@ -1,9 +1,11 @@
+import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import type { OperationsSummary } from "./types";
 
-export async function fetchOperationsSummary(accessToken: string) {
+export async function fetchOperationsSummary(accessToken?: string | null) {
+  const resolvedAccessToken = await requireOperationsAccessToken(accessToken);
   const response = await fetch("/api/operations/summary", {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${resolvedAccessToken}`,
     },
   });
 
@@ -19,4 +21,12 @@ export async function fetchOperationsSummary(accessToken: string) {
   }
 
   return payload.summary;
+}
+
+function requireOperationsAccessToken(accessToken: string | null | undefined) {
+  return accessToken
+    ? Promise.resolve(accessToken)
+    : requireSupabaseAccessToken(
+        "Sessao invalida para carregar a operacao.",
+      );
 }

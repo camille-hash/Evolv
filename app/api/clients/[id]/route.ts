@@ -9,14 +9,32 @@ type RouteContext = {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
+  logClientsRouteDebug("route_entered", {
+    clientId: id,
+    pathname: request.nextUrl.pathname,
+  });
+
   const result = await getClientById(readBearerToken(request), id);
 
   if (!result.ok) {
+    logClientsRouteDebug("returned_response", {
+      clientId: id,
+      error: result.error,
+      ok: false,
+      status: result.status,
+    });
+
     return NextResponse.json(
-      { error: result.error },
+      createErrorPayload(result.error, result.details),
       { status: result.status },
     );
   }
+
+  logClientsRouteDebug("returned_response", {
+    clientId: result.client.id,
+    ok: true,
+    status: 200,
+  });
 
   return NextResponse.json({
     client: result.client,
@@ -33,4 +51,23 @@ function readBearerToken(request: NextRequest) {
   }
 
   return authorization.slice("bearer ".length).trim() || null;
+}
+
+function createErrorPayload(error: string, details: unknown) {
+  if (process.env.NODE_ENV === "production") {
+    return { error };
+  }
+
+  return { details, error };
+}
+
+function logClientsRouteDebug(stage: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.info("[EVOLV clients]", {
+    ...payload,
+    stage,
+  });
 }

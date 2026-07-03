@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import {
   AppSidebar,
   type PlatformSection,
@@ -40,6 +39,7 @@ import {
 } from "@/modules/client-context";
 import { convertLeadToPersistedClient } from "@/modules/clients/client";
 import {
+  readSupabaseAccessToken,
   canAccessSection,
   clearCurrentUser,
   isSupabaseAuthEnabled,
@@ -492,32 +492,6 @@ export default function Home() {
       ) : null}
     </div>
   );
-}
-
-async function readSupabaseAccessToken() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
-    return null;
-  }
-
-  return data.session.access_token;
 }
 
 function LeadBoundSimulationGuidance({

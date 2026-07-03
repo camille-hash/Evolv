@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { fetchOperationsPortfolio } from "@/modules/operations/portfolio-client";
 import type { OperationsPortfolioResponse } from "@/modules/operations/portfolio-types";
 import { OperationalEmptyState } from "../operational-empty-state";
@@ -22,25 +21,19 @@ export function OperationsPortfolioPage() {
       setIsLoading(true);
       setError(null);
 
-      const accessToken = await readSupabaseAccessToken();
-
-      if (!accessToken) {
-        if (isActive) {
-          setError("Nao foi possivel carregar a carteira operacional.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
-        const loadedPortfolio = await fetchOperationsPortfolio(accessToken);
+        const loadedPortfolio = await fetchOperationsPortfolio();
 
         if (isActive) {
           setPortfolioResponse(loadedPortfolio);
         }
-      } catch {
+      } catch (error) {
         if (isActive) {
-          setError("Nao foi possivel carregar a carteira operacional.");
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel carregar a carteira operacional.",
+          );
         }
       } finally {
         if (isActive) {
@@ -122,30 +115,4 @@ export function OperationsPortfolioPage() {
       <OperationsPortfolioList contracts={contracts} />
     </div>
   );
-}
-
-async function readSupabaseAccessToken() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
-    return null;
-  }
-
-  return data.session.access_token;
 }
