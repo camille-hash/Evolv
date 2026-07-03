@@ -1,7 +1,11 @@
-import { getPortfolioSummary } from "@/modules/portfolio/server";
 import type { PortfolioSummaryResponse } from "@/modules/portfolio/types";
+import { listOperationsAdministrators } from "./administrators-server";
+import { listOperationsClients } from "./clients-server";
+import { listOperationsContracts } from "./contracts-server";
 import { buildOperationsHealthScore } from "./health-score";
 import { buildOperationalIntelligence } from "./intelligence";
+import { getOperationsPortfolio } from "./portfolio-server";
+import { listOperationsRevenue } from "./revenue-server";
 import type {
   OperationAttentionItem,
   OperationDrilldownCard,
@@ -24,19 +28,55 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 export async function getOperationsSummary(
   accessToken: string | null,
 ): Promise<OperationsSummaryResult> {
-  const portfolio = await getPortfolioSummary(accessToken);
+  const [
+    administratorsResult,
+    clientsResult,
+    contractsResult,
+    portfolioResult,
+    revenueResult,
+  ] = await Promise.all([
+    listOperationsAdministrators(accessToken),
+    listOperationsClients(accessToken),
+    listOperationsContracts(accessToken),
+    getOperationsPortfolio(accessToken),
+    listOperationsRevenue(accessToken),
+  ]);
 
-  if (!portfolio.ok) {
-    return portfolio;
+  if (!administratorsResult.ok) {
+    return administratorsResult;
   }
 
-  const portfolioSummary: PortfolioSummaryResponse = {
-    byAdministrator: portfolio.byAdministrator,
-    byStatus: portfolio.byStatus,
-    summary: portfolio.summary,
-    topClients: portfolio.topClients,
-  };
-  const attentionItems = buildAttentionItems(portfolioSummary);
+  if (!clientsResult.ok) {
+    return clientsResult;
+  }
+
+  if (!contractsResult.ok) {
+    return contractsResult;
+  }
+
+  if (!portfolioResult.ok) {
+    return portfolioResult;
+  }
+
+  if (!revenueResult.ok) {
+    return revenueResult;
+  }
+
+  const portfolioSummary = buildPortfolioSummaryResponse({
+    administrators: administratorsResult.administrators,
+    clients: clientsResult.clients,
+    contracts: contractsResult.contracts,
+    portfolio: portfolioResult,
+    revenue: revenueResult,
+  });
+  const attentionItems = buildAttentionItems({
+    administrators: administratorsResult,
+    clients: clientsResult,
+    contracts: contractsResult,
+    portfolio: portfolioResult,
+    portfolioSummary,
+    revenue: revenueResult,
+  });
   const healthStatus = resolveHealthStatus(attentionItems);
   const intelligence = buildOperationalIntelligence({
     attentionItems,
@@ -61,6 +101,141 @@ export async function getOperationsSummary(
       priorityBanner: intelligence.priorityBanner,
       snapshot: buildSnapshot(portfolioSummary, healthStatus),
     },
+  };
+}
+
+function buildPortfolioSummaryResponse(input: {
+  administrators: {
+    activeContractsCount: number;
+    contractsCount: number;
+    estimatedRevenue: number;
+    id: string;
+    name: string;
+    recognizedRevenue: number;
+    totalCreditValue: number;
+  }[];
+  clients: {
+    activeContractsCount: number;
+    contractsCount: number;
+    createdAt?: string;
+    estimatedRevenue: number;
+    id: string;
+    name: string;
+    recognizedRevenue: number;
+    totalCreditValue: number;
+    updatedAt?: string;
+  }[];
+  contracts: {
+    creditValue: number;
+    estimatedRevenue: number;
+    recognizedRevenue: number;
+    status: string;
+  }[];
+  portfolio: {
+    summary: {
+      totalPortfolioValue: number;
+    };
+  };
+  revenue: {
+    entries: {
+      expectedAmount: number;
+      recognizedAmount: number;
+      status: string;
+    }[];
+    summary: {
+      expectedRevenue: number;
+      pendingRevenue: number;
+      recognizedRevenue: number;
+    };
+  };
+}): PortfolioSummaryResponse {
+  const byStatus = new Map<
+    string,
+    { contractsCount: number; expectedRevenueAmount: number; totalCreditAmount: number }
+  >();
+
+  for (const contract of input.contracts) {
+    const status = contract.status || "unknown";
+    const current =
+      byStatus.get(status) ?? {
+        contractsCount: 0,
+        expectedRevenueAmount: 0,
+        totalCreditAmount: 0,
+      };
+
+    current.contractsCount += 1;
+    current.expectedRevenueAmount = roundCurrency(
+      current.expectedRevenueAmount + contract.estimatedRevenue,
+    );
+    current.totalCreditAmount = roundCurrency(
+      current.totalCreditAmount + contract.creditValue,
+    );
+    byStatus.set(status, current);
+  }
+
+  const cancelledRevenueAmount = input.revenue.entries
+    .filter((entry) => entry.status === "cancelled")
+    .reduce((total, entry) => total + entry.expectedAmount, 0);
+
+  return {
+    byAdministrator: input.administrators
+      .map((administrator) => ({
+        activeContractsCount: administrator.activeContractsCount,
+        administratorId: administrator.id,
+        administratorName: administrator.name,
+        contractsCount: administrator.contractsCount,
+        expectedRevenueAmount: administrator.estimatedRevenue,
+        paidRevenueAmount: administrator.recognizedRevenue,
+        totalCreditAmount: administrator.totalCreditValue,
+      }))
+      .sort((left, right) => right.totalCreditAmount - left.totalCreditAmount),
+    byStatus: Array.from(byStatus.entries())
+      .map(([status, summary]) => ({
+        contractsCount: summary.contractsCount,
+        expectedRevenueAmount: summary.expectedRevenueAmount,
+        status,
+        totalCreditAmount: summary.totalCreditAmount,
+      }))
+      .sort((left, right) => left.status.localeCompare(right.status)),
+    summary: {
+      activeContractsCount: input.contracts.filter(
+        (contract) => contract.status === "active",
+      ).length,
+      activeCreditAmount: roundCurrency(
+        input.contracts
+          .filter((contract) => contract.status === "active")
+          .reduce((total, contract) => total + contract.creditValue, 0),
+      ),
+      cancelledContractsCount: input.contracts.filter(
+        (contract) => contract.status === "cancelled",
+      ).length,
+      cancelledRevenueAmount: roundCurrency(cancelledRevenueAmount),
+      clientsCount: input.clients.length,
+      completedContractsCount: input.contracts.filter(
+        (contract) => contract.status === "completed",
+      ).length,
+      contractsCount: input.contracts.length,
+      draftContractsCount: input.contracts.filter(
+        (contract) => contract.status === "pending",
+      ).length,
+      expectedRevenueAmount: input.revenue.summary.expectedRevenue,
+      overdueRevenueAmount: 0,
+      paidRevenueAmount: input.revenue.summary.recognizedRevenue,
+      pendingRevenueAmount: input.revenue.summary.pendingRevenue,
+      totalCreditAmount: input.portfolio.summary.totalPortfolioValue,
+    },
+    topClients: input.clients
+      .map((client) => ({
+        activeContractsCount: client.activeContractsCount,
+        clientId: client.id,
+        clientName: client.name,
+        contractsCount: client.contractsCount,
+        expectedRevenueAmount: client.estimatedRevenue,
+        lastContractAt: client.updatedAt ?? client.createdAt ?? null,
+        paidRevenueAmount: client.recognizedRevenue,
+        totalCreditAmount: client.totalCreditValue,
+      }))
+      .sort((left, right) => right.totalCreditAmount - left.totalCreditAmount),
   };
 }
 
@@ -97,12 +272,54 @@ function buildSnapshot(
   ];
 }
 
-function buildAttentionItems(
-  portfolio: PortfolioSummaryResponse,
-): OperationAttentionItem[] {
+function buildAttentionItems(input: {
+  administrators: {
+    summary: {
+      administratorsWithAttention: number;
+      administratorsWithoutContracts: number;
+    };
+  };
+  clients: {
+    summary: {
+      clientsWithAttention: number;
+      clientsWithoutContracts: number;
+    };
+  };
+  contracts: {
+    summary: {
+      attentionContracts: number;
+      totalContracts: number;
+    };
+  };
+  portfolio: {
+    summary: {
+      attentionItems: string[];
+    };
+  };
+  portfolioSummary: PortfolioSummaryResponse;
+  revenue: {
+    summary: {
+      divergentEntries: number;
+      pendingRevenue: number;
+    };
+  };
+}): OperationAttentionItem[] {
   const attentionItems: OperationAttentionItem[] = [];
+  const { portfolioSummary } = input;
 
-  if (portfolio.summary.cancelledContractsCount > 0) {
+  if (input.contracts.summary.attentionContracts > 0) {
+    attentionItems.push({
+      area: "contracts",
+      description: "Existem contratos com dados incompletos ou divergentes.",
+      href: "/operations/contracts",
+      id: "contracts-with-attention",
+      severity: "high",
+      title: "Contratos com atencao",
+      value: String(input.contracts.summary.attentionContracts),
+    });
+  }
+
+  if (portfolioSummary.summary.cancelledContractsCount > 0) {
     attentionItems.push({
       area: "contracts",
       description: "Existem contratos cancelados na carteira.",
@@ -110,23 +327,23 @@ function buildAttentionItems(
       id: "cancelled-contracts",
       severity: "high",
       title: "Contratos cancelados",
-      value: String(portfolio.summary.cancelledContractsCount),
+      value: String(portfolioSummary.summary.cancelledContractsCount),
     });
   }
 
-  if (portfolio.summary.overdueRevenueAmount > 0) {
+  if (input.revenue.summary.divergentEntries > 0) {
     attentionItems.push({
       area: "revenue",
-      description: "Receitas vencidas precisam de acompanhamento operacional.",
+      description: "Existem receitas com valores reconhecidos acima do previsto.",
       href: "/operations/revenue",
-      id: "overdue-revenue",
+      id: "divergent-revenue",
       severity: "critical",
-      title: "Receita vencida",
-      value: currencyFormatter.format(portfolio.summary.overdueRevenueAmount),
+      title: "Receita divergente",
+      value: String(input.revenue.summary.divergentEntries),
     });
   }
 
-  if (portfolio.summary.pendingRevenueAmount > 0) {
+  if (input.revenue.summary.pendingRevenue > 0) {
     attentionItems.push({
       area: "revenue",
       description: "Receitas pendentes aguardam evolucao operacional.",
@@ -134,11 +351,47 @@ function buildAttentionItems(
       id: "pending-revenue",
       severity: "medium",
       title: "Receita pendente",
-      value: currencyFormatter.format(portfolio.summary.pendingRevenueAmount),
+      value: currencyFormatter.format(input.revenue.summary.pendingRevenue),
     });
   }
 
-  if (portfolio.summary.contractsCount === 0) {
+  if (input.clients.summary.clientsWithAttention > 0) {
+    attentionItems.push({
+      area: "clients",
+      description: "Clientes possuem pendencias operacionais no read model.",
+      href: "/operations/clients",
+      id: "clients-with-attention",
+      severity: "medium",
+      title: "Clientes com atencao",
+      value: String(input.clients.summary.clientsWithAttention),
+    });
+  }
+
+  if (input.administrators.summary.administratorsWithAttention > 0) {
+    attentionItems.push({
+      area: "administrators",
+      description: "Administradoras possuem concentracao ou pendencias vinculadas.",
+      href: "/operations/administrators",
+      id: "administrators-with-attention",
+      severity: "medium",
+      title: "Administradoras com atencao",
+      value: String(input.administrators.summary.administratorsWithAttention),
+    });
+  }
+
+  if (input.portfolio.summary.attentionItems.length > 0) {
+    attentionItems.push({
+      area: "portfolio",
+      description: "A carteira possui sinais operacionais de atencao.",
+      href: "/operations/portfolio",
+      id: "portfolio-with-attention",
+      severity: "medium",
+      title: "Carteira com atencao",
+      value: String(input.portfolio.summary.attentionItems.length),
+    });
+  }
+
+  if (input.contracts.summary.totalContracts === 0) {
     attentionItems.push({
       area: "contracts",
       description: "Ainda nao existem contratos para consolidar operacao.",
@@ -151,6 +404,10 @@ function buildAttentionItems(
   }
 
   return attentionItems;
+}
+
+function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function buildDrilldowns(
