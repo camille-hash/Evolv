@@ -28,6 +28,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   );
 
   if (!result.ok) {
+    logExpectedRevenueRouteError("create_failed", {
+      contractId: id,
+      error: result.error,
+      status: result.status,
+    });
+
     return NextResponse.json(
       { error: result.error },
       { status: result.status },
@@ -48,4 +54,18 @@ function readBearerToken(request: NextRequest) {
   }
 
   return authorization.slice("bearer ".length).trim() || null;
+}
+
+function logExpectedRevenueRouteError(
+  stage: string,
+  payload: Record<string, unknown>,
+) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.error("[EVOLV revenue]", {
+    ...payload,
+    stage,
+  });
 }

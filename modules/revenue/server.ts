@@ -340,6 +340,13 @@ export async function createExpectedRevenueForContract(
     .single<RevenueEntryRow>();
 
   if (error || !data?.organization_id) {
+    logRevenueServerError("expected_revenue_insert_failed", {
+      contractId: contract.id,
+      error: formatSupabaseDebugError(error),
+      hasData: Boolean(data),
+      organizationId: context.profile.organization_id,
+    });
+
     return {
       error: "Nao foi possivel criar a receita esperada.",
       ok: false,
@@ -953,4 +960,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
       typeof value === "object" &&
       !Array.isArray(value),
   );
+}
+
+function logRevenueServerError(
+  stage: string,
+  payload: Record<string, unknown>,
+) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.error("[EVOLV revenue]", {
+    ...payload,
+    stage,
+  });
+}
+
+function formatSupabaseDebugError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const record = error as Record<string, unknown>;
+
+  return {
+    code: typeof record.code === "string" ? record.code : null,
+    details: typeof record.details === "string" ? record.details : null,
+    hint: typeof record.hint === "string" ? record.hint : null,
+    message: typeof record.message === "string" ? record.message : null,
+  };
 }
