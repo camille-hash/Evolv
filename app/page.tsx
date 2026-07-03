@@ -380,6 +380,7 @@ export default function Home() {
         {visibleActiveSection === "client" ? (
           <ClientPage
             initialClientId={convertedClientId}
+            key={convertedClientId ?? "client-page"}
             notice={clientNotice}
             onClientContextChange={handleClientContextChange}
           />

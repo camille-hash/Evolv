@@ -48,7 +48,9 @@ export function ClientPage({
   onClientContextChange: (context: ClientContext) => void;
 }) {
   const [clients, setClients] = useState<ClientListItem[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(
+    initialClientId ?? null,
+  );
   const [selectedClientDetail, setSelectedClientDetail] =
     useState<ClientDetailResponse | null>(null);
   const [search, setSearch] = useState("");
@@ -59,6 +61,10 @@ export function ClientPage({
   const selectedClientContext = useMemo(
     () => toClientContext(selectedClientDetail),
     [selectedClientDetail],
+  );
+  const selectedClientIsOutsideCurrentResults = Boolean(
+    selectedClientDetail &&
+      !clients.some((client) => client.id === selectedClientDetail.client.id),
   );
 
   useEffect(() => {
@@ -91,21 +97,18 @@ export function ClientPage({
 
         setClients(loadedClients);
         setSelectedClientId((current) => {
-          if (current && loadedClients.some((client) => client.id === current)) {
+          if (current) {
             return current;
           }
 
-          if (
-            initialClientId &&
-            loadedClients.some((client) => client.id === initialClientId)
-          ) {
+          if (initialClientId) {
             return initialClientId;
           }
 
           return loadedClients[0]?.id ?? null;
         });
 
-        if (!loadedClients.length) {
+        if (!loadedClients.length && !initialClientId) {
           setSelectedClientDetail(null);
           onClientContextChange(emptyClientContext);
         }
@@ -232,7 +235,14 @@ export function ClientPage({
         </p>
       ) : null}
 
-      {!clientsError && !isLoadingClients && !clients.length ? (
+      {selectedClientIsOutsideCurrentResults ? (
+        <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+          Cliente selecionado carregado diretamente. Ele pode estar fora do
+          filtro atual da busca.
+        </p>
+      ) : null}
+
+      {!clientsError && !isLoadingClients && !clients.length && !selectedClientId ? (
         <section className="executive-surface rounded-md p-7 text-card-foreground">
           <p className="text-sm font-semibold text-foreground">
             Nenhum cliente persistido ainda.
@@ -249,58 +259,68 @@ export function ClientPage({
         </p>
       ) : null}
 
-      {clients.length ? (
-        <div className="grid gap-5 xl:grid-cols-[0.95fr_1.4fr]">
-          <section className="executive-surface rounded-md p-5 text-card-foreground">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Lista
-                </p>
-                <h3 className="mt-1 text-base font-semibold text-foreground">
-                  Clientes persistidos
-                </h3>
-              </div>
-              <span className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                {clients.length}
-              </span>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              {clients.map((client) => (
-                <button
-                  className={`rounded-md border p-4 text-left transition ${
-                    selectedClientId === client.id
-                      ? "border-primary/60 bg-primary/[0.06]"
-                      : "bg-background/70 hover:border-primary/40"
-                  }`}
-                  key={client.id}
-                  onClick={() => setSelectedClientId(client.id)}
-                  type="button"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-foreground">{client.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {client.email ?? client.phone ?? "Contato nao informado"}
-                      </p>
-                    </div>
-                    <span className="rounded-full border bg-card px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      {client.status}
-                    </span>
-                  </div>
-                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                    <span>{client.contractsCount} contratos</span>
-                    <span>{client.activeContractsCount} ativos</span>
-                    <span>{currencyFormatter.format(client.totalCreditAmount)}</span>
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Atualizado em {formatDate(client.updatedAt)}
+      {clients.length || selectedClientId ? (
+        <div
+          className={
+            clients.length
+              ? "grid gap-5 xl:grid-cols-[0.95fr_1.4fr]"
+              : "grid gap-5"
+          }
+        >
+          {clients.length ? (
+            <section className="executive-surface rounded-md p-5 text-card-foreground">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Lista
                   </p>
-                </button>
-              ))}
-            </div>
-          </section>
+                  <h3 className="mt-1 text-base font-semibold text-foreground">
+                    Clientes persistidos
+                  </h3>
+                </div>
+                <span className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                  {clients.length}
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {clients.map((client) => (
+                  <button
+                    className={`rounded-md border p-4 text-left transition ${
+                      selectedClientId === client.id
+                        ? "border-primary/60 bg-primary/[0.06]"
+                        : "bg-background/70 hover:border-primary/40"
+                    }`}
+                    key={client.id}
+                    onClick={() => setSelectedClientId(client.id)}
+                    type="button"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-foreground">{client.name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {client.email ?? client.phone ?? "Contato nao informado"}
+                        </p>
+                      </div>
+                      <span className="rounded-full border bg-card px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                        {client.status}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                      <span>{client.contractsCount} contratos</span>
+                      <span>{client.activeContractsCount} ativos</span>
+                      <span>
+                        {currencyFormatter.format(client.totalCreditAmount)}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Atualizado em {formatDate(client.updatedAt)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="grid gap-4">
             {isLoadingDetail ? (
