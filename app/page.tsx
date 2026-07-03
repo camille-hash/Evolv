@@ -295,13 +295,18 @@ export default function Home() {
     const accessToken = await readSupabaseAccessToken();
 
     if (!accessToken) {
-      setClientNotice("Sessao invalida para converter o lead em cliente.");
-      setActiveSection("client");
+      setClientNotice(
+        "Sessao invalida. Permaneca no CRM e faca login novamente antes de converter o lead em cliente.",
+      );
       return;
     }
 
     try {
       const result = await convertLeadToPersistedClient(accessToken, input.lead.id);
+
+      if (!result.client.id) {
+        throw new Error("A conversao nao retornou um cliente persistido.");
+      }
 
       setClientContext({
         ...emptyClientContext,
@@ -325,7 +330,6 @@ export default function Home() {
           ? error.message
           : "Nao foi possivel converter o lead em cliente.",
       );
-      setActiveSection("client");
     }
   }
 
@@ -387,24 +391,31 @@ export default function Home() {
         ) : null}
 
         {visibleActiveSection === "crm" ? (
-          <CrmPage
-            onConvertToClient={handleConvertLeadToClient}
-            onGenerateMultiCotas={
-              canCurrentUserUseSimulationTools
-                ? (lead) => handleGenerateSimulationFromLead(lead, "multi_cotas")
-                : undefined
-            }
-            onGenerateSimulation={
-              canCurrentUserGenerateLeadBoundCommercialSimulation
-                ? (lead) => handleGenerateSimulationFromLead(lead, "simulation")
-                : undefined
-            }
-            onGenerateProposal={
-              canCurrentUserUseSimulationTools
-                ? (lead) => handleGenerateSimulationFromLead(lead, "proposal")
-                : undefined
-            }
-          />
+          <>
+            {clientNotice ? (
+              <div className="mb-4 rounded-md border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+                {clientNotice}
+              </div>
+            ) : null}
+            <CrmPage
+              onConvertToClient={handleConvertLeadToClient}
+              onGenerateMultiCotas={
+                canCurrentUserUseSimulationTools
+                  ? (lead) => handleGenerateSimulationFromLead(lead, "multi_cotas")
+                  : undefined
+              }
+              onGenerateSimulation={
+                canCurrentUserGenerateLeadBoundCommercialSimulation
+                  ? (lead) => handleGenerateSimulationFromLead(lead, "simulation")
+                  : undefined
+              }
+              onGenerateProposal={
+                canCurrentUserUseSimulationTools
+                  ? (lead) => handleGenerateSimulationFromLead(lead, "proposal")
+                  : undefined
+              }
+            />
+          </>
         ) : null}
 
         {visibleActiveSection === "presentation" ? (

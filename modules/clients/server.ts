@@ -227,6 +227,11 @@ export async function convertLeadToClient(
   accessToken: string | null,
   leadId: string,
 ): Promise<LeadClientConversionResult> {
+  logClientConversionDebug("request", {
+    hasAccessToken: Boolean(accessToken),
+    leadId,
+  });
+
   if (!leadId.trim()) {
     return {
       error: "Informe o lead.",
@@ -238,20 +243,52 @@ export async function convertLeadToClient(
   const context = await resolveClientRequestContext(accessToken);
 
   if (!context.ok) {
+    logClientConversionDebug("profile_error", {
+      error: context.error,
+      status: context.status,
+    });
     return context;
   }
+
+  logClientConversionDebug("profile", {
+    organizationId: context.profile.organization_id,
+    profileId: context.profile.id,
+    role: context.profile.role,
+    userId: context.user.id,
+  });
 
   const leadResult = await getLeadFromCurrentOrganization(context, leadId);
 
   if (!leadResult.ok) {
+    logClientConversionDebug("lead_lookup_error", {
+      error: leadResult.error,
+      status: leadResult.status,
+    });
     return leadResult;
   }
+
+  logClientConversionDebug("lead_lookup", {
+    hasEmail: Boolean(leadResult.lead.email),
+    hasName: Boolean(leadResult.lead.nome),
+    hasPhone: Boolean(leadResult.lead.telefone),
+    leadId: leadResult.lead.id,
+    organizationId: leadResult.lead.organization_id,
+  });
 
   const existingClient = await findExistingClientForLead(context, leadResult.lead);
 
   if (!existingClient.ok) {
+    logClientConversionDebug("existing_client_lookup_error", {
+      error: existingClient.error,
+      status: existingClient.status,
+    });
     return existingClient;
   }
+
+  logClientConversionDebug("existing_client_lookup", {
+    clientId: existingClient.client?.id ?? null,
+    found: Boolean(existingClient.client),
+  });
 
   if (existingClient.client) {
     const updatedClient = await updateClientFromLead(
@@ -263,6 +300,12 @@ export async function convertLeadToClient(
     if (!updatedClient.ok) {
       return updatedClient;
     }
+
+    logClientConversionDebug("return_payload", {
+      clientId: updatedClient.client.id,
+      created: false,
+      leadId: leadResult.lead.id,
+    });
 
     return {
       client: mapClientDetail(updatedClient.client),
@@ -277,6 +320,12 @@ export async function convertLeadToClient(
   if (!createdClient.ok) {
     return createdClient;
   }
+
+  logClientConversionDebug("return_payload", {
+    clientId: createdClient.client.id,
+    created: true,
+    leadId: leadResult.lead.id,
+  });
 
   return {
     client: mapClientDetail(createdClient.client),
@@ -312,6 +361,11 @@ function createServerClientsSupabaseClient(accessToken: string) {
 
 async function resolveClientRequestContext(accessToken: string | null) {
   if (!accessToken) {
+    logClientConversionDebug("session_resolved", {
+      hasAccessToken: false,
+      ok: false,
+    });
+
     return {
       error: "Sessao invalida.",
       ok: false as const,
@@ -323,6 +377,12 @@ async function resolveClientRequestContext(accessToken: string | null) {
     const supabase = createServerClientsSupabaseClient(accessToken);
     const { data: userData, error: userError } =
       await supabase.auth.getUser(accessToken);
+
+    logClientConversionDebug("session_resolved", {
+      authenticatedUserId: userData.user?.id ?? null,
+      error: formatSupabaseDebugError(userError),
+      ok: Boolean(userData.user && !userError),
+    });
 
     if (userError || !userData.user) {
       return {
@@ -338,6 +398,15 @@ async function resolveClientRequestContext(accessToken: string | null) {
       .eq("id", userData.user.id)
       .maybeSingle<ClientProfile>();
 
+    logClientConversionDebug("profile_resolved", {
+      authenticatedUserId: userData.user.id,
+      error: formatSupabaseDebugError(profileError),
+      organizationId: profile?.organization_id ?? null,
+      profileId: profile?.id ?? null,
+      role: profile?.role ?? null,
+      valid: isValidProfile(profile),
+    });
+
     if (profileError || !isValidProfile(profile)) {
       return {
         error: "Perfil nao encontrado.",
@@ -352,9 +421,14 @@ async function resolveClientRequestContext(accessToken: string | null) {
       supabase,
       user: userData.user,
     };
-  } catch {
+  } catch (error) {
+    logClientConversionDebug("caught_exception", normalizeCaughtException(error));
+
     return {
-      error: genericAccessError,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erro inesperado ao resolver sessao.",
       ok: false as const,
       status: 500,
     };
@@ -551,11 +625,24 @@ async function getLeadFromCurrentOrganization(
   context: RequestContext,
   leadId: string,
 ) {
+  logClientConversionDebug("lead_lookup_query", {
+    leadId,
+    organizationId: context.profile.organization_id,
+    table: "crm_leads",
+  });
+
   const { data, error } = await context.supabase
     .from("crm_leads")
     .select("id, organization_id, nome, telefone, email")
     .eq("id", leadId)
     .maybeSingle<LeadRow>();
+
+  logClientConversionDebug("lead_lookup_result", {
+    error: formatSupabaseDebugError(error),
+    hasData: Boolean(data),
+    leadId: data?.id ?? null,
+    organizationId: data?.organization_id ?? null,
+  });
 
   if (error || !data?.organization_id) {
     return {
@@ -582,6 +669,13 @@ async function getLeadFromCurrentOrganization(
 async function findExistingClientForLead(context: RequestContext, lead: LeadRow) {
   const filters = buildClientMatchFilters(lead);
 
+  logClientConversionDebug("existing_client_lookup_query", {
+    filters,
+    leadId: lead.id,
+    organizationId: context.profile.organization_id,
+    table: "clients",
+  });
+
   if (!filters.length) {
     return {
       client: null,
@@ -596,6 +690,11 @@ async function findExistingClientForLead(context: RequestContext, lead: LeadRow)
     .or(filters.join(","))
     .order("updated_at", { ascending: false })
     .limit(1);
+
+  logClientConversionDebug("existing_client_lookup_result", {
+    error: formatSupabaseDebugError(error),
+    rows: Array.isArray(data) ? data.length : null,
+  });
 
   if (error) {
     return {
@@ -616,6 +715,12 @@ async function findExistingClientForLead(context: RequestContext, lead: LeadRow)
 }
 
 async function createClientFromLead(context: RequestContext, lead: LeadRow) {
+  logClientConversionDebug("insert_attempt", {
+    leadId: lead.id,
+    organizationId: context.profile.organization_id,
+    profileId: context.profile.id,
+  });
+
   const { data, error } = await context.supabase
     .from("clients")
     .insert({
@@ -630,6 +735,12 @@ async function createClientFromLead(context: RequestContext, lead: LeadRow) {
     .single<ClientRow>();
 
   if (error || !data?.organization_id) {
+    logClientConversionDebug("insert_result", {
+      error: formatSupabaseDebugError(error),
+      hasData: Boolean(data),
+      organizationId: data?.organization_id ?? null,
+    });
+
     return {
       error: "Nao foi possivel criar o cliente a partir do lead.",
       ok: false as const,
@@ -644,6 +755,11 @@ async function createClientFromLead(context: RequestContext, lead: LeadRow) {
       status: 500,
     };
   }
+
+  logClientConversionDebug("insert_result", {
+    clientId: data.id,
+    organizationId: data.organization_id,
+  });
 
   return {
     client: data,
@@ -674,6 +790,13 @@ async function updateClientFromLead(
     .single<ClientRow>();
 
   if (error || !data?.organization_id) {
+    logClientConversionDebug("update_result", {
+      clientId: client.id,
+      error: formatSupabaseDebugError(error),
+      hasData: Boolean(data),
+      organizationId: data?.organization_id ?? null,
+    });
+
     return {
       error: "Nao foi possivel atualizar o cliente convertido.",
       ok: false as const,
@@ -688,6 +811,11 @@ async function updateClientFromLead(
       status: 500,
     };
   }
+
+  logClientConversionDebug("update_result", {
+    clientId: data.id,
+    organizationId: data.organization_id,
+  });
 
   return {
     client: data,
@@ -727,6 +855,51 @@ function normalizeNullableText(value: unknown) {
   const trimmed = value.trim();
 
   return trimmed || null;
+}
+
+function logClientConversionDebug(
+  stage: string,
+  payload: Record<string, unknown>,
+) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.info("[EVOLV clients] lead conversion", {
+    ...payload,
+    stage,
+  });
+}
+
+function formatSupabaseDebugError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const record = error as Record<string, unknown>;
+
+  return {
+    code: typeof record.code === "string" ? record.code : null,
+    details: typeof record.details === "string" ? record.details : null,
+    hint: typeof record.hint === "string" ? record.hint : null,
+    message: typeof record.message === "string" ? record.message : null,
+  };
+}
+
+function normalizeCaughtException(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    message: String(error),
+    name: "UnknownError",
+    stack: null,
+  };
 }
 
 function normalizeText(value: unknown) {

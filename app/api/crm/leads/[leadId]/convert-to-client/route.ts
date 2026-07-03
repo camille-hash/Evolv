@@ -8,22 +8,58 @@ type RouteContext = {
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const accessToken = readBearerToken(request);
-  const { leadId } = await context.params;
-  const result = await convertLeadToClient(accessToken, leadId);
+  try {
+    const accessToken = readBearerToken(request);
+    const { leadId } = await context.params;
 
-  if (!result.ok) {
+    logLeadConversionRouteDebug("route_entered", {
+      hasBearerToken: Boolean(accessToken),
+      leadId,
+      pathname: request.nextUrl.pathname,
+    });
+
+    const result = await convertLeadToClient(accessToken, leadId);
+
+    if (!result.ok) {
+      logLeadConversionRouteDebug("returned_response", {
+        error: result.error,
+        leadId,
+        ok: false,
+        status: result.status,
+      });
+
+      return NextResponse.json(
+        { error: result.error },
+        { status: result.status },
+      );
+    }
+
+    logLeadConversionRouteDebug("returned_response", {
+      clientId: result.client.id,
+      created: result.created,
+      leadId: result.lead.id,
+      ok: true,
+      status: 200,
+    });
+
+    return NextResponse.json({
+      client: result.client,
+      created: result.created,
+      lead: result.lead,
+    });
+  } catch (error) {
+    const normalizedError = normalizeRouteError(error);
+
+    logLeadConversionRouteDebug("caught_exception", normalizedError);
+
     return NextResponse.json(
-      { error: result.error },
-      { status: result.status },
+      {
+        error: normalizedError.message,
+        exception: normalizedError,
+      },
+      { status: 500 },
     );
   }
-
-  return NextResponse.json({
-    client: result.client,
-    created: result.created,
-    lead: result.lead,
-  });
 }
 
 function readBearerToken(request: NextRequest) {
@@ -34,4 +70,30 @@ function readBearerToken(request: NextRequest) {
   }
 
   return authorization.slice("bearer ".length).trim() || null;
+}
+
+function logLeadConversionRouteDebug(
+  stage: string,
+  payload: Record<string, unknown>,
+) {
+  console.info("[EVOLV clients] convert-to-client route", {
+    ...payload,
+    stage,
+  });
+}
+
+function normalizeRouteError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    message: String(error),
+    name: "UnknownError",
+    stack: null,
+  };
 }
