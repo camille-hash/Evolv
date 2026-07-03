@@ -2,6 +2,7 @@ import type {
   ClientDetailResponse,
   ClientListFilters,
   ClientListItem,
+  LeadClientConversion,
 } from "./types";
 
 export async function fetchClients(
@@ -42,6 +43,31 @@ export async function fetchClientById(accessToken: string, clientId: string) {
   }
 
   return payload as ClientDetailResponse;
+}
+
+export async function convertLeadToPersistedClient(
+  accessToken: string,
+  leadId: string,
+) {
+  const response = await fetch(
+    `/api/crm/leads/${encodeURIComponent(leadId)}/convert-to-client`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      method: "POST",
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as
+    | ({ error?: string } & Partial<LeadClientConversion>)
+    | null;
+
+  if (!response.ok || !payload?.client || !payload.lead) {
+    throw new Error(payload?.error ?? "Nao foi possivel converter o lead.");
+  }
+
+  return payload as LeadClientConversion;
 }
 
 function createClientQuery(filters: ClientListFilters) {

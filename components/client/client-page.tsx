@@ -39,8 +39,12 @@ const contractStatusLabels: Record<ClientContract["status"], string> = {
 };
 
 export function ClientPage({
+  initialClientId,
+  notice,
   onClientContextChange,
 }: {
+  initialClientId?: string | null;
+  notice?: string | null;
   onClientContextChange: (context: ClientContext) => void;
 }) {
   const [clients, setClients] = useState<ClientListItem[]>([]);
@@ -91,6 +95,13 @@ export function ClientPage({
             return current;
           }
 
+          if (
+            initialClientId &&
+            loadedClients.some((client) => client.id === initialClientId)
+          ) {
+            return initialClientId;
+          }
+
           return loadedClients[0]?.id ?? null;
         });
 
@@ -115,7 +126,7 @@ export function ClientPage({
     return () => {
       isActive = false;
     };
-  }, [onClientContextChange, search]);
+  }, [initialClientId, onClientContextChange, search]);
 
   useEffect(() => {
     let isActive = true;
@@ -196,6 +207,11 @@ export function ClientPage({
               className="inline-flex h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 sm:self-end"
               disabled={!selectedClientDetail}
               onClick={() => generateEvolvMasterReport(selectedClientContext)}
+              title={
+                selectedClientDetail
+                  ? "Gerar Dossie EVOLV para o cliente selecionado"
+                  : "Selecione um cliente persistido para gerar o Dossie EVOLV"
+              }
               type="button"
             >
               Gerar Dossie EVOLV
@@ -207,6 +223,12 @@ export function ClientPage({
       {clientsError ? (
         <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
           {clientsError}
+        </p>
+      ) : null}
+
+      {notice ? (
+        <p className="rounded-md border border-primary/25 bg-primary/[0.06] p-4 text-sm font-medium text-foreground">
+          {notice}
         </p>
       ) : null}
 

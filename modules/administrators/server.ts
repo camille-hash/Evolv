@@ -32,7 +32,7 @@ type RequestContext = {
   profile: AdministratorProfile & {
     is_active: true;
     organization_id: string;
-    role: "admin" | "sdr";
+    role: "admin" | "master" | "sdr";
   };
   supabase: ReturnType<typeof createServerAdministratorsSupabaseClient>;
   user: SupabaseUser;
@@ -480,13 +480,15 @@ function isValidProfile(
 ): profile is AdministratorProfile & {
   is_active: true;
   organization_id: string;
-  role: "admin" | "sdr";
+  role: "admin" | "master" | "sdr";
 } {
   return Boolean(
     profile?.id &&
       profile.organization_id &&
       profile.is_active === true &&
-      (profile.role === "admin" || profile.role === "sdr"),
+      (profile.role === "admin" ||
+        profile.role === "master" ||
+        profile.role === "sdr"),
   );
 }
 

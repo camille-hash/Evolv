@@ -197,7 +197,9 @@ function isValidProfile(
   return Boolean(
     profile?.id &&
       profile.organization_id &&
-      (profile.role === "admin" || profile.role === "sdr") &&
+      (profile.role === "admin" ||
+        profile.role === "master" ||
+        profile.role === "sdr") &&
       profile.is_active === true,
   );
 }

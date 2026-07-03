@@ -7,6 +7,7 @@ import type {
   ClientListFilters,
   ClientListItem,
   ClientSummary,
+  LeadClientConversion,
 } from "./types";
 
 type ClientProfile = {
@@ -25,6 +26,14 @@ type ClientRow = {
   phone: string | null;
   status: string | null;
   updated_at: string | null;
+};
+
+type LeadRow = {
+  email: string | null;
+  id: string;
+  nome: string | null;
+  organization_id: string | null;
+  telefone: string | null;
 };
 
 type ClientContractRow = {
@@ -46,7 +55,7 @@ type RequestContext = {
   profile: ClientProfile & {
     is_active: true;
     organization_id: string;
-    role: "admin" | "sdr";
+    role: "admin" | "master" | "sdr";
   };
   supabase: ReturnType<typeof createServerClientsSupabaseClient>;
   user: SupabaseUser;
@@ -58,6 +67,10 @@ export type ClientListResult =
 
 export type ClientDetailResult =
   | ({ ok: true } & ClientDetailResponse)
+  | { error: string; ok: false; status: number };
+
+export type LeadClientConversionResult =
+  | ({ ok: true } & LeadClientConversion)
   | { error: string; ok: false; status: number };
 
 const clientColumns = [
@@ -207,6 +220,69 @@ export async function getClientById(
     contracts,
     ok: true,
     summary: summarizeContracts(contracts),
+  };
+}
+
+export async function convertLeadToClient(
+  accessToken: string | null,
+  leadId: string,
+): Promise<LeadClientConversionResult> {
+  if (!leadId.trim()) {
+    return {
+      error: "Informe o lead.",
+      ok: false,
+      status: 400,
+    };
+  }
+
+  const context = await resolveClientRequestContext(accessToken);
+
+  if (!context.ok) {
+    return context;
+  }
+
+  const leadResult = await getLeadFromCurrentOrganization(context, leadId);
+
+  if (!leadResult.ok) {
+    return leadResult;
+  }
+
+  const existingClient = await findExistingClientForLead(context, leadResult.lead);
+
+  if (!existingClient.ok) {
+    return existingClient;
+  }
+
+  if (existingClient.client) {
+    const updatedClient = await updateClientFromLead(
+      context,
+      existingClient.client,
+      leadResult.lead,
+    );
+
+    if (!updatedClient.ok) {
+      return updatedClient;
+    }
+
+    return {
+      client: mapClientDetail(updatedClient.client),
+      created: false,
+      lead: { id: leadResult.lead.id },
+      ok: true,
+    };
+  }
+
+  const createdClient = await createClientFromLead(context, leadResult.lead);
+
+  if (!createdClient.ok) {
+    return createdClient;
+  }
+
+  return {
+    client: mapClientDetail(createdClient.client),
+    created: true,
+    lead: { id: leadResult.lead.id },
+    ok: true,
   };
 }
 
@@ -459,14 +535,184 @@ function isValidProfile(
 ): profile is ClientProfile & {
   is_active: true;
   organization_id: string;
-  role: "admin" | "sdr";
+  role: "admin" | "master" | "sdr";
 } {
   return Boolean(
     profile?.id &&
       profile.organization_id &&
       profile.is_active === true &&
-      (profile.role === "admin" || profile.role === "sdr"),
+      (profile.role === "admin" ||
+        profile.role === "master" ||
+        profile.role === "sdr"),
   );
+}
+
+async function getLeadFromCurrentOrganization(
+  context: RequestContext,
+  leadId: string,
+) {
+  const { data, error } = await context.supabase
+    .from("crm_leads")
+    .select("id, organization_id, nome, telefone, email")
+    .eq("id", leadId)
+    .maybeSingle<LeadRow>();
+
+  if (error || !data?.organization_id) {
+    return {
+      error: "Lead nao encontrado.",
+      ok: false as const,
+      status: 404,
+    };
+  }
+
+  if (data.organization_id !== context.profile.organization_id) {
+    return {
+      error: "Lead nao encontrado.",
+      ok: false as const,
+      status: 404,
+    };
+  }
+
+  return {
+    lead: data,
+    ok: true as const,
+  };
+}
+
+async function findExistingClientForLead(context: RequestContext, lead: LeadRow) {
+  const filters = buildClientMatchFilters(lead);
+
+  if (!filters.length) {
+    return {
+      client: null,
+      ok: true as const,
+    };
+  }
+
+  const { data, error } = await context.supabase
+    .from("clients")
+    .select(clientColumns)
+    .eq("organization_id", context.profile.organization_id)
+    .or(filters.join(","))
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    return {
+      error: "Nao foi possivel localizar cliente existente.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  const client = ((data ?? []) as unknown as ClientRow[]).find(
+    (item) => item.organization_id === context.profile.organization_id,
+  );
+
+  return {
+    client: client ?? null,
+    ok: true as const,
+  };
+}
+
+async function createClientFromLead(context: RequestContext, lead: LeadRow) {
+  const { data, error } = await context.supabase
+    .from("clients")
+    .insert({
+      email: normalizeNullableText(lead.email),
+      name: normalizeNullableText(lead.nome) ?? "Cliente sem nome",
+      organization_id: context.profile.organization_id,
+      owner_profile_id: context.profile.id,
+      phone: normalizeNullableText(lead.telefone),
+      status: "active",
+    })
+    .select(clientColumns)
+    .single<ClientRow>();
+
+  if (error || !data?.organization_id) {
+    return {
+      error: "Nao foi possivel criar o cliente a partir do lead.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  if (data.organization_id !== context.profile.organization_id) {
+    return {
+      error: genericAccessError,
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  return {
+    client: data,
+    ok: true as const,
+  };
+}
+
+async function updateClientFromLead(
+  context: RequestContext,
+  client: ClientRow,
+  lead: LeadRow,
+) {
+  const { data, error } = await context.supabase
+    .from("clients")
+    .update({
+      email: normalizeNullableText(client.email) ?? normalizeNullableText(lead.email),
+      name:
+        normalizeNullableText(client.name) ??
+        normalizeNullableText(lead.nome) ??
+        "Cliente sem nome",
+      phone:
+        normalizeNullableText(client.phone) ?? normalizeNullableText(lead.telefone),
+      status: normalizeNullableText(client.status) ?? "active",
+    })
+    .eq("id", client.id)
+    .eq("organization_id", context.profile.organization_id)
+    .select(clientColumns)
+    .single<ClientRow>();
+
+  if (error || !data?.organization_id) {
+    return {
+      error: "Nao foi possivel atualizar o cliente convertido.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  if (data.organization_id !== context.profile.organization_id) {
+    return {
+      error: genericAccessError,
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  return {
+    client: data,
+    ok: true as const,
+  };
+}
+
+function buildClientMatchFilters(lead: LeadRow) {
+  const email = normalizeNullableText(lead.email);
+  const phone = normalizeNullableText(lead.telefone);
+  const name = normalizeNullableText(lead.nome);
+
+  if (email) {
+    return [`email.eq.${escapePostgrestSearch(email)}`];
+  }
+
+  if (phone) {
+    return [`phone.eq.${escapePostgrestSearch(phone)}`];
+  }
+
+  if (name) {
+    return [`name.eq.${escapePostgrestSearch(name)}`];
+  }
+
+  return [];
 }
 
 function normalizeNullableText(value: unknown) {

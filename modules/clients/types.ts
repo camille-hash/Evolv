@@ -57,3 +57,11 @@ export type ClientListFilters = {
   search?: string | null;
   status?: string | null;
 };
+
+export type LeadClientConversion = {
+  client: ClientDetail;
+  created: boolean;
+  lead: {
+    id: string;
+  };
+};

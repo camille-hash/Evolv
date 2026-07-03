@@ -40,7 +40,7 @@ type RequestContext = {
   profile: CommissionPlanProfile & {
     is_active: true;
     organization_id: string;
-    role: "admin" | "sdr";
+    role: "admin" | "master" | "sdr";
   };
   supabase: ReturnType<typeof createServerCommissionPlansSupabaseClient>;
   user: SupabaseUser;
@@ -565,13 +565,15 @@ function isValidProfile(
 ): profile is CommissionPlanProfile & {
   is_active: true;
   organization_id: string;
-  role: "admin" | "sdr";
+  role: "admin" | "master" | "sdr";
 } {
   return Boolean(
     profile?.id &&
       profile.organization_id &&
       profile.is_active === true &&
-      (profile.role === "admin" || profile.role === "sdr"),
+      (profile.role === "admin" ||
+        profile.role === "master" ||
+        profile.role === "sdr"),
   );
 }
 

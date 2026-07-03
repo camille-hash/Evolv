@@ -86,6 +86,7 @@ export const defaultAccessUsers: User[] = [
 
 export const roleLabels: Record<UserRole, string> = {
   admin: "Administrador",
+  master: "Master",
   sdr: "SDR",
 };
 
@@ -109,7 +110,7 @@ const adminSections: AccessSection[] = [
 const sdrSections: AccessSection[] = ["dashboard", "crm"];
 
 export function getAllowedSections(role: UserRole): AccessSection[] {
-  return role === "admin" ? adminSections : sdrSections;
+  return role === "admin" || role === "master" ? adminSections : sdrSections;
 }
 
 export function canAccessSection(
@@ -275,7 +276,7 @@ export function getEmptyUserInput(): UserInput {
 }
 
 function normalizeRole(role: unknown): UserRole {
-  return role === "admin" || role === "sdr" ? role : "sdr";
+  return role === "admin" || role === "master" || role === "sdr" ? role : "sdr";
 }
 
 function shouldRequirePasswordChange(input: UserInput) {

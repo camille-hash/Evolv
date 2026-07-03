@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "sdr";
+export type UserRole = "admin" | "master" | "sdr";
 
 export type AccessSection =
   | "dashboard"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 import {
   AppSidebar,
   type PlatformSection,
@@ -32,12 +33,12 @@ import {
   type CrmLeadProposalContext,
 } from "@/modules/crm";
 import {
-  convertLeadToClient,
   emptyClientContext,
   loadClientContext,
   type ConvertLeadToClientInput,
   type ClientContext,
 } from "@/modules/client-context";
+import { convertLeadToPersistedClient } from "@/modules/clients/client";
 import {
   canAccessSection,
   clearCurrentUser,
@@ -125,6 +126,8 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [leadProposalContext, setLeadProposalContext] =
     useState<CrmLeadProposalContext | null>(null);
+  const [convertedClientId, setConvertedClientId] = useState<string | null>(null);
+  const [clientNotice, setClientNotice] = useState<string | null>(null);
   const [accessReady, setAccessReady] = useState(false);
   const [isSessionExpirationWarningOpen, setIsSessionExpirationWarningOpen] =
     useState(false);
@@ -288,17 +291,42 @@ export default function Home() {
     setLeadProposalContext(null);
   }
 
-  function handleConvertLeadToClient(input: ConvertLeadToClientInput) {
-    const nextClientRecord = convertLeadToClient({
-      ...input,
-      convertedBy: {
-        name: currentUser?.nome || input.convertedBy.name,
-        userId: currentUser?.id ?? input.convertedBy.userId,
-      },
-    });
+  async function handleConvertLeadToClient(input: ConvertLeadToClientInput) {
+    const accessToken = await readSupabaseAccessToken();
 
-    setClientContext(nextClientRecord.context);
-    setActiveSection("client");
+    if (!accessToken) {
+      setClientNotice("Sessao invalida para converter o lead em cliente.");
+      setActiveSection("client");
+      return;
+    }
+
+    try {
+      const result = await convertLeadToPersistedClient(accessToken, input.lead.id);
+
+      setClientContext({
+        ...emptyClientContext,
+        email: result.client.email ?? "",
+        nome: result.client.name,
+        observacoes: result.created
+          ? "Cliente criado a partir do CRM."
+          : "Cliente ja existia e foi atualizado a partir do CRM.",
+        telefone: result.client.phone ?? "",
+      });
+      setConvertedClientId(result.client.id);
+      setClientNotice(
+        result.created
+          ? "Cliente criado com sucesso a partir do lead."
+          : "Lead ja estava convertido. Cliente existente carregado.",
+      );
+      setActiveSection("client");
+    } catch (error) {
+      setClientNotice(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel converter o lead em cliente.",
+      );
+      setActiveSection("client");
+    }
   }
 
   if (!accessReady) {
@@ -350,7 +378,11 @@ export default function Home() {
         ) : null}
 
         {visibleActiveSection === "client" ? (
-          <ClientPage onClientContextChange={handleClientContextChange} />
+          <ClientPage
+            initialClientId={convertedClientId}
+            notice={clientNotice}
+            onClientContextChange={handleClientContextChange}
+          />
         ) : null}
 
         {visibleActiveSection === "crm" ? (
@@ -448,6 +480,32 @@ export default function Home() {
       ) : null}
     </div>
   );
+}
+
+async function readSupabaseAccessToken() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !publishableKey) {
+    return null;
+  }
+
+  const supabase = createClient(supabaseUrl, publishableKey, {
+    auth: {
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  });
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error || !data.session?.access_token) {
+    return null;
+  }
+
+  return data.session.access_token;
 }
 
 function LeadBoundSimulationGuidance({
