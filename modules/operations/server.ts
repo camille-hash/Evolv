@@ -129,6 +129,7 @@ function buildPortfolioSummaryResponse(input: {
     creditValue: number;
     estimatedRevenue: number;
     recognizedRevenue: number;
+    sourceStatus?: string;
     status: string;
   }[];
   portfolio: {
@@ -155,7 +156,7 @@ function buildPortfolioSummaryResponse(input: {
   >();
 
   for (const contract of input.contracts) {
-    const status = contract.status || "unknown";
+    const status = normalizeContractSourceStatus(contract.sourceStatus);
     const current =
       byStatus.get(status) ?? {
         contractsCount: 0,
@@ -199,24 +200,33 @@ function buildPortfolioSummaryResponse(input: {
       .sort((left, right) => left.status.localeCompare(right.status)),
     summary: {
       activeContractsCount: input.contracts.filter(
-        (contract) => contract.status === "active",
+        (contract) => normalizeContractSourceStatus(contract.sourceStatus) === "active",
       ).length,
       activeCreditAmount: roundCurrency(
         input.contracts
-          .filter((contract) => contract.status === "active")
+          .filter(
+            (contract) => normalizeContractSourceStatus(contract.sourceStatus) === "active",
+          )
           .reduce((total, contract) => total + contract.creditValue, 0),
       ),
       cancelledContractsCount: input.contracts.filter(
-        (contract) => contract.status === "cancelled",
+        (contract) =>
+          ["cancelled", "rejected"].includes(
+            normalizeContractSourceStatus(contract.sourceStatus),
+          ),
       ).length,
       cancelledRevenueAmount: roundCurrency(cancelledRevenueAmount),
       clientsCount: input.clients.length,
       completedContractsCount: input.contracts.filter(
-        (contract) => contract.status === "completed",
+        (contract) =>
+          normalizeContractSourceStatus(contract.sourceStatus) === "completed",
       ).length,
       contractsCount: input.contracts.length,
       draftContractsCount: input.contracts.filter(
-        (contract) => contract.status === "pending",
+        (contract) =>
+          ["approved", "draft", "pending_documentation", "submitted"].includes(
+            normalizeContractSourceStatus(contract.sourceStatus),
+          ),
       ).length,
       expectedRevenueAmount: input.revenue.summary.expectedRevenue,
       overdueRevenueAmount: 0,
@@ -408,6 +418,10 @@ function buildAttentionItems(input: {
 
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function normalizeContractSourceStatus(status: string | undefined) {
+  return status?.trim().toLowerCase() || "unknown";
 }
 
 function buildDrilldowns(

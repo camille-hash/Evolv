@@ -16,6 +16,7 @@ export type OperationsContractRow = {
   estimatedRevenue: number;
   id: string;
   recognizedRevenue: number;
+  sourceStatus?: string;
   status: OperationsContractStatus;
   updatedAt?: string;
 };

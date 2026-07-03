@@ -142,6 +142,7 @@ function buildOperationsContractRows(dataset: {
       estimatedRevenue,
       id: contract.id,
       recognizedRevenue,
+      sourceStatus: normalizeNullableText(contract.status) ?? undefined,
       status: resolveOperationsContractStatus(contract.status, attentionItems),
       updatedAt: contract.updated_at ?? contract.created_at ?? undefined,
     };
