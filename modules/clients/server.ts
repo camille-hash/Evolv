@@ -51,6 +51,12 @@ type ClientContractRow = {
   updated_at: string | null;
 };
 
+type CommissionPlanRow = {
+  id: string;
+  name: string | null;
+  organization_id: string | null;
+};
+
 type RequestContext = {
   profile: ClientProfile & {
     is_active: true;
@@ -236,8 +242,16 @@ export async function getClientById(
   }
 
   const contractsResult = await listContractsForClient(context, data.id);
+  const commissionPlansById = await listCommissionPlansById(
+    context,
+    contractsResult.contracts
+      .map((contract) => contract.commission_plan_id)
+      .filter((id): id is string => Boolean(id)),
+  );
 
-  const contracts = contractsResult.contracts.map(mapClientContract);
+  const contracts = contractsResult.contracts.map((contract) =>
+    mapClientContract(contract, commissionPlansById),
+  );
 
   return {
     client: mapClientDetail(data),
@@ -544,7 +558,7 @@ function mapClientListItem(
   client: ClientRow,
   contractRows: ClientContractRow[],
 ): ClientListItem {
-  const contracts = contractRows.map(mapClientContract);
+  const contracts = contractRows.map((contract) => mapClientContract(contract));
   const summary = summarizeContracts(contracts);
 
   return {
@@ -573,10 +587,16 @@ function mapClientDetail(client: ClientRow): ClientDetail {
   };
 }
 
-function mapClientContract(row: ClientContractRow): ClientContract {
+function mapClientContract(
+  row: ClientContractRow,
+  commissionPlansById = new Map<string, string>(),
+): ClientContract {
   return {
     administratorId: row.administrator_id,
     commissionPlanId: row.commission_plan_id,
+    commissionPlanName: row.commission_plan_id
+      ? commissionPlansById.get(row.commission_plan_id) ?? null
+      : null,
     contractNumber: row.contract_number,
     createdAt: row.created_at ?? new Date().toISOString(),
     creditAmount: normalizeNumber(row.credit_amount) ?? 0,
@@ -588,6 +608,43 @@ function mapClientContract(row: ClientContractRow): ClientContract {
     termMonths: row.term_months,
     updatedAt: row.updated_at ?? row.created_at ?? new Date().toISOString(),
   };
+}
+
+async function listCommissionPlansById(
+  context: RequestContext,
+  commissionPlanIds: string[],
+) {
+  const commissionPlansById = new Map<string, string>();
+  const uniqueIds = Array.from(new Set(commissionPlanIds));
+
+  if (!uniqueIds.length) {
+    return commissionPlansById;
+  }
+
+  const { data, error } = await context.supabase
+    .from("commission_plans")
+    .select("id, organization_id, name")
+    .eq("organization_id", context.profile.organization_id)
+    .in("id", uniqueIds);
+
+  if (error) {
+    logClientReadDebug("commission_plans_enrichment_error", {
+      error: formatSupabaseDebugError(error),
+      route: "GET /api/clients/[id]",
+    });
+
+    return commissionPlansById;
+  }
+
+  for (const row of (data ?? []) as unknown as CommissionPlanRow[]) {
+    if (row.organization_id !== context.profile.organization_id) {
+      continue;
+    }
+
+    commissionPlansById.set(row.id, normalizeText(row.name) || "Plano sem nome");
+  }
+
+  return commissionPlansById;
 }
 
 function summarizeContracts(contracts: ClientContract[]): ClientSummary {

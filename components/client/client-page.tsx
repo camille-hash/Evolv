@@ -998,6 +998,10 @@ function ClientContractItem({ contract }: { contract: ClientContract }) {
           }
         />
         <ClientSummaryItem
+          label="Plano"
+          value={contract.commissionPlanName ?? "Nao vinculado"}
+        />
+        <ClientSummaryItem
           label="Lead"
           value={contract.leadId ?? "Nao vinculado"}
         />

@@ -6,6 +6,7 @@ import type { OperationsAdministratorsResponse } from "@/modules/operations/admi
 import { OperationalEmptyState } from "../operational-empty-state";
 import { OperationsAdministratorsList } from "./operations-administrators-list";
 import { OperationsAdministratorsSummary } from "./operations-administrators-summary";
+import { OperationsCommissionPlansManager } from "./operations-commission-plans-manager";
 
 export function OperationsAdministratorsPage() {
   const [administratorsResponse, setAdministratorsResponse] =
@@ -91,6 +92,7 @@ export function OperationsAdministratorsPage() {
       </section>
 
       <OperationsAdministratorsSummary summary={summary} />
+      <OperationsCommissionPlansManager administrators={administrators} />
       <OperationsAdministratorsList administrators={administrators} />
     </div>
   );

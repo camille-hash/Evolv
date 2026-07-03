@@ -33,6 +33,7 @@ export type ClientDetail = {
 export type ClientContract = {
   administratorId: string | null;
   commissionPlanId: string | null;
+  commissionPlanName: string | null;
   contractNumber: string | null;
   createdAt: string;
   creditAmount: number;
