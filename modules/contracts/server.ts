@@ -539,9 +539,10 @@ async function validateContractRelationships(
   }
 
   if (input.commissionPlanId) {
-    const planValidation = await validateContractCommissionPlan(
+    const planValidation = await validateContractCommissionPlanRelationship(
       context,
       input.commissionPlanId,
+      input.administratorId ?? null,
     );
 
     if (!planValidation.ok) {
@@ -578,6 +579,60 @@ async function validateContractCommissionPlan(
     commissionPlanId,
     context.profile.organization_id,
   );
+}
+
+async function validateContractCommissionPlanRelationship(
+  context: RequestContext,
+  commissionPlanId: string,
+  administratorId: string | null,
+) {
+  if (!administratorId) {
+    return {
+      error: "Plano de comissao exige administradora.",
+      ok: false as const,
+      status: 400,
+    };
+  }
+
+  const planValidation = await validateContractCommissionPlan(
+    context,
+    commissionPlanId,
+  );
+
+  if (!planValidation.ok) {
+    return planValidation;
+  }
+
+  const { data, error } = await context.supabase
+    .from("commission_plans")
+    .select("id, administrator_id, organization_id")
+    .eq("id", commissionPlanId)
+    .eq("organization_id", context.profile.organization_id)
+    .maybeSingle<{
+      administrator_id: string | null;
+      id: string;
+      organization_id: string | null;
+    }>();
+
+  if (error || !data?.organization_id) {
+    return {
+      error: "Plano de comissao nao encontrado.",
+      ok: false as const,
+      status: 404,
+    };
+  }
+
+  if (data.administrator_id !== administratorId) {
+    return {
+      error: "Plano de comissao nao pertence a administradora selecionada.",
+      ok: false as const,
+      status: 400,
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
 }
 
 async function validateEntityOrganization(

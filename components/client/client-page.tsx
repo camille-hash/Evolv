@@ -254,14 +254,17 @@ export function ClientPage({
       }
 
       try {
-        const [loadedAdministrators, loadedCommissionPlans] = await Promise.all([
-          fetchAdministrators(accessToken, { limit: 100, status: "active" }),
-          fetchCommissionPlans(accessToken, {
-            administratorId: contractForm.administratorId || null,
-            limit: 100,
-            status: "active",
-          }),
-        ]);
+        const loadedAdministrators = await fetchAdministrators(accessToken, {
+          limit: 100,
+          status: "active",
+        });
+        const loadedCommissionPlans = contractForm.administratorId
+          ? await fetchCommissionPlans(accessToken, {
+              administratorId: contractForm.administratorId,
+              limit: 100,
+              status: "active",
+            })
+          : [];
 
         if (isActive) {
           setAdministrators(loadedAdministrators);
@@ -582,18 +585,28 @@ export function ClientPage({
                 <ContractFormField label="Plano de comissao">
                   <select
                     className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    disabled={!contractForm.administratorId}
                     onChange={(event) =>
                       updateContractForm({ commissionPlanId: event.target.value })
                     }
                     value={contractForm.commissionPlanId}
                   >
-                    <option value="">Sem plano</option>
+                    <option value="">
+                      {contractForm.administratorId
+                        ? "Sem plano"
+                        : "Selecione uma administradora"}
+                    </option>
                     {commissionPlans.map((plan) => (
                       <option key={plan.id} value={plan.id}>
                         {plan.name}
                       </option>
                     ))}
                   </select>
+                  {contractForm.administratorId && !commissionPlans.length ? (
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Nenhum plano ativo encontrado para esta administradora.
+                    </p>
+                  ) : null}
                 </ContractFormField>
 
                 <ContractFormField label="Status">

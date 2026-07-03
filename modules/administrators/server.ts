@@ -110,6 +110,12 @@ export async function listAdministrators(
   );
 
   if (error) {
+    logAdministratorServerError("list_query_failed", {
+      error: formatSupabaseDebugError(error),
+      filters: normalizedFilters,
+      organizationId: context.profile.organization_id,
+    });
+
     return {
       error: "Nao foi possivel carregar as administradoras.",
       ok: false,
@@ -516,4 +522,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
       typeof value === "object" &&
       !Array.isArray(value),
   );
+}
+
+function logAdministratorServerError(
+  stage: string,
+  payload: Record<string, unknown>,
+) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.error("[EVOLV administrators]", {
+    ...payload,
+    stage,
+  });
+}
+
+function formatSupabaseDebugError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const record = error as Record<string, unknown>;
+
+  return {
+    code: typeof record.code === "string" ? record.code : null,
+    details: typeof record.details === "string" ? record.details : null,
+    hint: typeof record.hint === "string" ? record.hint : null,
+    message: typeof record.message === "string" ? record.message : null,
+  };
 }

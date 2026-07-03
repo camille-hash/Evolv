@@ -26,6 +26,12 @@ export async function GET(request: NextRequest) {
   );
 
   if (!result.ok) {
+    logAdministratorsRouteError("list_failed", {
+      error: result.error,
+      filters: parsedFilters.filters,
+      status: result.status,
+    });
+
     return NextResponse.json(
       { error: result.error },
       { status: result.status },
@@ -72,4 +78,18 @@ function readBearerToken(request: NextRequest) {
   }
 
   return authorization.slice("bearer ".length).trim() || null;
+}
+
+function logAdministratorsRouteError(
+  stage: string,
+  payload: Record<string, unknown>,
+) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.error("[EVOLV administrators]", {
+    ...payload,
+    stage,
+  });
 }
