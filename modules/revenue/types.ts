@@ -42,6 +42,12 @@ export type RevenueGenerationResult = {
   skippedReason: string | null;
 };
 
+export type ExpectedRevenueInput = {
+  dueDate?: string | null;
+  expectedAmount: number;
+  metadata?: Record<string, unknown>;
+};
+
 export type RevenueInstallmentDraft = {
   dueDate: string;
   expectedAmount: number;

@@ -1,4 +1,29 @@
-import type { LeadContractSummary } from "./types";
+import type { Contract, ContractInput, LeadContractSummary } from "./types";
+
+export async function createContract(
+  accessToken: string,
+  input: ContractInput,
+) {
+  const response = await fetch("/api/contracts", {
+    body: JSON.stringify(input),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  const payload = (await response.json().catch(() => null)) as {
+    contract?: Contract;
+    error?: string;
+  } | null;
+
+  if (!response.ok || !payload?.contract) {
+    throw new Error(payload?.error ?? "Nao foi possivel criar o contrato.");
+  }
+
+  return payload.contract;
+}
 
 export async function fetchLeadContracts(
   accessToken: string,

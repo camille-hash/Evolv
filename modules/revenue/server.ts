@@ -1,5 +1,6 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import type {
+  ExpectedRevenueInput,
   RevenueCalculationBase,
   RevenueCommissionPlanSnapshot,
   RevenueContractSnapshot,
@@ -84,6 +85,10 @@ export type RevenueListResult =
 
 export type RevenueGenerationServiceResult =
   | ({ ok: true } & RevenueGenerationResult)
+  | { error: string; ok: false; status: number };
+
+export type ExpectedRevenueCreationResult =
+  | { ok: true; revenueEntry: RevenueEntry }
   | { error: string; ok: false; status: number };
 
 const contractColumns = [
@@ -283,6 +288,76 @@ export async function listClientRevenue(
     revenueEntries: ((data ?? []) as unknown as RevenueEntryRow[]).map(
       mapRevenueEntryRow,
     ),
+  };
+}
+
+export async function createExpectedRevenueForContract(
+  accessToken: string | null,
+  contractId: string,
+  input: ExpectedRevenueInput,
+): Promise<ExpectedRevenueCreationResult> {
+  if (!contractId.trim()) {
+    return {
+      error: "Informe o contrato.",
+      ok: false,
+      status: 400,
+    };
+  }
+
+  const context = await resolveRevenueRequestContext(accessToken);
+
+  if (!context.ok) {
+    return context;
+  }
+
+  const contractResult = await getContractFromCurrentOrganization(
+    context,
+    contractId,
+  );
+
+  if (!contractResult.ok) {
+    return contractResult;
+  }
+
+  const contract = contractResult.contract;
+  const { data, error } = await context.supabase
+    .from("revenue_entries")
+    .insert({
+      administrator_id: contract.administratorId,
+      client_id: contract.clientId,
+      contract_id: contract.id,
+      due_date: input.dueDate ?? null,
+      expected_amount: input.expectedAmount,
+      metadata: {
+        ...(input.metadata ?? {}),
+        origin: "manual_contract_creation",
+      },
+      organization_id: context.profile.organization_id,
+      status: "expected",
+      type: "commission",
+    })
+    .select(revenueEntryColumns)
+    .single<RevenueEntryRow>();
+
+  if (error || !data?.organization_id) {
+    return {
+      error: "Nao foi possivel criar a receita esperada.",
+      ok: false,
+      status: 500,
+    };
+  }
+
+  if (data.organization_id !== context.profile.organization_id) {
+    return {
+      error: genericAccessError,
+      ok: false,
+      status: 500,
+    };
+  }
+
+  return {
+    ok: true,
+    revenueEntry: mapRevenueEntryRow(data),
   };
 }
 

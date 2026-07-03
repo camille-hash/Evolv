@@ -1,4 +1,5 @@
 import type {
+  ExpectedRevenueInput,
   RevenueEntry,
   RevenueGenerationMode,
   RevenueGenerationResult,
@@ -81,4 +82,35 @@ export async function fetchClientRevenue(accessToken: string, clientId: string) 
   }
 
   return payload.revenueEntries;
+}
+
+export async function createExpectedContractRevenue(
+  accessToken: string,
+  contractId: string,
+  input: ExpectedRevenueInput,
+) {
+  const response = await fetch(
+    `/api/contracts/${encodeURIComponent(contractId)}/expected-revenue`,
+    {
+      body: JSON.stringify(input),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    revenueEntry?: RevenueEntry;
+  } | null;
+
+  if (!response.ok || !payload?.revenueEntry) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel criar a receita esperada.",
+    );
+  }
+
+  return payload.revenueEntry;
 }

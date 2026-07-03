@@ -1,4 +1,4 @@
-import type { RevenueGenerationMode } from "./types";
+import type { ExpectedRevenueInput, RevenueGenerationMode } from "./types";
 
 export function parseRevenueGenerationInput(value: unknown) {
   if (value === null || value === undefined) {
@@ -41,6 +41,39 @@ export function isRevenueGenerationMode(
   return value === "create_missing" || value === "replace_expected";
 }
 
+export function parseExpectedRevenueInput(value: unknown) {
+  if (!isRecord(value)) {
+    return invalid("Informe os dados da receita esperada.");
+  }
+
+  const expectedAmount = normalizePositiveNumber(value.expectedAmount);
+
+  if (expectedAmount === null) {
+    return invalid("Valor esperado de comissao invalido.");
+  }
+
+  const input: ExpectedRevenueInput = {
+    expectedAmount,
+  };
+
+  if ("dueDate" in value) {
+    input.dueDate = normalizeNullableDate(value.dueDate);
+  }
+
+  if ("metadata" in value) {
+    if (!isRecord(value.metadata)) {
+      return invalid("Metadata da receita invalida.");
+    }
+
+    input.metadata = value.metadata;
+  }
+
+  return {
+    input,
+    ok: true as const,
+  };
+}
+
 export function validateRevenueContractInput(input: {
   commissionPlanId: string | null;
   creditAmount: number;
@@ -79,6 +112,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
       typeof value === "object" &&
       !Array.isArray(value),
   );
+}
+
+function normalizePositiveNumber(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return value;
+}
+
+function normalizeNullableDate(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
 }
 
 function invalid(error: string) {

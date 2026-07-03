@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createClient } from "@supabase/supabase-js";
+import {
+  createAdministrator,
+  fetchAdministrators,
+} from "@/modules/administrators/client";
+import type { Administrator } from "@/modules/administrators/types";
+import { fetchCommissionPlans } from "@/modules/commission-plans/client";
+import type { CommissionPlan } from "@/modules/commission-plans/types";
 import {
   fetchClientById,
   fetchClients,
@@ -15,6 +22,9 @@ import {
   emptyClientContext,
   type ClientContext,
 } from "@/modules/client-context";
+import { createContract } from "@/modules/contracts/client";
+import type { ContractStatus } from "@/modules/contracts/types";
+import { createExpectedContractRevenue } from "@/modules/revenue/client";
 import { generateEvolvMasterReport } from "@/modules/reports";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -38,6 +48,34 @@ const contractStatusLabels: Record<ClientContract["status"], string> = {
   submitted: "Enviado",
 };
 
+type ContractCreationFormState = {
+  administratorId: string;
+  commissionPlanId: string;
+  contemplationModel: string;
+  contractNumber: string;
+  creditAmount: string;
+  expectedCommissionAmount: string;
+  expectedCommissionDueDate: string;
+  installmentAmount: string;
+  productType: string;
+  status: ContractStatus;
+  termMonths: string;
+};
+
+const emptyContractCreationForm: ContractCreationFormState = {
+  administratorId: "",
+  commissionPlanId: "",
+  contemplationModel: "",
+  contractNumber: "",
+  creditAmount: "",
+  expectedCommissionAmount: "",
+  expectedCommissionDueDate: "",
+  installmentAmount: "",
+  productType: "",
+  status: "active",
+  termMonths: "",
+};
+
 export function ClientPage({
   initialClientId,
   notice,
@@ -56,8 +94,22 @@ export function ClientPage({
   const [search, setSearch] = useState("");
   const [isLoadingClients, setIsLoadingClients] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isContractFormOpen, setIsContractFormOpen] = useState(false);
+  const [isLoadingContractOptions, setIsLoadingContractOptions] =
+    useState(false);
+  const [isSavingContract, setIsSavingContract] = useState(false);
   const [clientsError, setClientsError] = useState<string | null>(null);
+  const [contractError, setContractError] = useState<string | null>(null);
+  const [contractSuccessMessage, setContractSuccessMessage] =
+    useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [administrators, setAdministrators] = useState<Administrator[]>([]);
+  const [commissionPlans, setCommissionPlans] = useState<CommissionPlan[]>([]);
+  const [contractForm, setContractForm] = useState<ContractCreationFormState>(
+    emptyContractCreationForm,
+  );
+  const [newAdministratorName, setNewAdministratorName] = useState("");
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const selectedClientContext = useMemo(
     () => toClientContext(selectedClientDetail),
     [selectedClientDetail],
@@ -129,7 +181,7 @@ export function ClientPage({
     return () => {
       isActive = false;
     };
-  }, [initialClientId, onClientContextChange, search]);
+  }, [initialClientId, onClientContextChange, refreshVersion, search]);
 
   useEffect(() => {
     let isActive = true;
@@ -179,6 +231,207 @@ export function ClientPage({
       isActive = false;
     };
   }, [onClientContextChange, selectedClientId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadContractOptions() {
+      if (!isContractFormOpen || !selectedClientDetail) {
+        return;
+      }
+
+      setIsLoadingContractOptions(true);
+      setContractError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setContractError("Sessao invalida para carregar dados do contrato.");
+          setIsLoadingContractOptions(false);
+        }
+        return;
+      }
+
+      try {
+        const [loadedAdministrators, loadedCommissionPlans] = await Promise.all([
+          fetchAdministrators(accessToken, { limit: 100, status: "active" }),
+          fetchCommissionPlans(accessToken, {
+            administratorId: contractForm.administratorId || null,
+            limit: 100,
+            status: "active",
+          }),
+        ]);
+
+        if (isActive) {
+          setAdministrators(loadedAdministrators);
+          setCommissionPlans(loadedCommissionPlans);
+        }
+      } catch (error) {
+        if (isActive) {
+          setContractError(
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel carregar dados do contrato.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingContractOptions(false);
+        }
+      }
+    }
+
+    void loadContractOptions();
+
+    return () => {
+      isActive = false;
+    };
+  }, [contractForm.administratorId, isContractFormOpen, selectedClientDetail]);
+
+  function updateContractForm(patch: Partial<ContractCreationFormState>) {
+    setContractForm((current) => ({
+      ...current,
+      ...patch,
+    }));
+  }
+
+  async function handleCreateMinimalAdministrator() {
+    const name = newAdministratorName.trim();
+
+    if (!name) {
+      setContractError("Informe o nome da administradora.");
+      return;
+    }
+
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      setContractError("Sessao invalida para criar administradora.");
+      return;
+    }
+
+    setIsLoadingContractOptions(true);
+    setContractError(null);
+
+    try {
+      const administrator = await createAdministrator(accessToken, {
+        name,
+        status: "active",
+      });
+
+      setAdministrators((current) => [...current, administrator]);
+      setNewAdministratorName("");
+      updateContractForm({ administratorId: administrator.id });
+    } catch (error) {
+      setContractError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel criar a administradora.",
+      );
+    } finally {
+      setIsLoadingContractOptions(false);
+    }
+  }
+
+  async function handleCreateContract() {
+    if (!selectedClientDetail) {
+      return;
+    }
+
+    const creditAmount = parseRequiredCurrencyValue(contractForm.creditAmount);
+
+    if (creditAmount === null) {
+      setContractError("Informe o valor de credito do contrato.");
+      return;
+    }
+
+    const installmentAmount = parseOptionalCurrencyValue(
+      contractForm.installmentAmount,
+    );
+    const expectedCommissionAmount = parseOptionalCurrencyValue(
+      contractForm.expectedCommissionAmount,
+    );
+    const termMonths = parseOptionalPositiveInteger(contractForm.termMonths);
+
+    if (installmentAmount === undefined) {
+      setContractError("Valor de parcela invalido.");
+      return;
+    }
+
+    if (expectedCommissionAmount === undefined) {
+      setContractError("Valor de comissao esperada invalido.");
+      return;
+    }
+
+    if (termMonths === undefined) {
+      setContractError("Prazo do contrato invalido.");
+      return;
+    }
+
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      setContractError("Sessao invalida para cadastrar contrato.");
+      return;
+    }
+
+    setIsSavingContract(true);
+    setContractError(null);
+    setContractSuccessMessage(null);
+
+    try {
+      const contract = await createContract(accessToken, {
+        administratorId: contractForm.administratorId || null,
+        clientId: selectedClientDetail.client.id,
+        commissionPlanId: contractForm.commissionPlanId || null,
+        contemplationModel: normalizeOptionalFormText(
+          contractForm.contemplationModel,
+        ),
+        contractNumber: normalizeOptionalFormText(contractForm.contractNumber),
+        creditAmount,
+        installmentAmount,
+        metadata: {
+          origin: "client_contract_creation_flow",
+        },
+        productType: normalizeOptionalFormText(contractForm.productType),
+        status: contractForm.status,
+        termMonths,
+      });
+
+      if (expectedCommissionAmount !== null) {
+        await createExpectedContractRevenue(accessToken, contract.id, {
+          dueDate:
+            normalizeOptionalFormText(contractForm.expectedCommissionDueDate) ??
+            null,
+          expectedAmount: expectedCommissionAmount,
+          metadata: {
+            origin: "client_contract_creation_flow",
+          },
+        });
+      }
+
+      const refreshedDetail = await fetchClientById(
+        accessToken,
+        selectedClientDetail.client.id,
+      );
+
+      setSelectedClientDetail(refreshedDetail);
+      onClientContextChange(toClientContext(refreshedDetail));
+      setRefreshVersion((current) => current + 1);
+      setContractForm(emptyContractCreationForm);
+      setIsContractFormOpen(false);
+      setContractSuccessMessage("Contrato cadastrado com sucesso.");
+    } catch (error) {
+      setContractError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel cadastrar o contrato.",
+      );
+    } finally {
+      setIsSavingContract(false);
+    }
+  }
 
   return (
     <section className="grid gap-6">
@@ -233,6 +486,224 @@ export function ClientPage({
         <p className="rounded-md border border-primary/25 bg-primary/[0.06] p-4 text-sm font-medium text-foreground">
           {notice}
         </p>
+      ) : null}
+
+      {contractSuccessMessage ? (
+        <p className="rounded-md border border-primary/25 bg-primary/[0.06] p-4 text-sm font-medium text-foreground">
+          {contractSuccessMessage}
+        </p>
+      ) : null}
+
+      {selectedClientDetail ? (
+        <section className="executive-surface rounded-md p-5 text-card-foreground">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Operacao contratual
+              </p>
+              <h3 className="mt-1 text-base font-semibold text-foreground">
+                Cadastrar contrato para {selectedClientDetail.client.name}
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Registre contrato, administradora e receita esperada sem sair do
+                cliente persistido.
+              </p>
+            </div>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+              onClick={() => setIsContractFormOpen((current) => !current)}
+              type="button"
+            >
+              {isContractFormOpen ? "Fechar cadastro" : "Cadastrar contrato"}
+            </button>
+          </div>
+
+          {isContractFormOpen ? (
+            <div className="mt-5 grid gap-4 rounded-md border bg-background/60 p-4">
+              {contractError ? (
+                <p className="rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive">
+                  {contractError}
+                </p>
+              ) : null}
+
+              {isLoadingContractOptions ? (
+                <p className="text-sm text-muted-foreground">
+                  Carregando administradoras e planos de comissao...
+                </p>
+              ) : null}
+
+              {!administrators.length ? (
+                <div className="rounded-md border border-dashed bg-card p-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Nenhuma administradora ativa encontrada.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      className="h-10 flex-1 rounded-md border bg-background px-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+                      onChange={(event) =>
+                        setNewAdministratorName(event.target.value)
+                      }
+                      placeholder="Nome da administradora"
+                      value={newAdministratorName}
+                    />
+                    <button
+                      className="inline-flex h-10 items-center justify-center rounded-md border bg-card px-4 text-sm font-medium text-foreground transition hover:border-primary/40 hover:text-primary"
+                      disabled={isLoadingContractOptions}
+                      onClick={handleCreateMinimalAdministrator}
+                      type="button"
+                    >
+                      Criar administradora
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <ContractFormField label="Administradora">
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    onChange={(event) =>
+                      updateContractForm({
+                        administratorId: event.target.value,
+                        commissionPlanId: "",
+                      })
+                    }
+                    value={contractForm.administratorId}
+                  >
+                    <option value="">Sem administradora</option>
+                    {administrators.map((administrator) => (
+                      <option key={administrator.id} value={administrator.id}>
+                        {administrator.name}
+                      </option>
+                    ))}
+                  </select>
+                </ContractFormField>
+
+                <ContractFormField label="Plano de comissao">
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    onChange={(event) =>
+                      updateContractForm({ commissionPlanId: event.target.value })
+                    }
+                    value={contractForm.commissionPlanId}
+                  >
+                    <option value="">Sem plano</option>
+                    {commissionPlans.map((plan) => (
+                      <option key={plan.id} value={plan.id}>
+                        {plan.name}
+                      </option>
+                    ))}
+                  </select>
+                </ContractFormField>
+
+                <ContractFormField label="Status">
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    onChange={(event) =>
+                      updateContractForm({
+                        status: event.target.value as ContractStatus,
+                      })
+                    }
+                    value={contractForm.status}
+                  >
+                    <option value="active">Ativo</option>
+                    <option value="draft">Rascunho</option>
+                    <option value="pending_documentation">
+                      Documentacao pendente
+                    </option>
+                    <option value="approved">Aprovado</option>
+                  </select>
+                </ContractFormField>
+
+                <ContractFormInput
+                  label="Numero do contrato"
+                  onChange={(value) =>
+                    updateContractForm({ contractNumber: value })
+                  }
+                  placeholder="Opcional"
+                  value={contractForm.contractNumber}
+                />
+                <ContractFormInput
+                  label="Produto"
+                  onChange={(value) => updateContractForm({ productType: value })}
+                  placeholder="Consorcio, carta, imovel..."
+                  value={contractForm.productType}
+                />
+                <ContractFormInput
+                  label="Credito"
+                  onChange={(value) => updateContractForm({ creditAmount: value })}
+                  placeholder="Ex: 250000"
+                  type="number"
+                  value={contractForm.creditAmount}
+                />
+                <ContractFormInput
+                  label="Parcela"
+                  onChange={(value) =>
+                    updateContractForm({ installmentAmount: value })
+                  }
+                  placeholder="Opcional"
+                  type="number"
+                  value={contractForm.installmentAmount}
+                />
+                <ContractFormInput
+                  label="Prazo em meses"
+                  onChange={(value) => updateContractForm({ termMonths: value })}
+                  placeholder="Opcional"
+                  type="number"
+                  value={contractForm.termMonths}
+                />
+                <ContractFormInput
+                  label="Modelo de contemplacao"
+                  onChange={(value) =>
+                    updateContractForm({ contemplationModel: value })
+                  }
+                  placeholder="Opcional"
+                  value={contractForm.contemplationModel}
+                />
+                <ContractFormInput
+                  label="Comissao esperada"
+                  onChange={(value) =>
+                    updateContractForm({ expectedCommissionAmount: value })
+                  }
+                  placeholder="Opcional"
+                  type="number"
+                  value={contractForm.expectedCommissionAmount}
+                />
+                <ContractFormInput
+                  label="Vencimento da comissao"
+                  onChange={(value) =>
+                    updateContractForm({ expectedCommissionDueDate: value })
+                  }
+                  type="date"
+                  value={contractForm.expectedCommissionDueDate}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  className="inline-flex h-10 items-center justify-center rounded-md border bg-card px-4 text-sm font-medium text-foreground transition hover:border-primary/40 hover:text-primary"
+                  disabled={isSavingContract}
+                  onClick={() => {
+                    setContractForm(emptyContractCreationForm);
+                    setContractError(null);
+                    setIsContractFormOpen(false);
+                  }}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="inline-flex h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                  disabled={isSavingContract}
+                  onClick={handleCreateContract}
+                  type="button"
+                >
+                  {isSavingContract ? "Salvando..." : "Salvar contrato"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
       {selectedClientIsOutsideCurrentResults ? (
@@ -426,6 +897,49 @@ function ClientPersistedDetail({ detail }: { detail: ClientDetailResponse }) {
   );
 }
 
+function ContractFormField({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-medium text-foreground">
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function ContractFormInput({
+  label,
+  onChange,
+  placeholder,
+  type = "text",
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: "date" | "number" | "text";
+  value: string;
+}) {
+  return (
+    <ContractFormField label={label}>
+      <input
+        className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+        min={type === "number" ? "0" : undefined}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        step={type === "number" ? "0.01" : undefined}
+        type={type}
+        value={value}
+      />
+    </ContractFormField>
+  );
+}
+
 function ClientContractItem({ contract }: { contract: ClientContract }) {
   return (
     <article className="rounded-md border bg-background/70 p-4 text-sm">
@@ -553,4 +1067,36 @@ function formatDate(value: string) {
   }
 
   return dateTimeFormatter.format(date);
+}
+
+function normalizeOptionalFormText(value: string) {
+  const trimmed = value.trim();
+
+  return trimmed || null;
+}
+
+function parseRequiredCurrencyValue(value: string) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseOptionalCurrencyValue(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function parseOptionalPositiveInteger(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
