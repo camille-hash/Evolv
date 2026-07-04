@@ -1,3 +1,5 @@
+import type { ContractCommissionSummary } from "@/modules/commission-engine/types";
+
 export type OperationsContractStatus =
   | "active"
   | "attention"
@@ -10,6 +12,7 @@ export type OperationsContractRow = {
   administratorName: string;
   attentionItems: string[];
   clientName: string;
+  commissionSummary?: ContractCommissionSummary;
   contractNumber?: string;
   createdAt?: string;
   creditValue: number;

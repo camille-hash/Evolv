@@ -3,6 +3,7 @@ import type {
   OperationsContractStatus,
 } from "@/modules/operations/contracts-types";
 import { OperationsContextLink } from "../operations-context-link";
+import { ContractCommissionSummaryCard } from "./contract-commission-summary-card";
 
 type OperationsContractCardProps = {
   contract: OperationsContractRow;
@@ -72,6 +73,8 @@ export function OperationsContractCard({ contract }: OperationsContractCardProps
           value={currencyFormatter.format(contract.recognizedRevenue)}
         />
       </div>
+
+      <ContractCommissionSummaryCard summary={contract.commissionSummary} />
 
       <div className="mt-4 flex flex-wrap gap-2">
         <OperationsContextLink href="/operations/clients">

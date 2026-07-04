@@ -1,4 +1,6 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+import { getContractCommissionSummary } from "@/modules/commission-engine/server";
+import type { ContractCommissionSummary } from "@/modules/commission-engine/types";
 import type {
   OperationsContractRow,
   OperationsContractsResponse,
@@ -94,6 +96,7 @@ export async function listOperationsContracts(
 function buildOperationsContractRows(dataset: {
   administrators: AdministratorRow[];
   clients: ClientRow[];
+  commissionSummaries: Map<string, ContractCommissionSummary>;
   contracts: ContractRow[];
   revenueEntries: RevenueEntryRow[];
 }): OperationsContractRow[] {
@@ -136,6 +139,7 @@ function buildOperationsContractRows(dataset: {
       administratorName,
       attentionItems,
       clientName,
+      commissionSummary: dataset.commissionSummaries.get(contract.id),
       contractNumber: normalizeNullableText(contract.contract_number) ?? undefined,
       createdAt: contract.created_at ?? undefined,
       creditValue,
@@ -303,6 +307,19 @@ async function loadOperationsContractsDataset(context: RequestContext) {
     };
   }
 
+  const contracts = ((contractsResult.data ?? []) as unknown as ContractRow[])
+    .filter(
+      (contract) => contract.organization_id === context.profile.organization_id,
+    );
+  const commissionSummariesResult = await loadCommissionSummaries(
+    context,
+    contracts,
+  );
+
+  if (!commissionSummariesResult.ok) {
+    return commissionSummariesResult;
+  }
+
   return {
     administrators: (
       (administratorsResult.data ?? []) as unknown as AdministratorRow[]
@@ -313,9 +330,8 @@ async function loadOperationsContractsDataset(context: RequestContext) {
     clients: ((clientsResult.data ?? []) as unknown as ClientRow[]).filter(
       (client) => client.organization_id === context.profile.organization_id,
     ),
-    contracts: ((contractsResult.data ?? []) as unknown as ContractRow[]).filter(
-      (contract) => contract.organization_id === context.profile.organization_id,
-    ),
+    commissionSummaries: commissionSummariesResult.commissionSummaries,
+    contracts,
     ok: true as const,
     revenueEntries: (
       (revenueResult.data ?? []) as unknown as RevenueEntryRow[]
@@ -323,6 +339,42 @@ async function loadOperationsContractsDataset(context: RequestContext) {
       (revenueEntry) =>
         revenueEntry.organization_id === context.profile.organization_id,
     ),
+  };
+}
+
+async function loadCommissionSummaries(
+  context: RequestContext,
+  contracts: ContractRow[],
+) {
+  const commissionSummaries = new Map<string, ContractCommissionSummary>();
+
+  for (const contract of contracts) {
+    const summary = await getContractCommissionSummary({
+      contractId: contract.id,
+      organizationId: context.profile.organization_id,
+      supabase: context.supabase,
+    });
+
+    if (!summary.ok) {
+      return {
+        error: "Nao foi possivel carregar resumo de comissao dos contratos.",
+        ok: false as const,
+        status: summary.status,
+      };
+    }
+
+    commissionSummaries.set(contract.id, {
+      expectedRevenue: summary.expectedRevenue,
+      hasCommissionEngine: summary.hasCommissionEngine,
+      schedule: summary.schedule,
+      snapshot: summary.snapshot,
+      totals: summary.totals,
+    });
+  }
+
+  return {
+    commissionSummaries,
+    ok: true as const,
   };
 }
 

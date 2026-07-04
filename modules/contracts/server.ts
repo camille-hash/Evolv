@@ -1,5 +1,6 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import { validateAdministratorBelongsToOrganization } from "@/modules/administrators/server";
+import { ensureContractCommissionSnapshotAndSchedule } from "@/modules/commission-engine/server";
 import { validateCommissionPlanBelongsToOrganization } from "@/modules/commission-plans/server";
 import type {
   Contract,
@@ -222,8 +223,18 @@ export async function createContract(
     };
   }
 
+  const contract = mapContractRow(data as unknown as ContractRow);
+  const commissionEngineResult = await ensureCommissionEngineForContract(
+    context,
+    contract,
+  );
+
+  if (!commissionEngineResult.ok) {
+    return commissionEngineResult;
+  }
+
   return {
-    contract: mapContractRow(data as unknown as ContractRow),
+    contract,
     ok: true,
   };
 }
@@ -284,8 +295,18 @@ export async function updateContract(
     };
   }
 
+  const contract = mapContractRow(data as unknown as ContractRow);
+  const commissionEngineResult = await ensureCommissionEngineForContract(
+    context,
+    contract,
+  );
+
+  if (!commissionEngineResult.ok) {
+    return commissionEngineResult;
+  }
+
   return {
-    contract: mapContractRow(data as unknown as ContractRow),
+    contract,
     ok: true,
   };
 }
@@ -340,6 +361,27 @@ export async function updateContractStatus(
 
   return {
     contract: mapContractRow(data as unknown as ContractRow),
+    ok: true,
+  };
+}
+
+async function ensureCommissionEngineForContract(
+  context: RequestContext,
+  contract: Contract,
+): Promise<ContractMutationResult | { ok: true }> {
+  const result = await ensureContractCommissionSnapshotAndSchedule({
+    commissionPlanId: contract.commissionPlanId,
+    contractId: contract.id,
+    createdBy: context.profile.id,
+    organizationId: context.profile.organization_id,
+    supabase: context.supabase,
+  });
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
     ok: true,
   };
 }

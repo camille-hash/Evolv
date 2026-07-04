@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { fetchAdministrators } from "@/modules/administrators/client";
+import type { Administrator } from "@/modules/administrators/types";
 import {
   createCommissionPlan,
   fetchCommissionPlans,
@@ -9,7 +11,9 @@ import {
 import type {
   CommissionPaymentTrigger,
   CommissionPlan,
+  CommissionPlanScheduleItemInput,
   CommissionPlanStatus,
+  CommissionScheduleEventType,
   CommissionType,
 } from "@/modules/commission-plans/types";
 import type { OperationsAdministratorRow } from "@/modules/operations/administrators-types";
@@ -19,31 +23,37 @@ type OperationsCommissionPlansManagerProps = {
 };
 
 type PlanFormState = {
-  commissionFixedAmount: string;
-  commissionPercentage: string;
-  commissionType: CommissionType;
+  contractTermMonths: string;
   name: string;
   paymentInstallments: string;
   paymentTrigger: CommissionPaymentTrigger;
   status: CommissionPlanStatus;
 };
 
+type ScheduleRowState = {
+  eventType: CommissionScheduleEventType;
+  installmentNumber: string;
+  offsetDays: string;
+  offsetMonths: string;
+  percentage: string;
+};
+
 type StatusFilter = CommissionPlanStatus | "all";
 
 const emptyForm: PlanFormState = {
-  commissionFixedAmount: "",
-  commissionPercentage: "",
-  commissionType: "percentage",
+  contractTermMonths: "",
   name: "",
   paymentInstallments: "1",
   paymentTrigger: "contract_activation",
   status: "active",
 };
 
-const commissionTypeLabels: Record<CommissionType, string> = {
-  fixed: "Valor fixo",
-  hybrid: "Hibrido",
-  percentage: "Percentual",
+const emptyScheduleRow: ScheduleRowState = {
+  eventType: "installment",
+  installmentNumber: "1",
+  offsetDays: "",
+  offsetMonths: "1",
+  percentage: "0",
 };
 
 const paymentTriggerLabels: Record<CommissionPaymentTrigger, string> = {
@@ -59,37 +69,89 @@ const statusLabels: Record<CommissionPlanStatus, string> = {
   inactive: "Inativo",
 };
 
-const currencyFormatter = new Intl.NumberFormat("pt-BR", {
-  currency: "BRL",
-  maximumFractionDigits: 0,
-  style: "currency",
-});
-
 export function OperationsCommissionPlansManager({
-  administrators,
+  administrators: operationalAdministrators,
 }: OperationsCommissionPlansManagerProps) {
+  const [catalogAdministrators, setCatalogAdministrators] = useState<
+    Administrator[]
+  >([]);
   const [selectedAdministratorId, setSelectedAdministratorId] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [plans, setPlans] = useState<CommissionPlan[]>([]);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [form, setForm] = useState<PlanFormState>(emptyForm);
-  const [isLoading, setIsLoading] = useState(false);
+  const [installmentsToGenerate, setInstallmentsToGenerate] = useState("12");
+  const [scheduleRows, setScheduleRows] = useState<ScheduleRowState[]>([
+    emptyScheduleRow,
+  ]);
+  const [isLoadingAdministrators, setIsLoadingAdministrators] = useState(false);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const activeAdministrators = useMemo(
+  const fallbackAdministrators = useMemo(
     () =>
-      administrators.filter(
-        (administrator) => administrator.status !== "inactive",
-      ),
-    [administrators],
+      operationalAdministrators.map((administrator) => ({
+        createdAt: "",
+        createdBy: null,
+        id: administrator.id,
+        metadata: {},
+        name: administrator.name,
+        organizationId: "",
+        slug: administrator.name.toLowerCase().replace(/\s+/g, "-"),
+        status: "active" as const,
+        updatedAt: "",
+        updatedBy: null,
+      })),
+    [operationalAdministrators],
   );
-  const visibleAdministrators = activeAdministrators.length
-    ? activeAdministrators
-    : administrators;
+  const administrators = catalogAdministrators.length
+    ? catalogAdministrators
+    : fallbackAdministrators;
   const effectiveAdministratorId =
-    selectedAdministratorId || visibleAdministrators[0]?.id || "";
+    selectedAdministratorId || administrators[0]?.id || "";
+  const selectedAdministrator = administrators.find(
+    (administrator) => administrator.id === effectiveAdministratorId,
+  );
+  const scheduleTotals = useMemo(
+    () => calculateScheduleTotals(scheduleRows),
+    [scheduleRows],
+  );
+  const editingPlan = plans.find((plan) => plan.id === editingPlanId) ?? null;
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadAdministrators() {
+      setIsLoadingAdministrators(true);
+
+      try {
+        const loadedAdministrators = await fetchAdministrators(null, {
+          limit: 100,
+          status: "active",
+        });
+
+        if (isActive) {
+          setCatalogAdministrators(loadedAdministrators);
+        }
+      } catch {
+        if (isActive) {
+          setCatalogAdministrators([]);
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingAdministrators(false);
+        }
+      }
+    }
+
+    void loadAdministrators();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -100,7 +162,7 @@ export function OperationsCommissionPlansManager({
         return;
       }
 
-      setIsLoading(true);
+      setIsLoadingPlans(true);
       setError(null);
 
       try {
@@ -123,7 +185,7 @@ export function OperationsCommissionPlansManager({
         }
       } finally {
         if (isActive) {
-          setIsLoading(false);
+          setIsLoadingPlans(false);
         }
       }
     }
@@ -135,11 +197,6 @@ export function OperationsCommissionPlansManager({
     };
   }, [effectiveAdministratorId, statusFilter]);
 
-  const selectedAdministrator = administrators.find(
-    (administrator) => administrator.id === effectiveAdministratorId,
-  );
-  const editingPlan = plans.find((plan) => plan.id === editingPlanId) ?? null;
-
   function updateForm(patch: Partial<PlanFormState>) {
     setForm((current) => ({
       ...current,
@@ -147,30 +204,86 @@ export function OperationsCommissionPlansManager({
     }));
   }
 
-  function startEdit(plan: CommissionPlan) {
-    setEditingPlanId(plan.id);
-    setForm({
-      commissionFixedAmount:
-        plan.commissionFixedAmount === null
-          ? ""
-          : String(plan.commissionFixedAmount),
-      commissionPercentage:
-        plan.commissionPercentage === null
-          ? ""
-          : String(plan.commissionPercentage),
-      commissionType: plan.commissionType,
-      name: plan.name,
-      paymentInstallments: String(plan.paymentInstallments),
-      paymentTrigger: plan.paymentTrigger,
-      status: plan.status,
-    });
-    setNotice(null);
-    setError(null);
+  function updateScheduleRow(index: number, patch: Partial<ScheduleRowState>) {
+    setScheduleRows((current) =>
+      current.map((row, rowIndex) =>
+        rowIndex === index
+          ? normalizeScheduleRow({
+              ...row,
+              ...patch,
+            })
+          : row,
+      ),
+    );
   }
 
   function resetForm() {
     setEditingPlanId(null);
     setForm(emptyForm);
+    setInstallmentsToGenerate("12");
+    setScheduleRows([emptyScheduleRow]);
+  }
+
+  function startEdit(plan: CommissionPlan) {
+    setEditingPlanId(plan.id);
+    setForm({
+      contractTermMonths:
+        plan.contractTermMonths === null ? "" : String(plan.contractTermMonths),
+      name: plan.name,
+      paymentInstallments: String(plan.paymentInstallments),
+      paymentTrigger: plan.paymentTrigger,
+      status: plan.status,
+    });
+    setScheduleRows(
+      plan.scheduleItems.length
+        ? plan.scheduleItems.map((item) => ({
+            eventType: item.eventType,
+            installmentNumber:
+              item.installmentNumber === null
+                ? ""
+                : String(item.installmentNumber),
+            offsetDays: item.offsetDays === null ? "" : String(item.offsetDays),
+            offsetMonths:
+              item.offsetMonths === null ? "" : String(item.offsetMonths),
+            percentage: String(item.percentage),
+          }))
+        : [emptyScheduleRow],
+    );
+    setNotice(null);
+    setError(null);
+  }
+
+  function generateInstallments() {
+    const total = Number(installmentsToGenerate);
+
+    if (!Number.isInteger(total) || total < 1 || total > 240) {
+      setError("Informe uma quantidade de parcelas entre 1 e 240.");
+      return;
+    }
+
+    setScheduleRows(
+      Array.from({ length: total }, (_, index) => ({
+        eventType: "installment",
+        installmentNumber: String(index + 1),
+        offsetDays: "",
+        offsetMonths: String(index + 1),
+        percentage: "0",
+      })),
+    );
+    setError(null);
+  }
+
+  function addContemplationEvent() {
+    setScheduleRows((current) => [
+      ...current,
+      {
+        eventType: "contemplation",
+        installmentNumber: "",
+        offsetDays: "",
+        offsetMonths: "",
+        percentage: "0",
+      },
+    ]);
   }
 
   async function reloadPlans() {
@@ -200,22 +313,32 @@ export function OperationsCommissionPlansManager({
       return;
     }
 
+    const schedulePayload = buildSchedulePayload(scheduleRows);
+
+    if (!schedulePayload.ok) {
+      setError(schedulePayload.error);
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
     setNotice(null);
 
     try {
+      const input = {
+        ...payload.input,
+        administratorId: effectiveAdministratorId,
+        commissionFixedAmount: null,
+        commissionPercentage: scheduleTotals.percentage || null,
+        commissionType: "percentage" as CommissionType,
+        scheduleItems: schedulePayload.scheduleItems,
+      };
+
       if (editingPlanId) {
-        await updateCommissionPlan(null, editingPlanId, {
-          ...payload.input,
-          administratorId: effectiveAdministratorId,
-        });
+        await updateCommissionPlan(null, editingPlanId, input);
         setNotice("Plano de comissao atualizado.");
       } else {
-        await createCommissionPlan(null, {
-          ...payload.input,
-          administratorId: effectiveAdministratorId,
-        });
+        await createCommissionPlan(null, input);
         setNotice("Plano de comissao criado.");
       }
 
@@ -266,11 +389,11 @@ export function OperationsCommissionPlansManager({
             Planos de comissao
           </p>
           <h2 className="mt-1 text-lg font-semibold text-slate-950">
-            Cadastro operacional por administradora
+            Templates operacionais por administradora
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-            Gerencie os planos que aparecem no cadastro de contrato. Planos
-            inativos permanecem preservados para contratos antigos.
+            Cadastre reguas percentuais reutilizaveis. Valores em reais sao
+            calculados somente no contrato, com o credito real contratado.
           </p>
         </div>
 
@@ -278,17 +401,18 @@ export function OperationsCommissionPlansManager({
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
             Administradora
             <select
-              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+              className="h-10 min-w-56 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+              disabled={isLoadingAdministrators}
               onChange={(event) => {
                 setSelectedAdministratorId(event.target.value);
                 resetForm();
               }}
               value={effectiveAdministratorId}
             >
-              {!visibleAdministrators.length ? (
+              {!administrators.length ? (
                 <option value="">Nenhuma administradora</option>
               ) : null}
-              {visibleAdministrators.map((administrator) => (
+              {administrators.map((administrator) => (
                 <option key={administrator.id} value={administrator.id}>
                   {administrator.name}
                 </option>
@@ -330,33 +454,29 @@ export function OperationsCommissionPlansManager({
           Cadastre uma administradora antes de criar planos de comissao.
         </div>
       ) : (
-        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
             <h3 className="text-sm font-semibold text-slate-950">
-              {editingPlan ? "Editar plano" : "Novo plano"}
+              {editingPlan ? "Editar template" : "Novo template"}
             </h3>
             <div className="mt-4 grid gap-3">
               <FormInput
                 label="Nome"
                 onChange={(value) => updateForm({ name: value })}
-                placeholder="Ex: Plano padrao 2%"
+                placeholder="Ex: Plano 182x"
                 value={form.name}
               />
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <FormSelect
-                  label="Tipo"
+              <div className="grid gap-3 sm:grid-cols-3">
+                <FormInput
+                  label="Prazo comercial"
                   onChange={(value) =>
-                    updateForm({ commissionType: value as CommissionType })
+                    updateForm({ contractTermMonths: value })
                   }
-                  value={form.commissionType}
-                >
-                  {Object.entries(commissionTypeLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </FormSelect>
+                  placeholder="Ex: 182"
+                  type="number"
+                  value={form.contractTermMonths}
+                />
                 <FormSelect
                   label="Status"
                   onChange={(value) =>
@@ -370,30 +490,6 @@ export function OperationsCommissionPlansManager({
                     </option>
                   ))}
                 </FormSelect>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <FormInput
-                  label="Percentual"
-                  onChange={(value) =>
-                    updateForm({ commissionPercentage: value })
-                  }
-                  placeholder="Ex: 2"
-                  type="number"
-                  value={form.commissionPercentage}
-                />
-                <FormInput
-                  label="Valor fixo"
-                  onChange={(value) =>
-                    updateForm({ commissionFixedAmount: value })
-                  }
-                  placeholder="Opcional"
-                  type="number"
-                  value={form.commissionFixedAmount}
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
                 <FormSelect
                   label="Gatilho"
                   onChange={(value) =>
@@ -409,14 +505,118 @@ export function OperationsCommissionPlansManager({
                     </option>
                   ))}
                 </FormSelect>
-                <FormInput
-                  label="Parcelas"
-                  onChange={(value) =>
-                    updateForm({ paymentInstallments: value })
-                  }
-                  type="number"
-                  value={form.paymentInstallments}
-                />
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">
+                      Regua percentual
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Total:{" "}
+                      <span className="font-semibold text-slate-900">
+                        {scheduleTotals.percentage.toLocaleString("pt-BR")}%
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <FormInput
+                      label="Qtd. parcelas"
+                      onChange={setInstallmentsToGenerate}
+                      type="number"
+                      value={installmentsToGenerate}
+                    />
+                    <div className="flex items-end gap-2">
+                      <button
+                        className="inline-flex h-10 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                        onClick={generateInstallments}
+                        type="button"
+                      >
+                        Gerar parcelas
+                      </button>
+                      <button
+                        className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300"
+                        onClick={addContemplationEvent}
+                        type="button"
+                      >
+                        Adicionar contemplacao
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-3">
+                  {scheduleRows.map((row, index) => (
+                    <div
+                      className="grid gap-2 rounded-md border border-slate-100 bg-slate-50 p-3 md:grid-cols-2 xl:grid-cols-[1.1fr_0.7fr_0.8fr_0.8fr_0.8fr_auto]"
+                      key={`${row.eventType}-${index}`}
+                    >
+                      <FormSelect
+                        label="Tipo"
+                        onChange={(value) =>
+                          updateScheduleRow(index, {
+                            eventType: value as CommissionScheduleEventType,
+                          })
+                        }
+                        value={row.eventType}
+                      >
+                        <option value="installment">Parcela</option>
+                        <option value="contemplation">Contemplacao</option>
+                      </FormSelect>
+                      <FormInput
+                        disabled={row.eventType === "contemplation"}
+                        label="N."
+                        onChange={(value) =>
+                          updateScheduleRow(index, { installmentNumber: value })
+                        }
+                        type="number"
+                        value={row.installmentNumber}
+                      />
+                      <FormInput
+                        label="%"
+                        onChange={(value) =>
+                          updateScheduleRow(index, { percentage: value })
+                        }
+                        type="number"
+                        value={row.percentage}
+                      />
+                      <FormInput
+                        label="Offset meses"
+                        onChange={(value) =>
+                          updateScheduleRow(index, { offsetMonths: value })
+                        }
+                        type="number"
+                        value={row.offsetMonths}
+                      />
+                      <FormInput
+                        label="Offset dias"
+                        onChange={(value) =>
+                          updateScheduleRow(index, { offsetDays: value })
+                        }
+                        type="number"
+                        value={row.offsetDays}
+                      />
+                      <div className="flex items-end">
+                        <button
+                          className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-slate-300 disabled:opacity-50"
+                          disabled={scheduleRows.length === 1}
+                          onClick={() =>
+                            setScheduleRows((current) =>
+                              current.filter(
+                                (_, rowIndex) => rowIndex !== index,
+                              ),
+                            )
+                          }
+                          type="button"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
@@ -448,12 +648,12 @@ export function OperationsCommissionPlansManager({
                 Planos de {selectedAdministrator.name}
               </h3>
               <span className="text-xs font-medium text-slate-500">
-                {isLoading ? "Carregando..." : `${plans.length} plano(s)`}
+                {isLoadingPlans ? "Carregando..." : `${plans.length} plano(s)`}
               </span>
             </div>
 
             <div className="mt-3 grid gap-3">
-              {!isLoading && !plans.length ? (
+              {!isLoadingPlans && !plans.length ? (
                 <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                   Nenhum plano encontrado para o filtro selecionado.
                 </div>
@@ -475,9 +675,9 @@ export function OperationsCommissionPlansManager({
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
-                        {formatPlanRule(plan)} -{" "}
+                        {formatScheduleSummary(plan)} -{" "}
                         {paymentTriggerLabels[plan.paymentTrigger]} -{" "}
-                        {plan.paymentInstallments} parcela(s)
+                        {plan.paymentInstallments} parcela(s) de pagamento
                       </p>
                     </div>
 
@@ -513,11 +713,8 @@ export function OperationsCommissionPlansManager({
 function buildPayload(form: PlanFormState) {
   const name = form.name.trim();
   const paymentInstallments = Number(form.paymentInstallments);
-  const commissionPercentage = parseOptionalPositiveNumber(
-    form.commissionPercentage,
-  );
-  const commissionFixedAmount = parseOptionalPositiveNumber(
-    form.commissionFixedAmount,
+  const contractTermMonths = parseOptionalPositiveInteger(
+    form.contractTermMonths,
   );
 
   if (!name) {
@@ -528,41 +725,85 @@ function buildPayload(form: PlanFormState) {
     return invalidPayload("Informe uma quantidade valida de parcelas.");
   }
 
-  if (commissionPercentage === undefined) {
-    return invalidPayload("Informe um percentual valido.");
-  }
-
-  if (commissionFixedAmount === undefined) {
-    return invalidPayload("Informe um valor fixo valido.");
-  }
-
-  if (form.commissionType === "percentage" && commissionPercentage === null) {
-    return invalidPayload("Plano percentual exige percentual maior que zero.");
-  }
-
-  if (form.commissionType === "fixed" && commissionFixedAmount === null) {
-    return invalidPayload("Plano fixo exige valor fixo maior que zero.");
-  }
-
-  if (
-    form.commissionType === "hybrid" &&
-    commissionPercentage === null &&
-    commissionFixedAmount === null
-  ) {
-    return invalidPayload("Plano hibrido exige percentual ou valor fixo.");
+  if (contractTermMonths === undefined) {
+    return invalidPayload("Informe um prazo comercial valido.");
   }
 
   return {
     input: {
-      commissionFixedAmount,
-      commissionPercentage,
-      commissionType: form.commissionType,
+      contractTermMonths,
       name,
       paymentInstallments,
       paymentTrigger: form.paymentTrigger,
       status: form.status,
     },
     ok: true as const,
+  };
+}
+
+function buildSchedulePayload(rows: ScheduleRowState[]) {
+  const scheduleItems: CommissionPlanScheduleItemInput[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const [index, row] of rows.entries()) {
+    const percentage = parseRequiredNonNegativeNumber(row.percentage);
+    const installmentNumber =
+      row.eventType === "installment"
+        ? parseRequiredPositiveInteger(row.installmentNumber)
+        : null;
+    const offsetMonths = parseOptionalNonNegativeInteger(row.offsetMonths);
+    const offsetDays = parseOptionalNonNegativeInteger(row.offsetDays);
+
+    if (percentage === null) {
+      return invalidPayload("Informe percentuais validos na regua.");
+    }
+
+    if (offsetMonths === undefined) {
+      return invalidPayload("Informe offsets em meses validos.");
+    }
+
+    if (offsetDays === undefined) {
+      return invalidPayload("Informe offsets em dias validos.");
+    }
+
+    if (row.eventType === "installment" && installmentNumber === null) {
+      return invalidPayload("Parcela exige numero maior que zero.");
+    }
+
+    const key = `${row.eventType}:${installmentNumber ?? "event"}`;
+
+    if (seenKeys.has(key)) {
+      return invalidPayload("A regua possui eventos duplicados.");
+    }
+
+    seenKeys.add(key);
+    scheduleItems.push({
+      eventType: row.eventType,
+      installmentNumber,
+      offsetDays,
+      offsetMonths,
+      percentage,
+      sortOrder: index,
+    });
+  }
+
+  return {
+    ok: true as const,
+    scheduleItems,
+  };
+}
+
+function normalizeScheduleRow(row: ScheduleRowState): ScheduleRowState {
+  if (row.eventType === "contemplation") {
+    return {
+      ...row,
+      installmentNumber: "",
+    };
+  }
+
+  return {
+    ...row,
+    installmentNumber: row.installmentNumber || "1",
   };
 }
 
@@ -573,41 +814,76 @@ function invalidPayload(error: string) {
   };
 }
 
-function parseOptionalPositiveNumber(value: string) {
+function parseOptionalPositiveInteger(value: string) {
   if (!value.trim()) {
     return null;
   }
 
   const parsed = Number(value);
 
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+  if (!Number.isInteger(parsed) || parsed < 1) {
     return undefined;
   }
 
   return parsed;
 }
 
-function formatPlanRule(plan: CommissionPlan) {
-  const parts: string[] = [commissionTypeLabels[plan.commissionType]];
-
-  if (plan.commissionPercentage !== null) {
-    parts.push(`${plan.commissionPercentage.toLocaleString("pt-BR")}%`);
+function parseOptionalNonNegativeInteger(value: string) {
+  if (!value.trim()) {
+    return null;
   }
 
-  if (plan.commissionFixedAmount !== null) {
-    parts.push(currencyFormatter.format(plan.commissionFixedAmount));
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return undefined;
   }
 
-  return parts.join(" - ");
+  return parsed;
+}
+
+function parseRequiredNonNegativeNumber(value: string) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseRequiredPositiveInteger(value: string) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function calculateScheduleTotals(rows: ScheduleRowState[]) {
+  return rows.reduce(
+    (summary, row) => ({
+      percentage:
+        summary.percentage +
+        (parseRequiredNonNegativeNumber(row.percentage) ?? 0),
+    }),
+    {
+      percentage: 0,
+    },
+  );
+}
+
+function formatScheduleSummary(plan: CommissionPlan) {
+  const percentage =
+    plan.totalSchedulePercentage ?? plan.commissionPercentage ?? 0;
+  const eventsCount = plan.scheduleItems.length;
+
+  return `${percentage.toLocaleString("pt-BR")}% total - ${eventsCount} evento(s)`;
 }
 
 function FormInput({
+  disabled = false,
   label,
   onChange,
   placeholder,
   type = "text",
   value,
 }: {
+  disabled?: boolean;
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -615,10 +891,11 @@ function FormInput({
   value: string;
 }) {
   return (
-    <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+    <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-700">
       {label}
       <input
-        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400"
+        className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 disabled:bg-slate-100 disabled:text-slate-400"
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         type={type}
@@ -640,10 +917,10 @@ function FormSelect({
   value: string;
 }) {
   return (
-    <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+    <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-700">
       {label}
       <select
-        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+        className="h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >

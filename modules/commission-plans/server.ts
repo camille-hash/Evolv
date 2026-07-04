@@ -5,8 +5,11 @@ import type {
   CommissionPlan,
   CommissionPlanCreateInput,
   CommissionPlanListFilters,
+  CommissionPlanScheduleItem,
+  CommissionPlanScheduleItemInput,
   CommissionPlanStatus,
   CommissionPlanUpdateInput,
+  CommissionScheduleEventType,
   CommissionType,
 } from "./types";
 import { validateCommissionFinancialRules } from "./validation";
@@ -19,10 +22,12 @@ type CommissionPlanProfile = {
 };
 
 type CommissionPlanRow = {
+  administration_fee_percentage: number | string | null;
   administrator_id: string | null;
   commission_fixed_amount: number | string | null;
   commission_percentage: number | string | null;
   commission_type: string | null;
+  contract_term_months: number | null;
   created_at: string | null;
   created_by: string | null;
   id: string;
@@ -31,9 +36,26 @@ type CommissionPlanRow = {
   organization_id: string | null;
   payment_installments: number | null;
   payment_trigger: string | null;
+  reference_credit_amount: number | string | null;
   status: string | null;
+  total_schedule_amount: number | string | null;
+  total_schedule_percentage: number | string | null;
   updated_at: string | null;
   updated_by: string | null;
+};
+
+type CommissionPlanScheduleItemRow = {
+  amount: number | string | null;
+  commission_plan_id: string | null;
+  due_date: string | null;
+  event_type: string | null;
+  id: string;
+  installment_number: number | null;
+  offset_days: number | null;
+  offset_months: number | null;
+  organization_id: string | null;
+  percentage: number | string | null;
+  sort_order: number | null;
 };
 
 type RequestContext = {
@@ -74,9 +96,14 @@ const commissionPlanColumns = [
   "administrator_id",
   "name",
   "status",
+  "contract_term_months",
+  "reference_credit_amount",
+  "administration_fee_percentage",
   "commission_type",
   "commission_percentage",
   "commission_fixed_amount",
+  "total_schedule_percentage",
+  "total_schedule_amount",
   "payment_trigger",
   "payment_installments",
   "metadata",
@@ -150,9 +177,12 @@ export async function listCommissionPlans(
   }
 
   return {
-    commissionPlans: ((data ?? []) as unknown as CommissionPlanRow[])
-      .filter((row) => row.organization_id === context.profile.organization_id)
-      .map(mapCommissionPlanRow),
+    commissionPlans: await mapCommissionPlanRowsWithSchedule(
+      context,
+      ((data ?? []) as unknown as CommissionPlanRow[]).filter(
+        (row) => row.organization_id === context.profile.organization_id,
+      ),
+    ),
     ok: true,
   };
 }
@@ -209,20 +239,27 @@ export async function createCommissionPlan(
     return administratorValidation;
   }
 
+  const scheduleTotals = calculateScheduleTotals(input.scheduleItems ?? []);
   const { data, error } = await context.supabase
     .from("commission_plans")
     .insert({
+      administration_fee_percentage: input.administrationFeePercentage ?? null,
       administrator_id: input.administratorId,
       commission_fixed_amount: input.commissionFixedAmount ?? null,
-      commission_percentage: input.commissionPercentage ?? null,
+      commission_percentage:
+        input.commissionPercentage ?? scheduleTotals.percentageOrNull,
       commission_type: input.commissionType,
+      contract_term_months: input.contractTermMonths ?? null,
       created_by: context.profile.id,
       metadata: input.metadata ?? {},
       name: input.name,
       organization_id: context.profile.organization_id,
       payment_installments: input.paymentInstallments ?? 1,
       payment_trigger: input.paymentTrigger,
+      reference_credit_amount: input.referenceCreditAmount ?? null,
       status: input.status ?? "active",
+      total_schedule_amount: null,
+      total_schedule_percentage: scheduleTotals.percentageOrNull,
       updated_by: context.profile.id,
     })
     .select(commissionPlanColumns)
@@ -236,8 +273,34 @@ export async function createCommissionPlan(
     };
   }
 
+  const commissionPlan = mapCommissionPlanRow(
+    data as unknown as CommissionPlanRow,
+    [],
+  );
+
+  if (input.scheduleItems?.length) {
+    const scheduleResult = await replaceCommissionPlanScheduleItems(
+      context,
+      commissionPlan.id,
+      input.scheduleItems,
+    );
+
+    if (!scheduleResult.ok) {
+      return scheduleResult;
+    }
+  }
+
+  const reloaded = await getCommissionPlanFromCurrentOrganization(
+    context,
+    commissionPlan.id,
+  );
+
+  if (!reloaded.ok) {
+    return reloaded;
+  }
+
   return {
-    commissionPlan: mapCommissionPlanRow(data as unknown as CommissionPlanRow),
+    commissionPlan: reloaded.commissionPlan,
     ok: true,
   };
 }
@@ -282,6 +345,10 @@ export async function updateCommissionPlan(
     input.commissionFixedAmount !== undefined
       ? input.commissionFixedAmount
       : existing.commissionPlan.commissionFixedAmount;
+  const scheduleTotals =
+    input.scheduleItems !== undefined
+      ? calculateScheduleTotals(input.scheduleItems)
+      : null;
 
   const administratorValidation = await validateCommissionPlanAdministrator(
     context,
@@ -309,14 +376,39 @@ export async function updateCommissionPlan(
   setIfDefined(payload, "administrator_id", input.administratorId);
   setIfDefined(payload, "name", input.name);
   setIfDefined(payload, "status", input.status);
+  setIfDefined(payload, "contract_term_months", input.contractTermMonths);
+  setIfDefined(payload, "reference_credit_amount", input.referenceCreditAmount);
+  setIfDefined(
+    payload,
+    "administration_fee_percentage",
+    input.administrationFeePercentage,
+  );
   setIfDefined(payload, "commission_type", input.commissionType);
-  setIfDefined(payload, "commission_percentage", input.commissionPercentage);
-  setIfDefined(payload, "commission_fixed_amount", input.commissionFixedAmount);
+  setIfDefined(
+    payload,
+    "commission_percentage",
+    input.commissionPercentage ?? scheduleTotals?.percentageOrNull,
+  );
+  setIfDefined(
+    payload,
+    "commission_fixed_amount",
+    input.commissionFixedAmount,
+  );
+  setIfDefined(
+    payload,
+    "total_schedule_percentage",
+    scheduleTotals?.percentageOrNull,
+  );
+  setIfDefined(
+    payload,
+    "total_schedule_amount",
+    scheduleTotals ? null : undefined,
+  );
   setIfDefined(payload, "payment_trigger", input.paymentTrigger);
   setIfDefined(payload, "payment_installments", input.paymentInstallments);
   setIfDefined(payload, "metadata", input.metadata);
 
-  const { data, error } = await context.supabase
+  const { error } = await context.supabase
     .from("commission_plans")
     .update(payload)
     .eq("id", commissionPlanId)
@@ -332,8 +424,29 @@ export async function updateCommissionPlan(
     };
   }
 
+  if (input.scheduleItems !== undefined) {
+    const scheduleResult = await replaceCommissionPlanScheduleItems(
+      context,
+      commissionPlanId,
+      input.scheduleItems,
+    );
+
+    if (!scheduleResult.ok) {
+      return scheduleResult;
+    }
+  }
+
+  const reloaded = await getCommissionPlanFromCurrentOrganization(
+    context,
+    commissionPlanId,
+  );
+
+  if (!reloaded.ok) {
+    return reloaded;
+  }
+
   return {
-    commissionPlan: mapCommissionPlanRow(data as unknown as CommissionPlanRow),
+    commissionPlan: reloaded.commissionPlan,
     ok: true,
   };
 }
@@ -473,8 +586,13 @@ async function getCommissionPlanFromCurrentOrganization(
     };
   }
 
+  const scheduleItems = await listScheduleItemsByPlanIds(context, [data.id]);
+
   return {
-    commissionPlan: mapCommissionPlanRow(data),
+    commissionPlan: mapCommissionPlanRow(
+      data,
+      scheduleItems.get(data.id) ?? [],
+    ),
     ok: true as const,
   };
 }
@@ -504,14 +622,35 @@ function normalizeCommissionPlanListFilters(
   };
 }
 
-function mapCommissionPlanRow(row: CommissionPlanRow): CommissionPlan {
+async function mapCommissionPlanRowsWithSchedule(
+  context: RequestContext,
+  rows: CommissionPlanRow[],
+) {
+  const scheduleItemsByPlanId = await listScheduleItemsByPlanIds(
+    context,
+    rows.map((row) => row.id),
+  );
+
+  return rows.map((row) =>
+    mapCommissionPlanRow(row, scheduleItemsByPlanId.get(row.id) ?? []),
+  );
+}
+
+function mapCommissionPlanRow(
+  row: CommissionPlanRow,
+  scheduleItems: CommissionPlanScheduleItem[],
+): CommissionPlan {
   const now = new Date().toISOString();
 
   return {
+    administrationFeePercentage: normalizeNumber(
+      row.administration_fee_percentage,
+    ),
     administratorId: row.administrator_id ?? "",
     commissionFixedAmount: normalizeNumber(row.commission_fixed_amount),
     commissionPercentage: normalizeNumber(row.commission_percentage),
     commissionType: normalizeCommissionType(row.commission_type),
+    contractTermMonths: row.contract_term_months,
     createdAt: row.created_at ?? now,
     createdBy: row.created_by,
     id: row.id,
@@ -520,10 +659,180 @@ function mapCommissionPlanRow(row: CommissionPlanRow): CommissionPlan {
     organizationId: row.organization_id ?? "",
     paymentInstallments: row.payment_installments ?? 1,
     paymentTrigger: normalizePaymentTrigger(row.payment_trigger),
+    referenceCreditAmount: normalizeNumber(row.reference_credit_amount),
+    scheduleItems,
     status: normalizeCommissionPlanStatus(row.status),
+    totalScheduleAmount: normalizeNumber(row.total_schedule_amount),
+    totalSchedulePercentage: normalizeNumber(row.total_schedule_percentage),
     updatedAt: row.updated_at ?? row.created_at ?? now,
     updatedBy: row.updated_by,
   };
+}
+
+async function listScheduleItemsByPlanIds(
+  context: RequestContext,
+  commissionPlanIds: string[],
+) {
+  const scheduleItemsByPlanId = new Map<string, CommissionPlanScheduleItem[]>();
+  const uniqueIds = Array.from(new Set(commissionPlanIds));
+
+  if (!uniqueIds.length) {
+    return scheduleItemsByPlanId;
+  }
+
+  const { data, error } = await context.supabase
+    .from("commission_plan_schedule_items")
+    .select(
+      [
+        "id",
+        "organization_id",
+        "commission_plan_id",
+        "installment_number",
+        "event_type",
+        "percentage",
+        "amount",
+        "due_date",
+        "offset_months",
+        "offset_days",
+        "sort_order",
+      ].join(","),
+    )
+    .eq("organization_id", context.profile.organization_id)
+    .in("commission_plan_id", uniqueIds)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    logCommissionPlanServerError("schedule_query_failed", {
+      error: formatSupabaseDebugError(error),
+      organizationId: context.profile.organization_id,
+    });
+
+    return scheduleItemsByPlanId;
+  }
+
+  for (const row of (data ?? []) as unknown as CommissionPlanScheduleItemRow[]) {
+    if (
+      !row.commission_plan_id ||
+      row.organization_id !== context.profile.organization_id
+    ) {
+      continue;
+    }
+
+    scheduleItemsByPlanId.set(row.commission_plan_id, [
+      ...(scheduleItemsByPlanId.get(row.commission_plan_id) ?? []),
+      mapScheduleItemRow(row),
+    ]);
+  }
+
+  return scheduleItemsByPlanId;
+}
+
+async function replaceCommissionPlanScheduleItems(
+  context: RequestContext,
+  commissionPlanId: string,
+  scheduleItems: CommissionPlanScheduleItemInput[],
+) {
+  const deleteResult = await context.supabase
+    .from("commission_plan_schedule_items")
+    .delete()
+    .eq("organization_id", context.profile.organization_id)
+    .eq("commission_plan_id", commissionPlanId);
+
+  if (deleteResult.error) {
+    logCommissionPlanServerError("schedule_delete_failed", {
+      commissionPlanId,
+      error: formatSupabaseDebugError(deleteResult.error),
+      organizationId: context.profile.organization_id,
+    });
+
+    return {
+      error: "Nao foi possivel atualizar a regua de comissao.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  if (!scheduleItems.length) {
+    return {
+      ok: true as const,
+    };
+  }
+
+  const { error } = await context.supabase
+    .from("commission_plan_schedule_items")
+    .insert(
+      scheduleItems.map((item, index) => ({
+        amount: item.amount ?? 0,
+        commission_plan_id: commissionPlanId,
+        created_by: context.profile.id,
+        due_date: item.dueDate ?? null,
+        event_type: item.eventType,
+        installment_number:
+          item.eventType === "installment" ? item.installmentNumber : null,
+        offset_days: item.offsetDays ?? null,
+        offset_months: item.offsetMonths ?? null,
+        organization_id: context.profile.organization_id,
+        percentage: item.percentage,
+        sort_order: item.sortOrder ?? index,
+        updated_by: context.profile.id,
+      })),
+    );
+
+  if (error) {
+    logCommissionPlanServerError("schedule_insert_failed", {
+      commissionPlanId,
+      error: formatSupabaseDebugError(error),
+      organizationId: context.profile.organization_id,
+    });
+
+    return {
+      error: "Nao foi possivel salvar a regua de comissao.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
+}
+
+function mapScheduleItemRow(
+  row: CommissionPlanScheduleItemRow,
+): CommissionPlanScheduleItem {
+  return {
+    amount: normalizeNumber(row.amount) ?? 0,
+    dueDate: row.due_date,
+    eventType: normalizeScheduleEventType(row.event_type),
+    id: row.id,
+    installmentNumber: row.installment_number,
+    offsetDays: row.offset_days,
+    offsetMonths: row.offset_months,
+    percentage: normalizeNumber(row.percentage) ?? 0,
+    sortOrder: row.sort_order ?? 0,
+  };
+}
+
+function calculateScheduleTotals(scheduleItems: CommissionPlanScheduleItemInput[]) {
+  const totals = scheduleItems.reduce(
+    (summary, item) => ({
+      percentage: summary.percentage + item.percentage,
+    }),
+    {
+      percentage: 0,
+    },
+  );
+
+  return {
+    percentageOrNull:
+      totals.percentage > 0 ? roundPercentage(totals.percentage) : null,
+  };
+}
+
+function normalizeScheduleEventType(
+  value: string | null,
+): CommissionScheduleEventType {
+  return value === "contemplation" ? "contemplation" : "installment";
 }
 
 function normalizeCommissionPlanStatus(
@@ -609,6 +918,10 @@ function normalizeNumber(value: number | string | null) {
   }
 
   return null;
+}
+
+function roundPercentage(value: number) {
+  return Math.round((value + Number.EPSILON) * 10000) / 10000;
 }
 
 function escapePostgrestSearch(value: string) {

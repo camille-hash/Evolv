@@ -24,7 +24,10 @@ import {
 } from "@/modules/client-context";
 import { createContract } from "@/modules/contracts/client";
 import type { ContractStatus } from "@/modules/contracts/types";
-import { createExpectedContractRevenue } from "@/modules/revenue/client";
+import {
+  createExpectedContractRevenue,
+  generateContractRevenue,
+} from "@/modules/revenue/client";
 import { generateEvolvMasterReport } from "@/modules/reports";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -402,7 +405,9 @@ export function ClientPage({
         termMonths,
       });
 
-      if (expectedCommissionAmount !== null) {
+      if (contractForm.commissionPlanId) {
+        await generateContractRevenue(accessToken, contract.id, "replace_expected");
+      } else if (expectedCommissionAmount !== null) {
         await createExpectedContractRevenue(accessToken, contract.id, {
           dueDate:
             normalizeOptionalFormText(contractForm.expectedCommissionDueDate) ??
@@ -674,16 +679,22 @@ export function ClientPage({
                   value={contractForm.contemplationModel}
                 />
                 <ContractFormInput
-                  label="Comissao esperada"
+                  disabled={Boolean(contractForm.commissionPlanId)}
+                  label="Comissao manual"
                   onChange={(value) =>
                     updateContractForm({ expectedCommissionAmount: value })
                   }
-                  placeholder="Opcional"
+                  placeholder={
+                    contractForm.commissionPlanId
+                      ? "Calculada pelo plano"
+                      : "Opcional"
+                  }
                   type="number"
                   value={contractForm.expectedCommissionAmount}
                 />
                 <ContractFormInput
-                  label="Vencimento da comissao"
+                  disabled={Boolean(contractForm.commissionPlanId)}
+                  label="Vencimento manual"
                   onChange={(value) =>
                     updateContractForm({ expectedCommissionDueDate: value })
                   }
@@ -926,12 +937,14 @@ function ContractFormField({
 }
 
 function ContractFormInput({
+  disabled = false,
   label,
   onChange,
   placeholder,
   type = "text",
   value,
 }: {
+  disabled?: boolean;
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -941,7 +954,8 @@ function ContractFormInput({
   return (
     <ContractFormField label={label}>
       <input
-        className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+        className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:bg-muted/50 disabled:text-muted-foreground"
+        disabled={disabled}
         min={type === "number" ? "0" : undefined}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}

@@ -1,8 +1,10 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+import type { CommissionScheduleEventType } from "@/modules/commission-plans/types";
 import type {
   ExpectedRevenueInput,
   RevenueCalculationBase,
   RevenueCommissionPlanSnapshot,
+  RevenueCommissionScheduleItemSnapshot,
   RevenueContractSnapshot,
   RevenueEntry,
   RevenueGenerationMode,
@@ -62,6 +64,41 @@ type RevenueEntryRow = {
   status: string | null;
   type: string | null;
   updated_at: string | null;
+};
+
+type CommissionEngineExpectedRevenueRow = {
+  business_status: string | null;
+  cancelled_at: string | null;
+  contract_id: string | null;
+  created_at: string | null;
+  event_type: string | null;
+  expected_amount: number | string | null;
+  expected_date: string | null;
+  id: string;
+  lifecycle: string | null;
+  metadata: Record<string, unknown> | null;
+  organization_id: string | null;
+  remaining_amount: number | string | null;
+  updated_at: string | null;
+};
+
+type CommissionEngineRecognizedRevenueRow = {
+  expected_revenue_entry_id: string | null;
+  recognized_amount: number | string | null;
+  recognized_at: string | null;
+  reversed_at: string | null;
+};
+
+type CommissionPlanScheduleItemRow = {
+  commission_plan_id: string | null;
+  event_type: string | null;
+  id: string;
+  installment_number: number | null;
+  offset_days: number | null;
+  offset_months: number | null;
+  organization_id: string | null;
+  percentage: number | string | null;
+  sort_order: number | null;
 };
 
 type ClientRow = {
@@ -134,6 +171,29 @@ const revenueEntryColumns = [
   "updated_at",
 ].join(",");
 
+const commissionEngineExpectedRevenueColumns = [
+  "id",
+  "organization_id",
+  "contract_id",
+  "created_at",
+  "event_type",
+  "expected_amount",
+  "expected_date",
+  "lifecycle",
+  "business_status",
+  "remaining_amount",
+  "metadata",
+  "cancelled_at",
+  "updated_at",
+].join(",");
+
+const commissionEngineRecognizedRevenueColumns = [
+  "expected_revenue_entry_id",
+  "recognized_amount",
+  "recognized_at",
+  "reversed_at",
+].join(",");
+
 const genericAccessError =
   "Nao foi possivel concluir a operacao. Entre em contato com o administrador.";
 
@@ -142,6 +202,43 @@ export function calculateExpectedRevenue(input: {
   commissionPlan: RevenueCommissionPlanSnapshot;
   triggerDate: string;
 }): RevenueInstallmentDraft[] {
+  if (input.commissionPlan.scheduleItems.length) {
+    const installmentsTotal = input.commissionPlan.scheduleItems.length;
+
+    return input.commissionPlan.scheduleItems.map((scheduleItem, index) => {
+      const expectedAmount = roundCurrency(
+        input.contract.creditAmount * (scheduleItem.percentage / 100),
+      );
+
+      return {
+        dueDate: addRelativeOffsetToDate(input.triggerDate, {
+          daysToAdd: scheduleItem.offsetDays ?? 0,
+          monthsToAdd: scheduleItem.offsetMonths ?? 0,
+        }),
+        eventType: scheduleItem.eventType,
+        expectedAmount,
+        installmentNumber: scheduleItem.installmentNumber,
+        installmentsTotal,
+        metadata: {
+          calculationBase: {
+            commissionPercentage: scheduleItem.percentage,
+            creditAmount: input.contract.creditAmount,
+          },
+          commissionPlanId: input.commissionPlan.id,
+          contractId: input.contract.id,
+          eventType: scheduleItem.eventType,
+          installmentNumber: scheduleItem.installmentNumber,
+          installmentsTotal,
+          offsetDays: scheduleItem.offsetDays,
+          offsetMonths: scheduleItem.offsetMonths,
+          origin: "revenue_engine_schedule",
+          scheduleItemId: scheduleItem.id,
+          scheduleSortOrder: scheduleItem.sortOrder ?? index,
+        },
+      };
+    });
+  }
+
   const calculationBase: RevenueCalculationBase = {
     commissionFixedAmount: input.commissionPlan.commissionFixedAmount,
     commissionPercentage: input.commissionPlan.commissionPercentage,
@@ -165,6 +262,7 @@ export function calculateExpectedRevenue(input: {
 
     return {
       dueDate: addMonthsToDate(input.triggerDate, index),
+      eventType: "installment",
       expectedAmount,
       installmentNumber,
       installmentsTotal,
@@ -265,6 +363,28 @@ export async function listClientRevenue(
 
   if (!clientValidation.ok) {
     return clientValidation;
+  }
+
+  const contractsResult = await listContractsByClient(context, clientId);
+
+  if (!contractsResult.ok) {
+    return contractsResult;
+  }
+
+  const commissionEngineEntries = await getCommissionEngineRevenueEntries(
+    context,
+    contractsResult.contracts,
+  );
+
+  if (!commissionEngineEntries.ok) {
+    return commissionEngineEntries;
+  }
+
+  if (commissionEngineEntries.revenueEntries.length) {
+    return {
+      ok: true,
+      revenueEntries: commissionEngineEntries.revenueEntries,
+    };
   }
 
   const { data, error } = await context.supabase
@@ -407,6 +527,24 @@ async function generateRevenueForContractInContext(
   }
 
   const contract = contractResult.contract;
+  const commissionEngineEntries = await getCommissionEngineRevenueEntries(
+    context,
+    [contract],
+  );
+
+  if (!commissionEngineEntries.ok) {
+    return commissionEngineEntries;
+  }
+
+  if (commissionEngineEntries.revenueEntries.length) {
+    return {
+      createdEntries: [],
+      existingEntries: commissionEngineEntries.revenueEntries,
+      ok: true,
+      skippedReason: "commission_engine_revenue_exists",
+    };
+  }
+
   const contractValidation = validateRevenueContractInput(contract);
 
   if (!contractValidation.ok) {
@@ -494,7 +632,10 @@ async function generateRevenueForContractInContext(
     contract_id: contract.id,
     due_date: installment.dueDate,
     expected_amount: installment.expectedAmount,
-    metadata: installment.metadata,
+    metadata: {
+      ...installment.metadata,
+      revenueEventType: installment.eventType,
+    },
     organization_id: context.profile.organization_id,
     status: "expected",
     type: "commission",
@@ -554,6 +695,28 @@ async function getRevenueEntriesByContract(
   context: RequestContext,
   contractId: string,
 ): Promise<RevenueListResult> {
+  const contractResult = await getContractFromCurrentOrganization(
+    context,
+    contractId,
+  );
+
+  if (!contractResult.ok) {
+    return contractResult;
+  }
+
+  const commissionEngineEntries = await getCommissionEngineRevenueEntries(
+    context,
+    [contractResult.contract],
+  );
+
+  if (!commissionEngineEntries.ok) {
+    return commissionEngineEntries;
+  }
+
+  if (commissionEngineEntries.revenueEntries.length) {
+    return commissionEngineEntries;
+  }
+
   const { data, error } = await context.supabase
     .from("revenue_entries")
     .select(revenueEntryColumns)
@@ -575,6 +738,169 @@ async function getRevenueEntriesByContract(
     revenueEntries: ((data ?? []) as unknown as RevenueEntryRow[]).map(
       mapRevenueEntryRow,
     ),
+  };
+}
+
+async function getCommissionEngineRevenueEntries(
+  context: RequestContext,
+  contracts: RevenueContractSnapshot[],
+): Promise<RevenueListResult> {
+  if (!contracts.length) {
+    return {
+      ok: true,
+      revenueEntries: [],
+    };
+  }
+
+  const contractsById = new Map(
+    contracts.map((contract) => [contract.id, contract]),
+  );
+  const contractIds = contracts.map((contract) => contract.id);
+  const { data, error } = await context.supabase
+    .from("expected_revenue_entries")
+    .select(commissionEngineExpectedRevenueColumns)
+    .eq("organization_id", context.profile.organization_id)
+    .in("contract_id", contractIds)
+    .order("expected_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    return {
+      error: "Nao foi possivel carregar receitas previstas do Commission Engine.",
+      ok: false,
+      status: 500,
+    };
+  }
+
+  const expectedRevenueEntries =
+    ((data ?? []) as unknown as CommissionEngineExpectedRevenueRow[]).filter(
+      (entry) =>
+        entry.organization_id === context.profile.organization_id &&
+        Boolean(entry.contract_id && contractsById.has(entry.contract_id)),
+    );
+
+  if (!expectedRevenueEntries.length) {
+    return {
+      ok: true,
+      revenueEntries: [],
+    };
+  }
+
+  const recognizedRevenueByExpectedId =
+    await getRecognizedRevenueByExpectedRevenueId(
+      context,
+      expectedRevenueEntries.map((entry) => entry.id),
+    );
+
+  if (!recognizedRevenueByExpectedId.ok) {
+    return recognizedRevenueByExpectedId;
+  }
+
+  return {
+    ok: true,
+    revenueEntries: expectedRevenueEntries.map((entry) =>
+      mapCommissionEngineExpectedRevenueEntry(
+        entry,
+        contractsById.get(entry.contract_id ?? "") ?? null,
+        recognizedRevenueByExpectedId.recognizedRevenueByExpectedId.get(
+          entry.id,
+        ) ?? null,
+      ),
+    ),
+  };
+}
+
+async function getRecognizedRevenueByExpectedRevenueId(
+  context: RequestContext,
+  expectedRevenueEntryIds: string[],
+) {
+  if (!expectedRevenueEntryIds.length) {
+    return {
+      ok: true as const,
+      recognizedRevenueByExpectedId: new Map<
+        string,
+        {
+          latestRecognizedAt: string | null;
+          recognizedAmount: number;
+        }
+      >(),
+    };
+  }
+
+  const { data, error } = await context.supabase
+    .from("recognized_revenue_entries")
+    .select(commissionEngineRecognizedRevenueColumns)
+    .eq("organization_id", context.profile.organization_id)
+    .in("expected_revenue_entry_id", expectedRevenueEntryIds)
+    .is("reversed_at", null);
+
+  if (error) {
+    return {
+      error: "Nao foi possivel carregar receitas reconhecidas do Commission Engine.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  const recognizedRevenueByExpectedId = new Map<
+    string,
+    {
+      latestRecognizedAt: string | null;
+      recognizedAmount: number;
+    }
+  >();
+
+  for (const entry of (data ?? []) as unknown as CommissionEngineRecognizedRevenueRow[]) {
+    if (!entry.expected_revenue_entry_id || entry.reversed_at) {
+      continue;
+    }
+
+    const current = recognizedRevenueByExpectedId.get(
+      entry.expected_revenue_entry_id,
+    ) ?? {
+      latestRecognizedAt: null,
+      recognizedAmount: 0,
+    };
+    const recognizedAmount = normalizeNumber(entry.recognized_amount) ?? 0;
+
+    recognizedRevenueByExpectedId.set(entry.expected_revenue_entry_id, {
+      latestRecognizedAt: resolveLatestDate(
+        current.latestRecognizedAt,
+        entry.recognized_at,
+      ),
+      recognizedAmount: roundCurrency(
+        current.recognizedAmount + recognizedAmount,
+      ),
+    });
+  }
+
+  return {
+    ok: true as const,
+    recognizedRevenueByExpectedId,
+  };
+}
+
+async function listContractsByClient(
+  context: RequestContext,
+  clientId: string,
+) {
+  const { data, error } = await context.supabase
+    .from("contracts")
+    .select(contractColumns)
+    .eq("organization_id", context.profile.organization_id)
+    .eq("client_id", clientId);
+
+  if (error) {
+    return {
+      error: "Nao foi possivel carregar contratos do cliente.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  return {
+    contracts: ((data ?? []) as unknown as ContractRow[]).map(mapContractRow),
+    ok: true as const,
   };
 }
 
@@ -644,10 +970,55 @@ async function getCommissionPlanFromCurrentOrganization(
     };
   }
 
+  const scheduleItems = await listCommissionPlanScheduleItems(context, data.id);
+
   return {
-    commissionPlan: mapCommissionPlanRow(data),
+    commissionPlan: mapCommissionPlanRow(data, scheduleItems),
     ok: true as const,
   };
+}
+
+async function listCommissionPlanScheduleItems(
+  context: RequestContext,
+  commissionPlanId: string,
+): Promise<RevenueCommissionScheduleItemSnapshot[]> {
+  const { data, error } = await context.supabase
+    .from("commission_plan_schedule_items")
+    .select(
+      [
+        "id",
+        "organization_id",
+        "commission_plan_id",
+        "installment_number",
+        "event_type",
+        "percentage",
+        "offset_months",
+        "offset_days",
+        "sort_order",
+      ].join(","),
+    )
+    .eq("organization_id", context.profile.organization_id)
+    .eq("commission_plan_id", commissionPlanId)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    logRevenueServerError("commission_plan_schedule_query_failed", {
+      commissionPlanId,
+      error: formatSupabaseDebugError(error),
+      organizationId: context.profile.organization_id,
+    });
+
+    return [];
+  }
+
+  return ((data ?? []) as unknown as CommissionPlanScheduleItemRow[])
+    .filter(
+      (row) =>
+        row.organization_id === context.profile.organization_id &&
+        row.commission_plan_id === commissionPlanId,
+    )
+    .map(mapCommissionPlanScheduleItemRow)
+    .filter((item) => item.percentage > 0);
 }
 
 async function validateClientOrganization(
@@ -836,6 +1207,7 @@ function mapContractRow(row: ContractRow): RevenueContractSnapshot {
 
 function mapCommissionPlanRow(
   row: CommissionPlanRow,
+  scheduleItems: RevenueCommissionScheduleItemSnapshot[],
 ): RevenueCommissionPlanSnapshot {
   return {
     commissionFixedAmount: normalizeNumber(row.commission_fixed_amount),
@@ -854,7 +1226,22 @@ function mapCommissionPlanRow(
       row.payment_trigger === "manual"
         ? row.payment_trigger
         : "contract_activation",
+    scheduleItems,
     status: row.status ?? "active",
+  };
+}
+
+function mapCommissionPlanScheduleItemRow(
+  row: CommissionPlanScheduleItemRow,
+): RevenueCommissionScheduleItemSnapshot {
+  return {
+    eventType: normalizeScheduleEventType(row.event_type),
+    id: row.id,
+    installmentNumber: row.installment_number,
+    offsetDays: row.offset_days,
+    offsetMonths: row.offset_months,
+    percentage: normalizeNumber(row.percentage) ?? 0,
+    sortOrder: row.sort_order ?? 0,
   };
 }
 
@@ -880,6 +1267,46 @@ function mapRevenueEntryRow(row: RevenueEntryRow): RevenueEntry {
   };
 }
 
+function mapCommissionEngineExpectedRevenueEntry(
+  row: CommissionEngineExpectedRevenueRow,
+  contract: RevenueContractSnapshot | null,
+  recognizedRevenue: {
+    latestRecognizedAt: string | null;
+    recognizedAmount: number;
+  } | null,
+): RevenueEntry {
+  const recognizedAmount = recognizedRevenue?.recognizedAmount ?? 0;
+  const status = normalizeCommissionEngineRevenueStatus(row, recognizedAmount);
+  const now = new Date().toISOString();
+
+  return {
+    actualAmount: recognizedAmount > 0 ? recognizedAmount : null,
+    administratorId: contract?.administratorId ?? null,
+    cancelledAt: row.cancelled_at,
+    clientId: contract?.clientId ?? null,
+    contractId: row.contract_id ?? "",
+    createdAt: row.created_at ?? now,
+    dueDate: row.expected_date,
+    expectedAmount: normalizeNumber(row.expected_amount) ?? 0,
+    id: row.id,
+    metadata: {
+      ...(isRecord(row.metadata) ? row.metadata : {}),
+      commissionEngine: {
+        businessStatus: row.business_status,
+        eventType: row.event_type,
+        lifecycle: row.lifecycle,
+        remainingAmount: normalizeNumber(row.remaining_amount) ?? 0,
+        source: "expected_revenue_entries",
+      },
+    },
+    organizationId: row.organization_id ?? "",
+    paidAt: status === "paid" ? recognizedRevenue?.latestRecognizedAt ?? null : null,
+    status,
+    type: "commission",
+    updatedAt: row.updated_at ?? row.created_at ?? now,
+  };
+}
+
 function addMonthsToDate(value: string, monthsToAdd: number) {
   const date = new Date(value);
 
@@ -890,6 +1317,31 @@ function addMonthsToDate(value: string, monthsToAdd: number) {
   date.setMonth(date.getMonth() + monthsToAdd);
 
   return date.toISOString().slice(0, 10);
+}
+
+function addRelativeOffsetToDate(
+  value: string,
+  offset: {
+    daysToAdd: number;
+    monthsToAdd: number;
+  },
+) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  date.setMonth(date.getMonth() + offset.monthsToAdd);
+  date.setDate(date.getDate() + offset.daysToAdd);
+
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeScheduleEventType(
+  value: string | null,
+): CommissionScheduleEventType {
+  return value === "contemplation" ? "contemplation" : "installment";
 }
 
 function roundCurrency(value: number) {
@@ -905,6 +1357,28 @@ function normalizeRevenueStatus(value: string | null) {
     value === "pending"
   ) {
     return value;
+  }
+
+  return "expected";
+}
+
+function normalizeCommissionEngineRevenueStatus(
+  row: CommissionEngineExpectedRevenueRow,
+  recognizedAmount: number,
+) {
+  if (row.cancelled_at || row.lifecycle === "cancelada") {
+    return "cancelled";
+  }
+
+  if (row.business_status === "reconhecida" || row.lifecycle === "encerrada") {
+    return "paid";
+  }
+
+  if (
+    row.business_status === "parcialmente_reconhecida" ||
+    recognizedAmount > 0
+  ) {
+    return "pending";
   }
 
   return "expected";
@@ -952,6 +1426,23 @@ function normalizeNumber(value: number | string | null) {
   }
 
   return null;
+}
+
+function resolveLatestDate(
+  currentDate: string | null,
+  nextDate: string | null,
+) {
+  if (!currentDate) {
+    return nextDate;
+  }
+
+  if (!nextDate) {
+    return currentDate;
+  }
+
+  return new Date(nextDate).getTime() > new Date(currentDate).getTime()
+    ? nextDate
+    : currentDate;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

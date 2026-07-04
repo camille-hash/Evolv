@@ -1,4 +1,8 @@
-import type { CommissionPaymentTrigger, CommissionType } from "@/modules/commission-plans/types";
+import type {
+  CommissionPaymentTrigger,
+  CommissionScheduleEventType,
+  CommissionType,
+} from "@/modules/commission-plans/types";
 
 export type RevenueEntryType = "adjustment" | "bonus" | "chargeback" | "commission";
 
@@ -16,6 +20,16 @@ export type RevenueCalculationBase = {
   commissionPercentage: number | null;
   commissionType: CommissionType;
   creditAmount: number;
+};
+
+export type RevenueCommissionScheduleItemSnapshot = {
+  eventType: CommissionScheduleEventType;
+  id: string;
+  installmentNumber: number | null;
+  offsetDays: number | null;
+  offsetMonths: number | null;
+  percentage: number;
+  sortOrder: number;
 };
 
 export type RevenueEntry = {
@@ -50,8 +64,9 @@ export type ExpectedRevenueInput = {
 
 export type RevenueInstallmentDraft = {
   dueDate: string;
+  eventType: CommissionScheduleEventType;
   expectedAmount: number;
-  installmentNumber: number;
+  installmentNumber: number | null;
   installmentsTotal: number;
   metadata: Record<string, unknown>;
 };
@@ -78,5 +93,6 @@ export type RevenueCommissionPlanSnapshot = {
   organizationId: string;
   paymentInstallments: number;
   paymentTrigger: CommissionPaymentTrigger;
+  scheduleItems: RevenueCommissionScheduleItemSnapshot[];
   status: string;
 };
