@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { OperationalEmptyState } from "../operational-empty-state";
+import { OperationsTimelinePanel } from "../timeline/operations-timeline-panel";
 import { fetchOperationsWorkbench } from "@/modules/operations/workbench/client";
 import type {
   OperationsWorkbenchResponse,
@@ -82,6 +83,8 @@ export function OperationsWorkbenchPage() {
       {buckets.map((bucket) => (
         <WorkbenchSection bucket={bucket} key={bucket.id} />
       ))}
+
+      <OperationsTimelinePanel />
     </div>
   );
 }
