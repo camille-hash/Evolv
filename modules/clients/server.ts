@@ -584,6 +584,7 @@ function mapClientListItem(
   const summary = summarizeContracts(contracts, operationalStatusesByContractId);
 
   return {
+    activeCreditAmount: summary.activeCreditAmount,
     activeContractsCount: summary.activeContractsCount,
     contractsCount: summary.contractsCount,
     createdAt: client.created_at ?? new Date().toISOString(),
@@ -675,6 +676,11 @@ function summarizeContracts(
 ): ClientSummary {
   return contracts.reduce<ClientSummary>(
     (summary, contract) => ({
+      activeCreditAmount:
+        summary.activeCreditAmount +
+        (operationalStatusesByContractId.get(contract.id) === "active"
+          ? contract.creditAmount
+          : 0),
       activeContractsCount:
         summary.activeContractsCount +
         (operationalStatusesByContractId.get(contract.id) === "active" ? 1 : 0),
@@ -684,6 +690,7 @@ function summarizeContracts(
       totalCreditAmount: summary.totalCreditAmount + contract.creditAmount,
     }),
     {
+      activeCreditAmount: 0,
       activeContractsCount: 0,
       contractsCount: 0,
       draftContractsCount: 0,

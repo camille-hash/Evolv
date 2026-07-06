@@ -847,7 +847,7 @@ export function ClientPage({
                       <span>{client.contractsCount} contratos</span>
                       <span>{client.activeContractsCount} ativos</span>
                       <span>
-                        {currencyFormatter.format(client.totalCreditAmount)}
+                        Credito ativo {currencyFormatter.format(client.activeCreditAmount)}
                       </span>
                     </div>
                     <p className="mt-3 text-xs text-muted-foreground">
@@ -945,7 +945,7 @@ function ClientPersistedDetail({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <ClientSummaryCard
           label="Contratos"
           value={String(detail.summary.contractsCount)}
@@ -959,7 +959,11 @@ function ClientPersistedDetail({
           value={String(detail.summary.draftContractsCount)}
         />
         <ClientSummaryCard
-          label="Credito total"
+          label="Credito ativo"
+          value={currencyFormatter.format(detail.summary.activeCreditAmount)}
+        />
+        <ClientSummaryCard
+          label="Credito total historico"
           value={currencyFormatter.format(detail.summary.totalCreditAmount)}
         />
       </section>

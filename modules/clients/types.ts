@@ -1,6 +1,7 @@
 import type { ContractStatus } from "@/modules/contracts/types";
 
 export type ClientSummary = {
+  activeCreditAmount: number;
   activeContractsCount: number;
   contractsCount: number;
   draftContractsCount: number;
@@ -8,6 +9,7 @@ export type ClientSummary = {
 };
 
 export type ClientListItem = {
+  activeCreditAmount: number;
   activeContractsCount: number;
   contractsCount: number;
   createdAt: string;
