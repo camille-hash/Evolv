@@ -7,9 +7,9 @@ type OperationsPageHeaderProps = {
 };
 
 export function OperationsPageHeader({
-  description = "Visao derivada de clientes, contratos, administradoras, comissoes, receitas e portfolio.",
-  eyebrow = "Operations Workspace",
-  title = "Centro operacional EVOLV",
+  description = "Área operacional para organizar o trabalho do dia com base em contratos, receitas, integridade e carteira.",
+  eyebrow = "Área Operacional",
+  title = "Operação EVOLV",
 }: OperationsPageHeaderProps) {
   return (
     <header className="rounded-md border bg-card p-6 text-card-foreground shadow-sm">

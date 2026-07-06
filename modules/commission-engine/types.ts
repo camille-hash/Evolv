@@ -124,6 +124,52 @@ export type GetContractCommissionSummaryParams = {
   supabase: CommissionEngineSupabaseClient;
 };
 
+export type BackfillCommissionEngineForContractsParams = {
+  contractIds?: string[];
+  dryRun?: boolean;
+  organizationId: string;
+  supabase: CommissionEngineSupabaseClient;
+};
+
+export type BackfillCommissionEngineContractReport = {
+  contractId: string;
+  contractNumber: string | null;
+  error?: string;
+  expectedRevenueEntriesAfter: number;
+  expectedRevenueEntriesBefore: number;
+  expectedRevenueEntriesCreated: number;
+  ignoredReason: string | null;
+  scheduleItemsAfter: number;
+  scheduleItemsBefore: number;
+  scheduleItemsCreated: number;
+  snapshotCreated: boolean;
+  snapshotId: string | null;
+  status: string;
+  wouldActivateEventType: string | null;
+};
+
+export type BackfillCommissionEngineForContractsResult =
+  | {
+      contractsAnalyzed: number;
+      contractsIgnored: number;
+      dryRun: boolean;
+      errors: Array<{
+        contractId: string;
+        contractNumber: string | null;
+        error: string;
+      }>;
+      ok: true;
+      results: BackfillCommissionEngineContractReport[];
+      scheduleItemsCreated: number;
+      snapshotsCreated: number;
+      expectedRevenueEntriesCreated: number;
+    }
+  | {
+      error: string;
+      ok: false;
+      status: number;
+    };
+
 export type RecognizeExpectedRevenueParams = {
   createdBy?: string | null;
   expectedRevenueEntryId: string;

@@ -406,7 +406,17 @@ export function ClientPage({
       });
 
       if (contractForm.commissionPlanId) {
-        await generateContractRevenue(accessToken, contract.id, "replace_expected");
+        try {
+          await generateContractRevenue(
+            accessToken,
+            contract.id,
+            "replace_expected",
+          );
+        } catch (error) {
+          if (!isRevenueTriggerNotReachedError(error)) {
+            throw error;
+          }
+        }
       } else if (expectedCommissionAmount !== null) {
         await createExpectedContractRevenue(accessToken, contract.id, {
           dueDate:
@@ -1068,6 +1078,13 @@ function resolveClientPageError(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim()
     ? error.message
     : fallback;
+}
+
+function isRevenueTriggerNotReachedError(error: unknown) {
+  return (
+    error instanceof Error &&
+    error.message === "Contrato ainda nao atingiu o gatilho de receita."
+  );
 }
 
 function formatDate(value: string) {

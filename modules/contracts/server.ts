@@ -1,7 +1,10 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import { validateAdministratorBelongsToOrganization } from "@/modules/administrators/server";
-import { ensureContractCommissionSnapshotAndSchedule } from "@/modules/commission-engine/server";
-import { validateCommissionPlanBelongsToOrganization } from "@/modules/commission-plans/server";
+import { resolveCommissionEventTypeForContractStatus } from "@/modules/commission-engine/contract-status-events";
+import {
+  activateCommissionScheduleForEvent,
+  ensureContractCommissionSnapshotAndSchedule,
+} from "@/modules/commission-engine/server";
 import type {
   Contract,
   ContractInput,
@@ -19,6 +22,13 @@ type ContractProfile = {
 type OrganizationRow = {
   id: string;
   organization_id: string | null;
+};
+
+type CommissionPlanValidationRow = {
+  administrator_id: string | null;
+  id: string;
+  organization_id: string | null;
+  status: string | null;
 };
 
 type ContractRow = {
@@ -60,7 +70,7 @@ type RequestContext = {
 };
 
 export type ContractMutationResult =
-  | { contract: Contract; ok: true }
+  | { contract: Contract; ok: true; previousStatus?: ContractStatus }
   | { error: string; ok: false; status: number };
 
 export type ContractListResult =
@@ -233,9 +243,15 @@ export async function createContract(
     return commissionEngineResult;
   }
 
+  await maybeActivateCommissionEngineForContractStatusTransition(accessToken, {
+    contract,
+    previousStatus: "draft",
+  });
+
   return {
     contract,
     ok: true,
+    previousStatus: undefined,
   };
 }
 
@@ -270,6 +286,7 @@ export async function updateContract(
   const relationshipValidation = await validateContractRelationships(
     context,
     input,
+    contractValidation.contract,
   );
 
   if (!relationshipValidation.ok) {
@@ -308,6 +325,7 @@ export async function updateContract(
   return {
     contract,
     ok: true,
+    previousStatus: undefined,
   };
 }
 
@@ -362,6 +380,69 @@ export async function updateContractStatus(
   return {
     contract: mapContractRow(data as unknown as ContractRow),
     ok: true,
+    previousStatus: contractValidation.contract.status,
+  };
+}
+
+export async function maybeActivateCommissionEngineForContractStatusTransition(
+  accessToken: string | null,
+  input: {
+    contract: Contract;
+    previousStatus: ContractStatus;
+  },
+) {
+  const eventType = resolveCommissionEventTypeForContractStatus(
+    input.contract.status,
+  );
+
+  if (!eventType) {
+    return {
+      ok: true as const,
+      skippedReason: "status_not_mapped",
+    };
+  }
+
+  if (input.previousStatus === input.contract.status) {
+    return {
+      ok: true as const,
+      skippedReason: "status_unchanged",
+    };
+  }
+
+  const context = await resolveContractRequestContext(accessToken);
+
+  if (!context.ok) {
+    return {
+      ok: true as const,
+      skippedReason: "invalid_context",
+    };
+  }
+
+  const occurredAt = input.contract.activatedAt ?? new Date().toISOString();
+  const result = await activateCommissionScheduleForEvent({
+    contractId: input.contract.id,
+    eventType,
+    metadata: {
+      fromStatus: input.previousStatus,
+      source: "contract_status_transition",
+      toStatus: input.contract.status,
+    },
+    occurredAt,
+    organizationId: context.profile.organization_id,
+    supabase: context.supabase,
+    triggerEventId: `contract-status:${input.contract.id}:${input.contract.status}`,
+  });
+
+  if (!result.ok) {
+    return {
+      ok: true as const,
+      skippedReason: "activation_failed",
+    };
+  }
+
+  return {
+    ok: true as const,
+    skippedReason: result.skippedReason,
   };
 }
 
@@ -542,6 +623,7 @@ async function validateFilterRelationships(
 async function validateContractRelationships(
   context: RequestContext,
   input: ContractInput,
+  currentContract?: Contract,
 ) {
   if (input.leadId) {
     const leadValidation = await validateEntityOrganization(
@@ -580,11 +662,20 @@ async function validateContractRelationships(
     }
   }
 
-  if (input.commissionPlanId) {
+  const resolvedAdministratorId =
+    input.administratorId !== undefined
+      ? input.administratorId
+      : currentContract?.administratorId ?? null;
+  const resolvedCommissionPlanId =
+    input.commissionPlanId !== undefined
+      ? input.commissionPlanId
+      : currentContract?.commissionPlanId ?? null;
+
+  if (resolvedCommissionPlanId) {
     const planValidation = await validateContractCommissionPlanRelationship(
       context,
-      input.commissionPlanId,
-      input.administratorId ?? null,
+      resolvedCommissionPlanId,
+      resolvedAdministratorId,
     );
 
     if (!planValidation.ok) {
@@ -614,13 +705,24 @@ async function validateContractCommissionPlan(
   context: RequestContext,
   commissionPlanId: string,
 ) {
-  return validateCommissionPlanBelongsToOrganization(
-    context.supabase as unknown as Parameters<
-      typeof validateCommissionPlanBelongsToOrganization
-    >[0],
-    commissionPlanId,
-    context.profile.organization_id,
-  );
+  const { data, error } = await context.supabase
+    .from("commission_plans")
+    .select("id, administrator_id, organization_id, status")
+    .eq("id", commissionPlanId)
+    .maybeSingle<CommissionPlanValidationRow>();
+
+  if (error || !data?.id || !data.organization_id) {
+    return {
+      error: "Plano de comissao nao encontrado.",
+      ok: false as const,
+      status: 404,
+    };
+  }
+
+  return {
+    ok: true as const,
+    plan: data,
+  };
 }
 
 async function validateContractCommissionPlanRelationship(
@@ -628,14 +730,6 @@ async function validateContractCommissionPlanRelationship(
   commissionPlanId: string,
   administratorId: string | null,
 ) {
-  if (!administratorId) {
-    return {
-      error: "Plano de comissao exige administradora.",
-      ok: false as const,
-      status: 400,
-    };
-  }
-
   const planValidation = await validateContractCommissionPlan(
     context,
     commissionPlanId,
@@ -645,28 +739,46 @@ async function validateContractCommissionPlanRelationship(
     return planValidation;
   }
 
-  const { data, error } = await context.supabase
-    .from("commission_plans")
-    .select("id, administrator_id, organization_id")
-    .eq("id", commissionPlanId)
-    .eq("organization_id", context.profile.organization_id)
-    .maybeSingle<{
-      administrator_id: string | null;
-      id: string;
-      organization_id: string | null;
-    }>();
-
-  if (error || !data?.organization_id) {
+  if (planValidation.plan.organization_id !== context.profile.organization_id) {
     return {
-      error: "Plano de comissao nao encontrado.",
+      error: "Plano de comissao pertence a outra organizacao.",
       ok: false as const,
-      status: 404,
+      status: 400,
     };
   }
 
-  if (data.administrator_id !== administratorId) {
+  if (
+    administratorId &&
+    planValidation.plan.administrator_id &&
+    planValidation.plan.administrator_id !== administratorId
+  ) {
     return {
       error: "Plano de comissao nao pertence a administradora selecionada.",
+      ok: false as const,
+      status: 400,
+    };
+  }
+
+  const { count, error: scheduleCountError } = await context.supabase
+    .from("commission_plan_schedule_items")
+    .select("id", {
+      count: "exact",
+      head: true,
+    })
+    .eq("organization_id", context.profile.organization_id)
+    .eq("commission_plan_id", commissionPlanId);
+
+  if (scheduleCountError) {
+    return {
+      error: "Nao foi possivel validar a regua do plano de comissao.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  if ((count ?? 0) < 1) {
+    return {
+      error: "Plano de comissao nao possui regua cadastrada.",
       ok: false as const,
       status: 400,
     };

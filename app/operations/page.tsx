@@ -1,5 +1,5 @@
-import { OperationsOverviewPage } from "@/components/operations/operations-overview-page";
+import { OperationsWorkbenchPage } from "@/components/operations/workbench/operations-workbench-page";
 
 export default function OperationsPage() {
-  return <OperationsOverviewPage />;
+  return <OperationsWorkbenchPage />;
 }

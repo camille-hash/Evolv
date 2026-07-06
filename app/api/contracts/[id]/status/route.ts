@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { updateContractStatus } from "@/modules/contracts/server";
+import {
+  maybeActivateCommissionEngineForContractStatusTransition,
+  updateContractStatus,
+} from "@/modules/contracts/server";
 import { parseContractStatusInput } from "@/modules/contracts/validation";
 import { maybeGenerateRevenueForContractStatus } from "@/modules/revenue/server";
 
@@ -37,6 +40,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   await maybeGenerateRevenueForContractStatus(accessToken, id).catch(() => {
     // Revenue generation is a secondary side effect and must not block status updates.
+  });
+
+  await maybeActivateCommissionEngineForContractStatusTransition(accessToken, {
+    contract: result.contract,
+    previousStatus: result.previousStatus ?? result.contract.status,
+  }).catch(() => {
+    // Commission Engine activation is a secondary side effect and must not block status updates.
   });
 
   return NextResponse.json({ contract: result.contract });

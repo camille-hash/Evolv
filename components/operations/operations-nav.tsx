@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const operationsNavItems = [
-  { href: "/operations", label: "Overview" },
+  { href: "/operations", label: "Mesa de Trabalho" },
   { href: "/operations/contracts", label: "Contratos" },
+  { href: "/operations/integrity", label: "Integridade" },
   { href: "/operations/clients", label: "Clientes" },
   { href: "/operations/administrators", label: "Administradoras" },
-  { href: "/operations/revenue", label: "Revenue" },
-  { href: "/operations/portfolio", label: "Portfolio" },
-  { href: "/operations/attention", label: "Attention" },
+  { href: "/operations/revenue", label: "Receita" },
+  { href: "/operations/portfolio", label: "Carteira" },
+  { href: "/operations/attention", label: "Atenção" },
 ];
 
 export function OperationsNav() {

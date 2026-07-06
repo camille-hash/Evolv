@@ -1,6 +1,9 @@
 import type {
   ActivateCommissionScheduleForEventParams,
   ActivateCommissionScheduleForEventResult,
+  BackfillCommissionEngineForContractsParams,
+  BackfillCommissionEngineForContractsResult,
+  BackfillCommissionEngineContractReport,
   ContractCommissionScheduleItem,
   ContractCommissionSnapshot,
   ExpectedRevenueEntry,
@@ -12,11 +15,16 @@ import type {
   RecognizeExpectedRevenueParams,
   RecognizeExpectedRevenueResult,
 } from "./types";
+import { resolveCommissionEventTypeForContractStatus } from "./contract-status-events.ts";
 
 type ContractRow = {
+  activated_at: string | null;
+  commission_plan_id: string | null;
+  contract_number: string | null;
   credit_amount: number | string | null;
   id: string;
   organization_id: string | null;
+  status: string | null;
 };
 
 type CommissionPlanRow = {
@@ -584,6 +592,64 @@ export async function getContractCommissionSummary(
   };
 }
 
+export async function backfillCommissionEngineForContracts(
+  params: BackfillCommissionEngineForContractsParams,
+): Promise<BackfillCommissionEngineForContractsResult> {
+  const contractsResult = await listContractsForBackfill(params);
+
+  if (!contractsResult.ok) {
+    return contractsResult;
+  }
+
+  const results: BackfillCommissionEngineContractReport[] = [];
+  const errors: Array<{
+    contractId: string;
+    contractNumber: string | null;
+    error: string;
+  }> = [];
+  let contractsIgnored = 0;
+  let expectedRevenueEntriesCreated = 0;
+  let scheduleItemsCreated = 0;
+  let snapshotsCreated = 0;
+
+  for (const contract of contractsResult.contracts) {
+    const report = await backfillSingleContract(params, contract);
+    results.push(report);
+
+    if (report.error) {
+      errors.push({
+        contractId: report.contractId,
+        contractNumber: report.contractNumber,
+        error: report.error,
+      });
+      continue;
+    }
+
+    if (report.ignoredReason) {
+      contractsIgnored += 1;
+    }
+
+    if (report.snapshotCreated) {
+      snapshotsCreated += 1;
+    }
+
+    scheduleItemsCreated += report.scheduleItemsCreated;
+    expectedRevenueEntriesCreated += report.expectedRevenueEntriesCreated;
+  }
+
+  return {
+    contractsAnalyzed: contractsResult.contracts.length,
+    contractsIgnored,
+    dryRun: Boolean(params.dryRun),
+    errors,
+    expectedRevenueEntriesCreated,
+    ok: true,
+    results,
+    scheduleItemsCreated,
+    snapshotsCreated,
+  };
+}
+
 async function findActiveSnapshot(params: EnsureContractCommissionSnapshotParams) {
   const { data, error } = await params.supabase
     .from("contract_commission_snapshots")
@@ -604,6 +670,329 @@ async function findActiveSnapshot(params: EnsureContractCommissionSnapshotParams
     ok: true as const,
     snapshot: data ? mapSnapshotRow(data) : null,
   };
+}
+
+async function listContractsForBackfill(
+  params: BackfillCommissionEngineForContractsParams,
+) {
+  let query = params.supabase
+    .from("contracts")
+    .select(
+      [
+        "id",
+        "organization_id",
+        "contract_number",
+        "commission_plan_id",
+        "status",
+        "activated_at",
+        "credit_amount",
+      ].join(","),
+    )
+    .eq("organization_id", params.organizationId)
+    .order("created_at", { ascending: true });
+
+  if (params.contractIds?.length) {
+    query = query.in("id", params.contractIds);
+  } else {
+    query = query.not("commission_plan_id", "is", null);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return commissionEngineError(
+      "Nao foi possivel carregar contratos para backfill do Commission Engine.",
+      500,
+    );
+  }
+
+  return {
+    contracts: ((data ?? []) as unknown as ContractRow[]).filter(
+      (contract) => contract.organization_id === params.organizationId,
+    ),
+    ok: true as const,
+  };
+}
+
+async function backfillSingleContract(
+  params: BackfillCommissionEngineForContractsParams,
+  contract: ContractRow,
+): Promise<BackfillCommissionEngineContractReport> {
+  const baseReport = await buildBackfillBaseReport(params, contract);
+
+  if ("error" in baseReport) {
+    return baseReport;
+  }
+
+  if (!contract.commission_plan_id) {
+    return {
+      ...baseReport,
+      ignoredReason: "missing_commission_plan",
+    };
+  }
+
+  if (params.dryRun) {
+    let scheduleItemsCreated = 0;
+
+    if (!baseReport.snapshotId) {
+      const planItemsResult = await listCommissionPlanScheduleItems({
+        commissionPlanId: contract.commission_plan_id,
+        contractId: contract.id,
+        organizationId: params.organizationId,
+        supabase: params.supabase,
+      });
+
+      if (!planItemsResult.ok) {
+        return {
+          ...baseReport,
+          error: planItemsResult.error,
+        };
+      }
+
+      scheduleItemsCreated = planItemsResult.planItems.length;
+    }
+
+    return {
+      ...baseReport,
+      expectedRevenueEntriesCreated:
+        baseReport.wouldActivateEventType &&
+        baseReport.expectedRevenueEntriesBefore === 0
+          ? baseReport.scheduleItemsBefore || scheduleItemsCreated
+          : 0,
+      ignoredReason: baseReport.wouldActivateEventType ? null : "status_not_mapped",
+      scheduleItemsCreated,
+      snapshotCreated: !baseReport.snapshotId,
+    };
+  }
+
+  const ensureResult = await ensureContractCommissionSnapshotAndSchedule({
+    commissionPlanId: contract.commission_plan_id,
+    contractId: contract.id,
+    organizationId: params.organizationId,
+    supabase: params.supabase,
+  });
+
+  if (!ensureResult.ok) {
+    return {
+      ...baseReport,
+      error: ensureResult.error,
+    };
+  }
+
+  const scheduleItemsAfterEnsure = ensureResult.scheduleItems.length;
+  const snapshotCreated = ensureResult.created;
+  const scheduleItemsCreated = ensureResult.created
+    ? ensureResult.scheduleItems.length
+    : 0;
+  const snapshotId = ensureResult.snapshot?.id ?? baseReport.snapshotId;
+  const eventType = resolveCommissionEventTypeForContractStatus(contract.status);
+
+  if (!eventType) {
+    return {
+      ...baseReport,
+      ignoredReason: "status_not_mapped",
+      scheduleItemsAfter: scheduleItemsAfterEnsure,
+      scheduleItemsCreated,
+      snapshotCreated,
+      snapshotId,
+    };
+  }
+
+  const expectedRevenueBeforeActivationResult =
+    await listExpectedRevenueEntriesByContract({
+      contractId: contract.id,
+      organizationId: params.organizationId,
+      supabase: params.supabase,
+    });
+
+  if (!expectedRevenueBeforeActivationResult.ok) {
+    return {
+      ...baseReport,
+      error: expectedRevenueBeforeActivationResult.error,
+      scheduleItemsAfter: scheduleItemsAfterEnsure,
+      scheduleItemsCreated,
+      snapshotCreated,
+      snapshotId,
+    };
+  }
+
+  const activationResult = await activateCommissionScheduleForEvent({
+    contractId: contract.id,
+    eventType,
+    metadata: {
+      source: "commission_engine_backfill",
+      status: contract.status ?? "unknown",
+    },
+    occurredAt: contract.activated_at ?? new Date().toISOString(),
+    organizationId: params.organizationId,
+    supabase: params.supabase,
+    triggerEventId: `commission-backfill:${contract.id}:${eventType}`,
+  });
+
+  if (!activationResult.ok) {
+    return {
+      ...baseReport,
+      error: activationResult.error,
+      scheduleItemsAfter: scheduleItemsAfterEnsure,
+      scheduleItemsCreated,
+      snapshotCreated,
+      snapshotId,
+    };
+  }
+
+  const expectedRevenueAfterActivationResult =
+    await listExpectedRevenueEntriesByContract({
+      contractId: contract.id,
+      organizationId: params.organizationId,
+      supabase: params.supabase,
+    });
+
+  if (!expectedRevenueAfterActivationResult.ok) {
+    return {
+      ...baseReport,
+      error: expectedRevenueAfterActivationResult.error,
+      scheduleItemsAfter: scheduleItemsAfterEnsure,
+      scheduleItemsCreated,
+      snapshotCreated,
+      snapshotId,
+    };
+  }
+
+  return {
+    ...baseReport,
+    expectedRevenueEntriesAfter:
+      expectedRevenueAfterActivationResult.expectedRevenueEntries.length,
+    expectedRevenueEntriesBefore:
+      expectedRevenueBeforeActivationResult.expectedRevenueEntries.length,
+    expectedRevenueEntriesCreated: Math.max(
+      expectedRevenueAfterActivationResult.expectedRevenueEntries.length -
+        expectedRevenueBeforeActivationResult.expectedRevenueEntries.length,
+      0,
+    ),
+    ignoredReason: null,
+    scheduleItemsAfter: scheduleItemsAfterEnsure,
+    scheduleItemsCreated,
+    snapshotCreated,
+    snapshotId,
+  };
+}
+
+async function buildBackfillBaseReport(
+  params: BackfillCommissionEngineForContractsParams,
+  contract: ContractRow,
+) {
+  const snapshotResult = await findActiveSnapshot({
+    commissionPlanId: contract.commission_plan_id,
+    contractId: contract.id,
+    organizationId: params.organizationId,
+    supabase: params.supabase,
+  });
+
+  if (!snapshotResult.ok) {
+    return {
+      contractId: contract.id,
+      contractNumber: contract.contract_number,
+      error: snapshotResult.error,
+      expectedRevenueEntriesAfter: 0,
+      expectedRevenueEntriesBefore: 0,
+      expectedRevenueEntriesCreated: 0,
+      ignoredReason: null,
+      scheduleItemsAfter: 0,
+      scheduleItemsBefore: 0,
+      scheduleItemsCreated: 0,
+      snapshotCreated: false,
+      snapshotId: null,
+      status: contract.status ?? "draft",
+      wouldActivateEventType: resolveCommissionEventTypeForContractStatus(
+        contract.status,
+      ),
+    } satisfies BackfillCommissionEngineContractReport;
+  }
+
+  const expectedRevenueResult = await listExpectedRevenueEntriesByContract({
+    contractId: contract.id,
+    organizationId: params.organizationId,
+    supabase: params.supabase,
+  });
+
+  if (!expectedRevenueResult.ok) {
+    return {
+      contractId: contract.id,
+      contractNumber: contract.contract_number,
+      error: expectedRevenueResult.error,
+      expectedRevenueEntriesAfter: 0,
+      expectedRevenueEntriesBefore: 0,
+      expectedRevenueEntriesCreated: 0,
+      ignoredReason: null,
+      scheduleItemsAfter: 0,
+      scheduleItemsBefore: 0,
+      scheduleItemsCreated: 0,
+      snapshotCreated: false,
+      snapshotId: snapshotResult.snapshot?.id ?? null,
+      status: contract.status ?? "draft",
+      wouldActivateEventType: resolveCommissionEventTypeForContractStatus(
+        contract.status,
+      ),
+    } satisfies BackfillCommissionEngineContractReport;
+  }
+
+  let scheduleItemsBefore = 0;
+
+  if (snapshotResult.snapshot) {
+    const scheduleResult = await listScheduleItems(
+      {
+        commissionPlanId: contract.commission_plan_id,
+        contractId: contract.id,
+        organizationId: params.organizationId,
+        supabase: params.supabase,
+      },
+      snapshotResult.snapshot.id,
+    );
+
+    if (!scheduleResult.ok) {
+      return {
+        contractId: contract.id,
+        contractNumber: contract.contract_number,
+        error: scheduleResult.error,
+        expectedRevenueEntriesAfter:
+          expectedRevenueResult.expectedRevenueEntries.length,
+        expectedRevenueEntriesBefore:
+          expectedRevenueResult.expectedRevenueEntries.length,
+        expectedRevenueEntriesCreated: 0,
+        ignoredReason: null,
+        scheduleItemsAfter: 0,
+        scheduleItemsBefore: 0,
+        scheduleItemsCreated: 0,
+        snapshotCreated: false,
+        snapshotId: snapshotResult.snapshot.id,
+        status: contract.status ?? "draft",
+        wouldActivateEventType: resolveCommissionEventTypeForContractStatus(
+          contract.status,
+        ),
+      } satisfies BackfillCommissionEngineContractReport;
+    }
+
+    scheduleItemsBefore = scheduleResult.scheduleItems.length;
+  }
+
+  return {
+    contractId: contract.id,
+    contractNumber: contract.contract_number,
+    expectedRevenueEntriesAfter: expectedRevenueResult.expectedRevenueEntries.length,
+    expectedRevenueEntriesBefore:
+      expectedRevenueResult.expectedRevenueEntries.length,
+    expectedRevenueEntriesCreated: 0,
+    ignoredReason: null,
+    scheduleItemsAfter: scheduleItemsBefore,
+    scheduleItemsBefore,
+    scheduleItemsCreated: 0,
+    snapshotCreated: false,
+    snapshotId: snapshotResult.snapshot?.id ?? null,
+    status: contract.status ?? "draft",
+    wouldActivateEventType: resolveCommissionEventTypeForContractStatus(
+      contract.status,
+    ),
+  } satisfies BackfillCommissionEngineContractReport;
 }
 
 async function getContract(params: EnsureContractCommissionSnapshotParams) {
