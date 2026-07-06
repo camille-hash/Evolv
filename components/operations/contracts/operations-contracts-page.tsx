@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { ContractStatusDialog } from "@/components/contracts/contract-status-dialog";
+import type { ContractStatus } from "@/modules/contracts/types";
 import { fetchOperationsContracts } from "@/modules/operations/contracts-client";
+import type { UpdateContractStatusResult } from "@/modules/contracts/client";
 import type {
   OperationsContractsResponse,
   OperationsContractsSummary,
@@ -26,6 +29,12 @@ export function OperationsContractsPage() {
     useState<OperationsContractsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [feedbackTone, setFeedbackTone] = useState<"warning" | "success">(
+    "success",
+  );
+  const [selectedContract, setSelectedContract] =
+    useState<OperationsContractRow | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -61,6 +70,29 @@ export function OperationsContractsPage() {
       isActive = false;
     };
   }, []);
+
+  async function refreshContracts() {
+    setError(null);
+
+    try {
+      const loadedContracts = await fetchOperationsContracts();
+      setContractsResponse(loadedContracts);
+    } catch (refreshError) {
+      setError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : "Nao foi possivel carregar os contratos operacionais.",
+      );
+    }
+  }
+
+  async function handleContractStatusUpdated(result: UpdateContractStatusResult) {
+    await refreshContracts();
+    setFeedbackMessage(
+      result.warning ?? "Situacao do contrato atualizada com sucesso.",
+    );
+    setFeedbackTone(result.warning ? "warning" : "success");
+  }
 
   if (isLoading) {
     return (
@@ -102,6 +134,18 @@ export function OperationsContractsPage() {
         />
       ) : null}
 
+      {feedbackMessage ? (
+        <div
+          className={`rounded-xl border p-4 text-sm ${
+            feedbackTone === "warning"
+              ? "border-amber-200 bg-amber-50 text-amber-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+          }`}
+        >
+          {feedbackMessage}
+        </div>
+      ) : null}
+
       <OperationsContractsSummaryCards summary={summary} />
 
       {pageContext.contractId && visibleContracts.length === 0 ? (
@@ -110,8 +154,34 @@ export function OperationsContractsPage() {
           description="A Mesa de Trabalho apontou para um contrato especifico, mas ele nao apareceu na leitura operacional atual."
         />
       ) : (
-        <OperationsContractsList contracts={visibleContracts} />
+        <OperationsContractsList
+          contracts={visibleContracts}
+          onChangeStatus={(contract) => {
+            setSelectedContract(contract);
+            setFeedbackMessage(null);
+          }}
+        />
       )}
+
+      {selectedContract ? (
+        <ContractStatusDialog
+          contractId={selectedContract.id}
+          contractLabel={
+            selectedContract.contractNumber
+              ? `Contrato ${selectedContract.contractNumber}`
+              : `Contrato de ${selectedContract.clientName}`
+          }
+          currentStatus={
+            resolveCurrentContractStatus(selectedContract) ?? "active"
+          }
+          isOpen
+          onClose={() => setSelectedContract(null)}
+          onUpdated={async (result) => {
+            await handleContractStatusUpdated(result);
+            setSelectedContract(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -242,4 +312,24 @@ function resolveContractsContextDescription(
 
 function normalizeText(value: string | undefined | null) {
   return value?.trim().toLowerCase() ?? "";
+}
+
+function resolveCurrentContractStatus(
+  contract: OperationsContractRow,
+): ContractStatus | null {
+  if (
+    contract.sourceStatus === "draft" ||
+    contract.sourceStatus === "pending_documentation" ||
+    contract.sourceStatus === "submitted" ||
+    contract.sourceStatus === "approved" ||
+    contract.sourceStatus === "active" ||
+    contract.sourceStatus === "inactive" ||
+    contract.sourceStatus === "completed" ||
+    contract.sourceStatus === "cancelled" ||
+    contract.sourceStatus === "rejected"
+  ) {
+    return contract.sourceStatus;
+  }
+
+  return null;
 }

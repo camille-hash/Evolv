@@ -1,5 +1,10 @@
 import { requireSupabaseAccessToken } from "@/modules/access/supabase-session-token";
-import type { Contract, ContractInput, LeadContractSummary } from "./types";
+import type {
+  Contract,
+  ContractInput,
+  ContractStatusInput,
+  LeadContractSummary,
+} from "./types";
 
 export async function createContract(
   accessToken: string | null | undefined,
@@ -51,6 +56,49 @@ export async function fetchLeadContracts(
   }
 
   return payload.contracts;
+}
+
+export type UpdateContractStatusResult = {
+  contract: Contract;
+  warning: string | null;
+};
+
+export async function updateContractStatus(
+  accessToken: string | null | undefined,
+  contractId: string,
+  input: ContractStatusInput,
+) {
+  const resolvedAccessToken = await requireContractsAccessToken(accessToken);
+  const response = await fetch(
+    `/api/contracts/${encodeURIComponent(contractId)}/status`,
+    {
+      body: JSON.stringify(input),
+      headers: {
+        Authorization: `Bearer ${resolvedAccessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        contract?: Contract;
+        error?: string;
+        warning?: string | null;
+      }
+    | null;
+
+  if (!response.ok || !payload?.contract) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel alterar a situacao do contrato.",
+    );
+  }
+
+  return {
+    contract: payload.contract,
+    warning: payload.warning ?? null,
+  } satisfies UpdateContractStatusResult;
 }
 
 function requireContractsAccessToken(accessToken: string | null | undefined) {

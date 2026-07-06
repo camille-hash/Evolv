@@ -9,6 +9,7 @@ import {
 import type { Administrator } from "@/modules/administrators/types";
 import { fetchCommissionPlans } from "@/modules/commission-plans/client";
 import type { CommissionPlan } from "@/modules/commission-plans/types";
+import { ContractStatusDialog } from "@/components/contracts/contract-status-dialog";
 import {
   fetchClientById,
   fetchClients,
@@ -29,6 +30,7 @@ import {
   generateContractRevenue,
 } from "@/modules/revenue/client";
 import { generateEvolvMasterReport } from "@/modules/reports";
+import type { UpdateContractStatusResult } from "@/modules/contracts/client";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
@@ -107,6 +109,8 @@ export function ClientPage({
   const [contractSuccessMessage, setContractSuccessMessage] =
     useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [selectedStatusContract, setSelectedStatusContract] =
+    useState<ClientContract | null>(null);
   const [administrators, setAdministrators] = useState<Administrator[]>([]);
   const [commissionPlans, setCommissionPlans] = useState<CommissionPlan[]>([]);
   const [contractForm, setContractForm] = useState<ContractCreationFormState>(
@@ -450,6 +454,33 @@ export function ClientPage({
     } finally {
       setIsSavingContract(false);
     }
+  }
+
+  async function refreshSelectedClientDetail() {
+    if (!selectedClientId) {
+      return;
+    }
+
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      setDetailError("Sessao invalida para carregar o cliente.");
+      return;
+    }
+
+    const detail = await fetchClientById(accessToken, selectedClientId);
+    setSelectedClientDetail(detail);
+    onClientContextChange(toClientContext(detail));
+    setRefreshVersion((current) => current + 1);
+  }
+
+  async function handleContractStatusUpdated(result: UpdateContractStatusResult) {
+    await refreshSelectedClientDetail();
+    setContractError(null);
+    setContractSuccessMessage(
+      result.warning ?? "Situacao do contrato atualizada com sucesso.",
+    );
+    setDetailError(null);
   }
 
   return (
@@ -838,16 +869,42 @@ export function ClientPage({
                 {detailError}
               </p>
             ) : selectedClientDetail ? (
-              <ClientPersistedDetail detail={selectedClientDetail} />
+              <ClientPersistedDetail
+                detail={selectedClientDetail}
+                onChangeContractStatus={(contract) =>
+                  setSelectedStatusContract(contract)
+                }
+              />
             ) : null}
           </section>
         </div>
+      ) : null}
+
+      {selectedStatusContract ? (
+        <ContractStatusDialog
+          contractId={selectedStatusContract.id}
+          contractLabel={
+            selectedStatusContract.contractNumber
+              ? `Contrato ${selectedStatusContract.contractNumber}`
+              : `Contrato de ${selectedClientDetail?.client.name ?? "cliente"}`
+          }
+          currentStatus={selectedStatusContract.status}
+          isOpen
+          onClose={() => setSelectedStatusContract(null)}
+          onUpdated={handleContractStatusUpdated}
+        />
       ) : null}
     </section>
   );
 }
 
-function ClientPersistedDetail({ detail }: { detail: ClientDetailResponse }) {
+function ClientPersistedDetail({
+  detail,
+  onChangeContractStatus,
+}: {
+  detail: ClientDetailResponse;
+  onChangeContractStatus: (contract: ClientContract) => void;
+}) {
   return (
     <>
       <section className="executive-surface rounded-md p-5 text-card-foreground">
@@ -919,7 +976,11 @@ function ClientPersistedDetail({ detail }: { detail: ClientDetailResponse }) {
         {detail.contracts.length ? (
           <div className="mt-4 grid gap-3">
             {detail.contracts.map((contract) => (
-              <ClientContractItem contract={contract} key={contract.id} />
+              <ClientContractItem
+                contract={contract}
+                key={contract.id}
+                onChangeStatus={() => onChangeContractStatus(contract)}
+              />
             ))}
           </div>
         ) : (
@@ -978,7 +1039,13 @@ function ContractFormInput({
   );
 }
 
-function ClientContractItem({ contract }: { contract: ClientContract }) {
+function ClientContractItem({
+  contract,
+  onChangeStatus,
+}: {
+  contract: ClientContract;
+  onChangeStatus: () => void;
+}) {
   return (
     <article className="rounded-md border bg-background/70 p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1030,6 +1097,16 @@ function ClientContractItem({ contract }: { contract: ClientContract }) {
           label="Lead"
           value={contract.leadId ?? "Nao vinculado"}
         />
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button
+          className="inline-flex items-center justify-center rounded-md border border-primary/25 bg-primary/[0.06] px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary/45 hover:bg-primary/[0.1]"
+          onClick={onChangeStatus}
+          type="button"
+        >
+          Alterar situacao
+        </button>
       </div>
     </article>
   );

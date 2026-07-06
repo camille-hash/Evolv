@@ -4,10 +4,12 @@ import { OperationsContractsEmptyState } from "./operations-contracts-empty-stat
 
 type OperationsContractsListProps = {
   contracts: OperationsContractRow[];
+  onChangeStatus?: (contract: OperationsContractRow) => void;
 };
 
 export function OperationsContractsList({
   contracts,
+  onChangeStatus,
 }: OperationsContractsListProps) {
   if (!contracts.length) {
     return <OperationsContractsEmptyState />;
@@ -16,7 +18,13 @@ export function OperationsContractsList({
   return (
     <section className="grid gap-4">
       {contracts.map((contract) => (
-        <OperationsContractCard contract={contract} key={contract.id} />
+        <OperationsContractCard
+          contract={contract}
+          key={contract.id}
+          onChangeStatus={
+            onChangeStatus ? () => onChangeStatus(contract) : undefined
+          }
+        />
       ))}
     </section>
   );

@@ -673,6 +673,7 @@ function normalizeContractStatus(value: string | null): ContractStatus {
     value === "submitted" ||
     value === "approved" ||
     value === "active" ||
+    value === "inactive" ||
     value === "completed" ||
     value === "cancelled" ||
     value === "rejected"
