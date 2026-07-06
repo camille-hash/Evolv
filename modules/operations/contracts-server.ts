@@ -137,6 +137,7 @@ function buildOperationsContractRows(dataset: {
       creditValue,
       estimatedRevenue,
       recognizedRevenue,
+      sourceStatus: contract.status,
     });
 
     return {
@@ -195,6 +196,7 @@ function buildContractAttentionItems(input: {
   creditValue: number;
   estimatedRevenue: number;
   recognizedRevenue: number;
+  sourceStatus: string | null;
 }) {
   const attentionItems: string[] = [];
 
@@ -210,7 +212,12 @@ function buildContractAttentionItems(input: {
     attentionItems.push("Missing contract number");
   }
 
-  if (input.estimatedRevenue <= 0) {
+  if (
+    input.estimatedRevenue <= 0 &&
+    input.sourceStatus !== "inactive" &&
+    input.sourceStatus !== "cancelled" &&
+    input.sourceStatus !== "rejected"
+  ) {
     attentionItems.push("Zero estimated revenue");
   }
 
@@ -231,6 +238,10 @@ function resolveOperationsContractStatus(
 ): OperationsContractStatus {
   if (status === "completed") {
     return "completed";
+  }
+
+  if (status === "inactive") {
+    return "inactive";
   }
 
   if (status === "cancelled" || status === "rejected") {

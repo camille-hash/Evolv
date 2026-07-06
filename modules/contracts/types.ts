@@ -4,9 +4,15 @@ export type ContractStatus =
   | "submitted"
   | "approved"
   | "active"
+  | "inactive"
   | "completed"
   | "cancelled"
   | "rejected";
+
+export type ContractInactiveAction =
+  | "keep_future_entries"
+  | "cancel_future_entries"
+  | "cancel_totally";
 
 export type ContractInput = {
   activatedAt?: string | null;
@@ -68,6 +74,8 @@ export type ContractListFilters = {
 };
 
 export type ContractStatusInput = {
+  inactiveAction?: ContractInactiveAction | null;
+  notes?: string | null;
   status: ContractStatus;
 };
 

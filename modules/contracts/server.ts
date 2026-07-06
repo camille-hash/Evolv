@@ -3,13 +3,16 @@ import { validateAdministratorBelongsToOrganization } from "@/modules/administra
 import { resolveCommissionEventTypeForContractStatus } from "@/modules/commission-engine/contract-status-events";
 import {
   activateCommissionScheduleForEvent,
+  cancelFutureCommissionEntriesForContract,
   ensureContractCommissionSnapshotAndSchedule,
 } from "@/modules/commission-engine/server";
 import type {
   Contract,
+  ContractInactiveAction,
   ContractInput,
   ContractListFilters,
   ContractStatus,
+  ContractStatusInput,
 } from "./types";
 
 type ContractProfile = {
@@ -70,7 +73,12 @@ type RequestContext = {
 };
 
 export type ContractMutationResult =
-  | { contract: Contract; ok: true; previousStatus?: ContractStatus }
+  | {
+      contract: Contract;
+      ok: true;
+      operationalWarning?: string;
+      previousStatus?: ContractStatus;
+    }
   | { error: string; ok: false; status: number };
 
 export type ContractListResult =
@@ -337,7 +345,7 @@ export async function updateContract(
 export async function updateContractStatus(
   accessToken: string | null,
   contractId: string,
-  status: ContractStatus,
+  input: ContractStatusInput,
 ): Promise<ContractMutationResult> {
   if (!contractId.trim()) {
     return {
@@ -362,7 +370,33 @@ export async function updateContractStatus(
     return contractValidation;
   }
 
-  const payload = createStatusPayload(status, contractValidation.contract);
+  const inactiveAction = resolveInactiveActionForStatusTransition(
+    contractValidation.contract.status,
+    input.status,
+    input.inactiveAction,
+  );
+
+  if (
+    input.status === "inactive" &&
+    contractValidation.contract.status === "active" &&
+    inactiveAction !== "cancel_future_entries"
+  ) {
+    return {
+      error:
+        inactiveAction === "cancel_totally"
+          ? "O cancelamento total ainda nao esta disponivel neste fluxo operacional."
+          : "A opcao de manter lancamentos futuros ainda nao esta disponivel neste fluxo operacional.",
+      ok: false,
+      status: 400,
+    };
+  }
+
+  const payload = createStatusPayload(
+    input.status,
+    contractValidation.contract,
+    inactiveAction,
+    input.notes,
+  );
   const { data, error } = await context.supabase
     .from("contracts")
     .update({
@@ -382,9 +416,28 @@ export async function updateContractStatus(
     };
   }
 
+  const contract = mapContractRow(data as unknown as ContractRow);
+  const operationalLifecycleResult = await handleContractLifecycleAfterStatusUpdate(
+    context,
+    contractValidation.contract,
+    contract,
+    inactiveAction,
+    input.notes,
+  );
+
+  if (!operationalLifecycleResult.ok) {
+    return {
+      contract,
+      ok: true,
+      operationalWarning: operationalLifecycleResult.error,
+      previousStatus: contractValidation.contract.status,
+    };
+  }
+
   return {
-    contract: mapContractRow(data as unknown as ContractRow),
+    contract,
     ok: true,
+    operationalWarning: operationalLifecycleResult.warning ?? undefined,
     previousStatus: contractValidation.contract.status,
   };
 }
@@ -881,7 +934,12 @@ function toContractPayload(input: ContractInput) {
   return payload;
 }
 
-function createStatusPayload(status: ContractStatus, contract: Contract) {
+function createStatusPayload(
+  status: ContractStatus,
+  contract: Contract,
+  inactiveAction?: ContractInactiveAction | null,
+  notes?: string | null,
+) {
   const timestamp = new Date().toISOString();
   const payload: Record<string, unknown> = {
     status,
@@ -911,7 +969,126 @@ function createStatusPayload(status: ContractStatus, contract: Contract) {
     payload.rejected_at = timestamp;
   }
 
+  if (status === "inactive" && contract.status === "active") {
+    payload.metadata = appendOperationalHistoryEvent(contract.metadata, {
+      action:
+        inactiveAction ??
+        resolveInactiveActionForStatusTransition(
+          contract.status,
+          status,
+          null,
+        ) ??
+        "cancel_future_entries",
+      contractId: contract.id,
+      fromStatus: contract.status,
+      notes: normalizeOptionalText(notes),
+      occurredAt: timestamp,
+      toStatus: status,
+      type: "contract_inactivated",
+    });
+  }
+
   return payload;
+}
+
+async function handleContractLifecycleAfterStatusUpdate(
+  context: RequestContext,
+  previousContract: Contract,
+  contract: Contract,
+  inactiveAction: ContractInactiveAction | null,
+  notes?: string | null,
+) {
+  if (previousContract.status !== "active" || contract.status !== "inactive") {
+    return {
+      ok: true as const,
+      warning: null,
+    };
+  }
+
+  const action = inactiveAction ?? "cancel_future_entries";
+
+  if (action !== "cancel_future_entries") {
+    return {
+      error:
+        action === "cancel_totally"
+          ? "O cancelamento total ainda nao esta disponivel neste fluxo operacional."
+          : "A opcao de manter lancamentos futuros ainda nao esta disponivel neste fluxo operacional.",
+      ok: false as const,
+    };
+  }
+
+  const cancellationResult = await cancelFutureCommissionEntriesForContract({
+    cancelledAt: new Date().toISOString(),
+    cancelledBy: context.profile.id,
+    cancellationReason:
+      normalizeOptionalText(notes) ??
+      "Contrato inativado com cancelamento de lancamentos futuros.",
+    contractId: contract.id,
+    metadata: {
+      action,
+      fromStatus: previousContract.status,
+      notes: normalizeOptionalText(notes),
+      toStatus: contract.status,
+    },
+    organizationId: context.profile.organization_id,
+    supabase: context.supabase,
+  });
+
+  if (!cancellationResult.ok) {
+    return cancellationResult;
+  }
+
+  return {
+    ok: true as const,
+    warning: null,
+  };
+}
+
+function resolveInactiveActionForStatusTransition(
+  previousStatus: ContractStatus,
+  nextStatus: ContractStatus,
+  inactiveAction: ContractInactiveAction | null | undefined,
+) {
+  if (previousStatus !== "active" || nextStatus !== "inactive") {
+    return null;
+  }
+
+  return inactiveAction ?? "cancel_future_entries";
+}
+
+function appendOperationalHistoryEvent(
+  metadata: Record<string, unknown>,
+  input: {
+    action: ContractInactiveAction;
+    contractId: string;
+    fromStatus: ContractStatus;
+    notes: string | null;
+    occurredAt: string;
+    toStatus: ContractStatus;
+    type: string;
+  },
+) {
+  const currentHistory = Array.isArray(metadata.operationalHistory)
+    ? metadata.operationalHistory.filter(isRecord)
+    : [];
+
+  return {
+    ...metadata,
+    operationalHistory: [
+      ...currentHistory,
+      {
+        action: input.action,
+        contractId: input.contractId,
+        fromStatus: input.fromStatus,
+        id: `contract-history:${input.contractId}:${input.occurredAt}`,
+        notes: input.notes,
+        occurredAt: input.occurredAt,
+        source: "contract_status_transition",
+        toStatus: input.toStatus,
+        type: input.type,
+      },
+    ],
+  };
 }
 
 function setIfDefined(
@@ -980,6 +1157,7 @@ function normalizeContractStatus(value: string | null): ContractStatus {
     value === "submitted" ||
     value === "approved" ||
     value === "active" ||
+    value === "inactive" ||
     value === "completed" ||
     value === "cancelled" ||
     value === "rejected"
@@ -1002,6 +1180,16 @@ function normalizeNumber(value: number | string | null) {
   }
 
   return null;
+}
+
+function normalizeOptionalText(value: string | null | undefined) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed || null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

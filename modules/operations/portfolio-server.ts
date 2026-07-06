@@ -682,16 +682,28 @@ function buildUnifiedRevenueEntries(input: {
 
     const contract = contractsById.get(entry.contract_id) ?? null;
     const recognizedAmount = recognizedRevenueByExpectedId.get(entry.id) ?? 0;
+    const status = normalizeCommissionEngineRevenueStatus(
+      entry,
+      recognizedAmount,
+    );
+    const effectiveExpectedAmount = resolveOperationalExpectedAmount(
+      entry,
+      recognizedAmount,
+    );
+
+    if (status === "cancelled" && effectiveExpectedAmount <= 0) {
+      continue;
+    }
 
     commissionEngineEntries.push({
       actual_amount: recognizedAmount > 0 ? recognizedAmount : null,
       administrator_id: contract?.administrator_id ?? null,
       client_id: contract?.client_id ?? null,
       contract_id: entry.contract_id,
-      expected_amount: entry.expected_amount,
+      expected_amount: effectiveExpectedAmount,
       organization_id: entry.organization_id,
       paid_at: null,
-      status: normalizeCommissionEngineRevenueStatus(entry, recognizedAmount),
+      status,
     });
   }
 
@@ -706,7 +718,11 @@ function buildUnifiedRevenueEntries(input: {
 function sumEstimatedRevenue(revenueEntries: RevenueEntryRow[]) {
   return roundCurrency(
     revenueEntries.reduce((total, entry) => {
-      if (entry.status !== "expected" && entry.status !== "pending") {
+      if (
+        entry.status !== "expected" &&
+        entry.status !== "pending" &&
+        entry.status !== "cancelled"
+      ) {
         return total;
       }
 
@@ -718,7 +734,7 @@ function sumEstimatedRevenue(revenueEntries: RevenueEntryRow[]) {
 function sumRecognizedRevenue(revenueEntries: RevenueEntryRow[]) {
   return roundCurrency(
     revenueEntries.reduce((total, entry) => {
-      if (entry.status !== "paid") {
+      if (entry.status !== "paid" && entry.status !== "cancelled") {
         return total;
       }
 
@@ -808,4 +824,15 @@ function normalizeCommissionEngineRevenueStatus(
   }
 
   return "expected";
+}
+
+function resolveOperationalExpectedAmount(
+  entry: ExpectedRevenueEntryRow,
+  recognizedAmount: number,
+) {
+  if (entry.cancelled_at || entry.lifecycle === "cancelada") {
+    return recognizedAmount;
+  }
+
+  return normalizeNumber(entry.expected_amount) ?? 0;
 }

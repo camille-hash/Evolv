@@ -20,6 +20,7 @@ const statusLabels: Record<OperationsContractStatus, string> = {
   attention: "Atencao",
   cancelled: "Cancelado",
   completed: "Concluido",
+  inactive: "Inativo",
   pending: "Pendente",
   unknown: "Indefinido",
 };
@@ -29,6 +30,7 @@ const statusClasses: Record<OperationsContractStatus, string> = {
   attention: "border-amber-200 bg-amber-50 text-amber-800",
   cancelled: "border-rose-200 bg-rose-50 text-rose-800",
   completed: "border-sky-200 bg-sky-50 text-sky-800",
+  inactive: "border-slate-300 bg-slate-100 text-slate-700",
   pending: "border-slate-200 bg-slate-50 text-slate-700",
   unknown: "border-slate-200 bg-slate-50 text-slate-500",
 };

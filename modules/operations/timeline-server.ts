@@ -177,14 +177,22 @@ function buildContractTimelineItems(contract: {
   }
 
   if (updatedAt && updatedAt !== createdAt) {
+    const normalizedStatus = normalizeContractTimelineStatus(contract.status);
+
     items.push({
       area: "contracts",
-      description: `${baseDescription} Status operacional: ${contract.status}.`,
+      description:
+        normalizedStatus === "inativo"
+          ? `${baseDescription} Contrato inativado e fluxo operacional aplicado aos futuros.`
+          : `${baseDescription} Status operacional: ${normalizedStatus}.`,
       href: "/operations/contracts",
       id: `contract-updated-${contract.id}`,
       occurredAt: updatedAt,
       severity,
-      title: "Contrato atualizado",
+      title:
+        normalizedStatus === "inativo"
+          ? "Contrato inativado"
+          : "Contrato atualizado",
     });
   }
 
@@ -194,6 +202,10 @@ function buildContractTimelineItems(contract: {
 function buildRevenueTitle(status: string) {
   if (status === "recognized") {
     return "Receita reconhecida";
+  }
+
+  if (status === "cancelled") {
+    return "Receita cancelada";
   }
 
   if (status === "pending") {
@@ -213,6 +225,34 @@ function buildRevenueDescription(entry: {
 
 function resolveRevenueSeverity(status: string): OperationsTimelineSeverity {
   return status === "pending" ? "attention" : "info";
+}
+
+function normalizeContractTimelineStatus(status: string) {
+  if (status === "inactive") {
+    return "inativo";
+  }
+
+  if (status === "active") {
+    return "ativo";
+  }
+
+  if (status === "completed") {
+    return "concluido";
+  }
+
+  if (status === "approved") {
+    return "aprovado";
+  }
+
+  if (status === "submitted") {
+    return "enviado";
+  }
+
+  if (status === "pending_documentation") {
+    return "aguardando documentacao";
+  }
+
+  return status;
 }
 
 function mapAttentionSeverity(

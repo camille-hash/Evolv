@@ -4,6 +4,8 @@ import type {
   BackfillCommissionEngineForContractsParams,
   BackfillCommissionEngineForContractsResult,
   BackfillCommissionEngineContractReport,
+  CancelFutureCommissionEntriesForContractParams,
+  CancelFutureCommissionEntriesForContractResult,
   ContractCommissionScheduleItem,
   ContractCommissionSnapshot,
   ExpectedRevenueEntry,
@@ -520,6 +522,175 @@ export async function recognizeExpectedRevenue(
     recognizedRevenueEntry: mapRecognizedRevenueEntryRow(
       data.recognized_revenue_entry,
     ),
+  };
+}
+
+export async function cancelFutureCommissionEntriesForContract(
+  params: CancelFutureCommissionEntriesForContractParams,
+): Promise<CancelFutureCommissionEntriesForContractResult> {
+  const cancelledAt = normalizeDate(params.cancelledAt ?? new Date().toISOString());
+
+  if (!cancelledAt) {
+    return commissionEngineError("Data de cancelamento invalida.", 400);
+  }
+
+  const expectedRevenueLookup = await params.supabase
+    .from("expected_revenue_entries")
+    .select(expectedRevenueColumns)
+    .eq("organization_id", params.organizationId)
+    .eq("contract_id", params.contractId)
+    .is("cancelled_at", null)
+    .neq("lifecycle", "cancelada");
+
+  if (expectedRevenueLookup.error) {
+    return commissionEngineError(
+      "Nao foi possivel localizar receitas previstas para cancelamento.",
+      500,
+    );
+  }
+
+  const expectedEntriesToCancel = (
+    ((expectedRevenueLookup.data ?? []) as unknown as ExpectedRevenueEntryRow[])
+      .filter((entry) => entry.organization_id === params.organizationId)
+      .map(mapExpectedRevenueEntryRow)
+  ).filter((entry) => entry.remainingAmount > 0);
+  const expectedEntryIdsToCancel = expectedEntriesToCancel.map((entry) => entry.id);
+  const linkedScheduleItemIds = expectedEntriesToCancel.map(
+    (entry) => entry.commissionScheduleItemId,
+  );
+  const pendingScheduleLookup = await params.supabase
+    .from("contract_commission_schedule_items")
+    .select(scheduleItemColumns)
+    .eq("organization_id", params.organizationId)
+    .eq("contract_id", params.contractId)
+    .is("cancelled_at", null)
+    .neq("lifecycle", "cancelada")
+    .eq("business_status", "pendente");
+
+  if (pendingScheduleLookup.error) {
+    return commissionEngineError(
+      "Nao foi possivel localizar agenda de comissao para cancelamento.",
+      500,
+    );
+  }
+
+  const scheduleItemIdsToCancel = Array.from(
+    new Set([
+      ...linkedScheduleItemIds,
+      ...(((pendingScheduleLookup.data ?? []) as unknown as ContractCommissionScheduleItemRow[])
+        .filter((item) => item.organization_id === params.organizationId)
+        .map((item) => item.id)),
+    ]),
+  );
+  const scheduleItemsLookup =
+    scheduleItemIdsToCancel.length > 0
+      ? await params.supabase
+          .from("contract_commission_schedule_items")
+          .select(scheduleItemColumns)
+          .eq("organization_id", params.organizationId)
+          .in("id", scheduleItemIdsToCancel)
+      : null;
+
+  if (scheduleItemsLookup?.error) {
+    return commissionEngineError(
+      "Nao foi possivel carregar agenda de comissao para cancelar os futuros.",
+      500,
+    );
+  }
+
+  const scheduleItemsToCancel = (
+    ((scheduleItemsLookup?.data ?? []) as unknown as ContractCommissionScheduleItemRow[])
+      .filter((item) => item.organization_id === params.organizationId)
+      .map(mapScheduleItemRow)
+  );
+
+  if (!expectedEntryIdsToCancel.length && !scheduleItemIdsToCancel.length) {
+    return {
+      cancelledExpectedRevenueEntries: 0,
+      cancelledScheduleItems: 0,
+      ok: true,
+      skippedReason: "no_pending_schedule_or_expected_revenue",
+    };
+  }
+
+  const cancellationReason =
+    normalizeOptionalText(params.cancellationReason) ??
+    "Contrato inativado com cancelamento de lancamentos futuros.";
+  const cancellationMetadata = {
+    ...(params.metadata ?? {}),
+    cancelledBy: params.cancelledBy ?? null,
+    cancelledAt: cancelledAt.toISOString(),
+    cancellationReason,
+    source: "contract_inactive_transition",
+  };
+
+  let cancelledExpectedRevenueEntries = 0;
+  let cancelledScheduleItems = 0;
+
+  if (expectedEntryIdsToCancel.length) {
+    for (const entry of expectedEntriesToCancel) {
+      const { error } = await params.supabase
+        .from("expected_revenue_entries")
+        .update({
+          business_status: "cancelada",
+          cancelled_at: cancelledAt.toISOString(),
+          cancelled_reason: cancellationReason,
+          lifecycle: "cancelada",
+          metadata: {
+            ...entry.metadata,
+            cancellation: cancellationMetadata,
+          },
+          remaining_amount: 0,
+        })
+        .eq("organization_id", params.organizationId)
+        .eq("id", entry.id);
+
+      if (error) {
+        return commissionEngineError(
+          "Nao foi possivel cancelar receitas previstas pendentes.",
+          500,
+        );
+      }
+
+      cancelledExpectedRevenueEntries += 1;
+    }
+  }
+
+  if (scheduleItemIdsToCancel.length) {
+    for (const scheduleItem of scheduleItemsToCancel) {
+      const { error } = await params.supabase
+        .from("contract_commission_schedule_items")
+        .update({
+          business_status: "cancelada",
+          cancelled_at: cancelledAt.toISOString(),
+          cancelled_reason: cancellationReason,
+          lifecycle: "cancelada",
+          metadata: {
+            ...scheduleItem.metadata,
+            cancellation: cancellationMetadata,
+          },
+        })
+        .eq("organization_id", params.organizationId)
+        .eq("id", scheduleItem.id);
+
+      if (error) {
+        return commissionEngineError(
+          "Nao foi possivel cancelar agenda futura de comissao.",
+          500,
+        );
+      }
+
+      cancelledScheduleItems += 1;
+    }
+  }
+
+  return {
+    cancelledExpectedRevenueEntries,
+    cancelledScheduleItems,
+    ok: true,
+    skippedReason: expectedEntryIdsToCancel.length
+      ? null
+      : "no_pending_expected_revenue",
   };
 }
 
@@ -1623,7 +1794,7 @@ function sumExpectedAmount(expectedRevenueEntries: ExpectedRevenueEntry[]) {
   return roundCurrency(
     expectedRevenueEntries.reduce(
       (total, expectedRevenueEntry) =>
-        total + expectedRevenueEntry.expectedAmount,
+        total + resolveExpectedRevenueOperationalAmount(expectedRevenueEntry),
       0,
     ),
   );
@@ -1637,6 +1808,19 @@ function sumRemainingAmount(expectedRevenueEntries: ExpectedRevenueEntry[]) {
       0,
     ),
   );
+}
+
+function resolveExpectedRevenueOperationalAmount(
+  expectedRevenueEntry: ExpectedRevenueEntry,
+) {
+  if (
+    expectedRevenueEntry.cancelledAt ||
+    expectedRevenueEntry.lifecycle === "cancelada"
+  ) {
+    return expectedRevenueEntry.recognizedAmount;
+  }
+
+  return expectedRevenueEntry.expectedAmount;
 }
 
 function mapRecognizedRevenueEntryRow(

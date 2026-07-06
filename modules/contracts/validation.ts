@@ -1,5 +1,6 @@
 import type {
   ContractInput,
+  ContractInactiveAction,
   ContractListFilters,
   ContractStatus,
   ContractStatusInput,
@@ -11,9 +12,16 @@ export const contractStatuses: ContractStatus[] = [
   "submitted",
   "approved",
   "active",
+  "inactive",
   "completed",
   "cancelled",
   "rejected",
+];
+
+const contractInactiveActions: ContractInactiveAction[] = [
+  "keep_future_entries",
+  "cancel_future_entries",
+  "cancel_totally",
 ];
 
 export function isContractStatus(value: unknown): value is ContractStatus {
@@ -112,8 +120,22 @@ export function parseContractStatusInput(value: unknown) {
     return invalid("Status de contrato invalido.");
   }
 
+  const inactiveAction =
+    "inactiveAction" in value
+      ? normalizeInactiveAction(value.inactiveAction)
+      : null;
+
+  if ("inactiveAction" in value && inactiveAction === undefined) {
+    return invalid("Acao operacional de inativacao invalida.");
+  }
+
+  const notes =
+    "notes" in value ? normalizeNullableText(value.notes) : null;
+
   return {
     input: {
+      inactiveAction,
+      notes,
       status: value.status,
     } satisfies ContractStatusInput,
     ok: true as const,
@@ -204,6 +226,21 @@ function normalizeNullablePositiveInteger(value: unknown) {
   }
 
   return value;
+}
+
+function normalizeInactiveAction(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  if (
+    typeof value === "string" &&
+    contractInactiveActions.includes(value as ContractInactiveAction)
+  ) {
+    return value as ContractInactiveAction;
+  }
+
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

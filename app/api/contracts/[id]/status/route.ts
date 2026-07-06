@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const result = await updateContractStatus(
     accessToken,
     id,
-    parsedInput.input.status,
+    parsedInput.input,
   );
 
   if (!result.ok) {
@@ -49,7 +49,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Commission Engine activation is a secondary side effect and must not block status updates.
   });
 
-  return NextResponse.json({ contract: result.contract });
+  return NextResponse.json({
+    contract: result.contract,
+    warning: result.operationalWarning ?? null,
+  });
 }
 
 function readBearerToken(request: NextRequest) {

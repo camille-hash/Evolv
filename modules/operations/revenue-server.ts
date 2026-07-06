@@ -467,6 +467,14 @@ function buildUnifiedRevenueEntries(input: {
       entry,
       recognizedAmount,
     );
+    const effectiveExpectedAmount = resolveOperationalExpectedAmount(
+      entry,
+      recognizedAmount,
+    );
+
+    if (status === "cancelled" && effectiveExpectedAmount <= 0) {
+      continue;
+    }
 
     commissionEngineEntries.push({
       actual_amount: recognizedAmount > 0 ? recognizedAmount : null,
@@ -474,7 +482,7 @@ function buildUnifiedRevenueEntries(input: {
       client_id: contract?.client_id ?? null,
       contract_id: entry.contract_id,
       due_date: entry.expected_date,
-      expected_amount: entry.expected_amount,
+      expected_amount: effectiveExpectedAmount,
       id: entry.id,
       organization_id: entry.organization_id,
       paid_at:
@@ -648,6 +656,17 @@ function normalizeCommissionEngineRevenueStatus(
   }
 
   return "expected";
+}
+
+function resolveOperationalExpectedAmount(
+  entry: ExpectedRevenueEntryRow,
+  recognizedAmount: number,
+) {
+  if (entry.cancelled_at || entry.lifecycle === "cancelada") {
+    return recognizedAmount;
+  }
+
+  return normalizeNumber(entry.expected_amount) ?? 0;
 }
 
 function resolveLatestDate(

@@ -5,6 +5,7 @@ export type OperationsContractStatus =
   | "attention"
   | "cancelled"
   | "completed"
+  | "inactive"
   | "pending"
   | "unknown";
 

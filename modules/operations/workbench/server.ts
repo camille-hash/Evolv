@@ -113,6 +113,7 @@ function buildWorkNowItems(
       return (
         !problemContractIds.has(contract.id) &&
         contract.attentionItems.length > 0 &&
+        sourceStatus !== "inactive" &&
         sourceStatus !== "approved" &&
         sourceStatus !== "pending_documentation" &&
         sourceStatus !== "submitted" &&
@@ -304,7 +305,8 @@ function buildCompletedTodayItems(
   const completedContracts = contracts
     .filter(
       (contract) =>
-        normalizeText(contract.sourceStatus) === "completed" &&
+        (normalizeText(contract.sourceStatus) === "completed" ||
+          normalizeText(contract.sourceStatus) === "inactive") &&
         isToday(contract.updatedAt ?? null),
     )
     .map((contract) => ({
@@ -312,11 +314,17 @@ function buildCompletedTodayItems(
       id: `contrato-concluido:${contract.id}`,
       proximaAcao:
         "Nenhuma acao imediata. Conferir apenas se o fechamento do contrato foi refletido no restante da operacao.",
-      resumo: "O contrato foi marcado como concluido hoje.",
+      resumo:
+        normalizeText(contract.sourceStatus) === "inactive"
+          ? "O contrato foi inativado hoje com ajuste operacional dos futuros."
+          : "O contrato foi marcado como concluido hoje.",
       situacao: contract.updatedAt
         ? `Concluido em ${formatDateTime(contract.updatedAt)}`
         : "Concluido hoje",
-      tipo: "Contrato concluido",
+      tipo:
+        normalizeText(contract.sourceStatus) === "inactive"
+          ? "Contrato inativado"
+          : "Contrato concluido",
       titulo: resolveContractTitle(contract),
       tone: "concluido",
     }) satisfies WorkbenchItem);
@@ -375,6 +383,10 @@ function resolveContractSourceSituation(sourceStatus: string | undefined) {
 
   if (normalized === "active") {
     return "Contrato ativo";
+  }
+
+  if (normalized === "inactive") {
+    return "Contrato inativado";
   }
 
   if (normalized === "completed") {

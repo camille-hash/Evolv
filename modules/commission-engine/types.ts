@@ -210,6 +210,32 @@ export type ActivateCommissionScheduleForEventResult =
       status: number;
     };
 
+export type CancelFutureCommissionEntriesForContractParams = {
+  cancelledAt?: string;
+  cancelledBy?: string | null;
+  cancellationReason?: string | null;
+  contractId: string;
+  metadata?: Record<string, unknown>;
+  organizationId: string;
+  supabase: CommissionEngineSupabaseClient;
+};
+
+export type CancelFutureCommissionEntriesForContractResult =
+  | {
+      cancelledExpectedRevenueEntries: number;
+      cancelledScheduleItems: number;
+      ok: true;
+      skippedReason:
+        | "no_pending_expected_revenue"
+        | "no_pending_schedule_or_expected_revenue"
+        | null;
+    }
+  | {
+      error: string;
+      ok: false;
+      status: number;
+    };
+
 export type RecognizeExpectedRevenueResult =
   | {
       expectedRevenueEntry: ExpectedRevenueEntry;

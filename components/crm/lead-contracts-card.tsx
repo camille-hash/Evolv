@@ -6,6 +6,7 @@ const contractStatusLabels: Record<LeadContractSummary["status"], string> = {
   cancelled: "Cancelado",
   completed: "Concluido",
   draft: "Rascunho",
+  inactive: "Inativo",
   pending_documentation: "Documentacao pendente",
   rejected: "Rejeitado",
   submitted: "Enviado",

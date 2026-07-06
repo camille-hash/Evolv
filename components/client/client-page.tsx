@@ -46,6 +46,7 @@ const contractStatusLabels: Record<ClientContract["status"], string> = {
   cancelled: "Cancelado",
   completed: "Concluido",
   draft: "Rascunho",
+  inactive: "Inativo",
   pending_documentation: "Documentacao pendente",
   rejected: "Rejeitado",
   submitted: "Enviado",
