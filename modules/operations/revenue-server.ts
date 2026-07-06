@@ -58,6 +58,7 @@ type ContractRow = {
   contract_number: string | null;
   id: string;
   organization_id: string | null;
+  status: string | null;
 };
 
 type ClientRow = {
@@ -244,7 +245,9 @@ export async function listOperationsRevenue(
     return dataset;
   }
 
-  const allEntries = buildOperationsRevenueRows(dataset);
+  const allEntries = excludeInactiveContractOperationalEntries(
+    buildOperationsRevenueRows(dataset),
+  );
   const filteredEntries = filterOperationsRevenueRows(allEntries, normalizedQuery);
   const sortedEntries = sortOperationsRevenueRows(filteredEntries, normalizedQuery);
   const summary = summarizeRevenue(filteredEntries);
@@ -328,6 +331,7 @@ function buildOperationsRevenueRows(dataset: {
       competency: dueDateKey ? dueDateKey.slice(0, 7) : undefined,
       contractId: entry.contract_id ?? "",
       contractNumber: normalizeNullableText(contract?.contract_number) ?? undefined,
+      contractStatus: normalizeNullableText(contract?.status) ?? undefined,
       dueDate: dueDateKey ?? undefined,
       expectedAmount,
       id: entry.id,
@@ -379,6 +383,18 @@ function summarizeRevenue(
           )
         : 0,
   };
+}
+
+function excludeInactiveContractOperationalEntries(
+  entries: OperationsRevenueRow[],
+) {
+  return entries.filter((entry) => {
+    if (entry.contractStatus !== "inactive") {
+      return true;
+    }
+
+    return entry.status === "recognized" || entry.recognizedAmount > 0;
+  });
 }
 
 function buildOperationsRevenueDailyPanel(
@@ -602,6 +618,7 @@ async function loadOperationsRevenueDataset(context: RequestContext) {
           "administrator_id",
           "contract_number",
           "commission_plan_id",
+          "status",
         ].join(","),
       )
       .eq("organization_id", context.profile.organization_id),

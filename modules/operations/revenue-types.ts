@@ -42,6 +42,7 @@ export type OperationsRevenueRow = {
   competency?: string;
   contractId: string;
   contractNumber?: string;
+  contractStatus?: string;
   dueDate?: string;
   expectedAmount: number;
   id: string;
