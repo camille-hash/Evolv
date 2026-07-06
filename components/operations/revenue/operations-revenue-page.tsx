@@ -71,10 +71,27 @@ export function OperationsRevenuePage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
+  async function loadRevenue() {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const loadedRevenue = await fetchOperationsRevenue();
+      setRevenueResponse(loadedRevenue);
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel carregar as receitas operacionais.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   useEffect(() => {
     let isActive = true;
-
-    async function loadRevenue() {
+    void (async () => {
       setIsLoading(true);
       setError(null);
 
@@ -97,9 +114,7 @@ export function OperationsRevenuePage() {
           setIsLoading(false);
         }
       }
-    }
-
-    void loadRevenue();
+    })();
 
     return () => {
       isActive = false;
@@ -172,8 +187,8 @@ export function OperationsRevenuePage() {
               ser refinada por periodo.
             </p>
           </div>
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Marcacao de recebimento entra na proxima entrega.
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            Receitas com saldo pendente agora podem ser marcadas como recebidas.
           </div>
         </div>
 
@@ -250,7 +265,7 @@ export function OperationsRevenuePage() {
           description="A Mesa de Trabalho apontou para uma receita especifica, mas ela nao apareceu na leitura operacional atual."
         />
       ) : (
-        <OperationsRevenueList entries={visibleEntries} />
+        <OperationsRevenueList entries={visibleEntries} onRefresh={loadRevenue} />
       )}
     </div>
   );
