@@ -116,8 +116,12 @@ function buildOperationsContractRows(dataset: {
 
   return dataset.contracts.map((contract) => {
     const creditValue = normalizeNumber(contract.credit_amount) ?? 0;
+    const commissionSummary = dataset.commissionSummaries.get(contract.id);
     const revenueEntries = revenueByContractId.get(contract.id) ?? [];
-    const estimatedRevenue = sumEstimatedRevenue(revenueEntries);
+    const estimatedRevenue = resolveOperationalEstimatedRevenue(
+      sumEstimatedRevenue(revenueEntries),
+      commissionSummary?.totals.expectedAmount ?? 0,
+    );
     const recognizedRevenue = sumRecognizedRevenue(revenueEntries);
     const clientName = contract.client_id
       ? clientsById.get(contract.client_id) ?? "Cliente nao encontrado"
@@ -139,7 +143,7 @@ function buildOperationsContractRows(dataset: {
       administratorName,
       attentionItems,
       clientName,
-      commissionSummary: dataset.commissionSummaries.get(contract.id),
+      commissionSummary,
       contractNumber: normalizeNullableText(contract.contract_number) ?? undefined,
       createdAt: contract.created_at ?? undefined,
       creditValue,
@@ -484,6 +488,17 @@ function sumEstimatedRevenue(revenueEntries: RevenueEntryRow[]) {
       return total + (normalizeNumber(entry.expected_amount) ?? 0);
     }, 0),
   );
+}
+
+function resolveOperationalEstimatedRevenue(
+  legacyEstimatedRevenue: number,
+  commissionExpectedRevenue: number,
+) {
+  if (legacyEstimatedRevenue > 0) {
+    return legacyEstimatedRevenue;
+  }
+
+  return roundCurrency(commissionExpectedRevenue);
 }
 
 function sumRecognizedRevenue(revenueEntries: RevenueEntryRow[]) {

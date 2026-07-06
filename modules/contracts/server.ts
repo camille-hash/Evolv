@@ -243,7 +243,7 @@ export async function createContract(
     return commissionEngineResult;
   }
 
-  await maybeActivateCommissionEngineForContractStatusTransition(accessToken, {
+  await activateCommissionEngineForContractStatusTransition(context, {
     contract,
     previousStatus: "draft",
   });
@@ -321,6 +321,11 @@ export async function updateContract(
   if (!commissionEngineResult.ok) {
     return commissionEngineResult;
   }
+
+  await activateCommissionEngineForContractStatusTransition(context, {
+    contract,
+    previousStatus: contractValidation.contract.status,
+  });
 
   return {
     contract,
@@ -415,6 +420,34 @@ export async function maybeActivateCommissionEngineForContractStatusTransition(
     return {
       ok: true as const,
       skippedReason: "invalid_context",
+    };
+  }
+
+  return activateCommissionEngineForContractStatusTransition(context, input);
+}
+
+async function activateCommissionEngineForContractStatusTransition(
+  context: RequestContext,
+  input: {
+    contract: Contract;
+    previousStatus: ContractStatus;
+  },
+) {
+  const eventType = resolveCommissionEventTypeForContractStatus(
+    input.contract.status,
+  );
+
+  if (!eventType) {
+    return {
+      ok: true as const,
+      skippedReason: "status_not_mapped",
+    };
+  }
+
+  if (input.previousStatus === input.contract.status) {
+    return {
+      ok: true as const,
+      skippedReason: "status_unchanged",
     };
   }
 
