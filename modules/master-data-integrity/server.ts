@@ -273,9 +273,10 @@ export async function listMasterDataIntegrityContracts(
     const planId = contract.commission_plan_id;
     const sameOrgPlan = planId ? sameOrgPlansById.get(planId) ?? null : null;
     const anyOrgPlan = planId ? anyOrgPlansById.get(planId) ?? null : null;
+    const planFound = Boolean(sameOrgPlan || anyOrgPlan);
     const scheduleItems = planId ? planScheduleCounts.get(planId) ?? 0 : 0;
 
-    if (planId && !anyOrgPlan) {
+    if (planId && !planFound && anyOrgPlansResult.lookupAvailable) {
       pushContractIssue(
         issues,
         issuesByContractId,
@@ -765,6 +766,7 @@ async function loadCommissionPlansAnyOrganization(commissionPlanIds: string[]) {
   if (!commissionPlanIds.length) {
     return {
       commissionPlans: [] as CommissionPlanRow[],
+      lookupAvailable: false as const,
       ok: true as const,
     };
   }
@@ -774,6 +776,7 @@ async function loadCommissionPlansAnyOrganization(commissionPlanIds: string[]) {
   if (!supabase) {
     return {
       commissionPlans: [] as CommissionPlanRow[],
+      lookupAvailable: false as const,
       ok: true as const,
     };
   }
@@ -786,12 +789,14 @@ async function loadCommissionPlansAnyOrganization(commissionPlanIds: string[]) {
   if (error) {
     return {
       commissionPlans: [] as CommissionPlanRow[],
+      lookupAvailable: false as const,
       ok: true as const,
     };
   }
 
   return {
     commissionPlans: (data ?? []) as CommissionPlanRow[],
+    lookupAvailable: true as const,
     ok: true as const,
   };
 }
