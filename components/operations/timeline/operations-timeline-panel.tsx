@@ -31,7 +31,7 @@ export function OperationsTimelinePanel() {
           setError(
             error instanceof Error
               ? error.message
-              : "Nao foi possivel carregar a timeline operacional.",
+              : "Nao foi possivel carregar a atividade operacional.",
           );
         }
       } finally {
@@ -52,18 +52,18 @@ export function OperationsTimelinePanel() {
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-          Timeline operacional
+          Atividade
         </p>
         <h2 className="mt-1 text-lg font-semibold text-slate-950">
-          Movimentos recentes da operacao
+          Atividade operacional recente
         </h2>
       </div>
 
       <div className="mt-4">
         {isLoading ? (
           <OperationalEmptyState
-            description="Carregando timeline operacional..."
-            title="Linha do tempo"
+            description="Carregando atividade operacional..."
+            title="Atividade"
           />
         ) : null}
 

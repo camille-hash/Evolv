@@ -51,7 +51,7 @@ export function OperationsTimelineItem({ item }: OperationsTimelineItemProps) {
               className="mt-3 inline-flex text-xs font-semibold text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline"
               href={item.href}
             >
-              Abrir contexto
+              Ver contexto
             </Link>
           ) : null}
         </div>

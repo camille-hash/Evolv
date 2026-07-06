@@ -1,136 +1,111 @@
-import { listOperationsAdministrators } from "./administrators-server";
-import { listOperationsClients } from "./clients-server";
-import { listOperationsContracts } from "./contracts-server";
-import { getOperationsPortfolio } from "./portfolio-server";
-import { listOperationsRevenue } from "./revenue-server";
-import { getOperationsSummary } from "./server";
+import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import type {
+  OperationsTimelineEventType,
   OperationsTimelineItem,
   OperationsTimelineResponse,
   OperationsTimelineSeverity,
 } from "./timeline-types";
-import type { OperationAttentionSeverity } from "./types";
+
+type OperationsTimelineProfile = {
+  id: string;
+  is_active: boolean | null;
+  organization_id: string | null;
+  role: string | null;
+};
+
+type ClientRow = {
+  created_at: string | null;
+  id: string;
+  name: string | null;
+  organization_id: string | null;
+  updated_at: string | null;
+};
+
+type ContractRow = {
+  activated_at: string | null;
+  approved_at: string | null;
+  cancelled_at: string | null;
+  client_id: string | null;
+  completed_at: string | null;
+  contract_number: string | null;
+  created_at: string | null;
+  credit_amount: number | string | null;
+  id: string;
+  metadata: unknown;
+  organization_id: string | null;
+  rejected_at: string | null;
+  status: string | null;
+  submitted_at: string | null;
+};
+
+type RecognizedRevenueEntryRow = {
+  contract_id: string | null;
+  expected_revenue_entry_id: string | null;
+  id: string;
+  organization_id: string | null;
+  recognized_amount: number | string | null;
+  recognized_at: string | null;
+  reversed_at: string | null;
+};
+
+type RequestContext = {
+  profile: OperationsTimelineProfile & {
+    is_active: true;
+    organization_id: string;
+    role: "admin" | "master" | "sdr";
+  };
+  supabase: ReturnType<typeof createServerOperationsTimelineSupabaseClient>;
+  user: SupabaseUser;
+};
+
+type ContractHistoryEvent = {
+  action: string | null;
+  fromStatus: string | null;
+  notes: string | null;
+  occurredAt: string | null;
+  toStatus: string | null;
+  type: string | null;
+};
 
 export type OperationsTimelineResult =
   | ({ ok: true } & OperationsTimelineResponse)
   | { error: string; ok: false; status: number };
 
-const timelineLimit = 30;
+const genericAccessError =
+  "Nao foi possivel concluir a operacao. Entre em contato com o administrador.";
+
+const timelineLimit = 40;
 
 export async function listOperationsTimeline(
   accessToken: string | null,
 ): Promise<OperationsTimelineResult> {
-  const [
-    contractsResult,
-    clientsResult,
-    revenueResult,
-    portfolioResult,
-    administratorsResult,
-    summaryResult,
-  ] = await Promise.all([
-    listOperationsContracts(accessToken),
-    listOperationsClients(accessToken),
-    listOperationsRevenue(accessToken),
-    getOperationsPortfolio(accessToken),
-    listOperationsAdministrators(accessToken),
-    getOperationsSummary(accessToken),
-  ]);
+  const context = await resolveOperationsTimelineRequestContext(accessToken);
 
-  if (!contractsResult.ok) {
-    return contractsResult;
+  if (!context.ok) {
+    return context;
   }
 
-  if (!clientsResult.ok) {
-    return clientsResult;
+  const dataset = await loadOperationsTimelineDataset(context);
+
+  if (!dataset.ok) {
+    return dataset;
   }
 
-  if (!revenueResult.ok) {
-    return revenueResult;
-  }
+  const clientsById = new Map(
+    dataset.clients.map((client) => [
+      client.id,
+      normalizeText(client.name) || "Cliente sem nome",
+    ]),
+  );
 
-  if (!portfolioResult.ok) {
-    return portfolioResult;
-  }
-
-  if (!administratorsResult.ok) {
-    return administratorsResult;
-  }
-
-  if (!summaryResult.ok) {
-    return summaryResult;
-  }
-
-  const now = new Date().toISOString();
   const items: OperationsTimelineItem[] = [
-    ...contractsResult.contracts.flatMap((contract) =>
-      buildContractTimelineItems(contract),
+    ...dataset.clients.flatMap((client) => buildClientActivityItems(client)),
+    ...dataset.contracts.flatMap((contract) =>
+      buildContractActivityItems(contract, clientsById),
     ),
-    ...clientsResult.clients.map((client) => ({
-      area: "clients" as const,
-      description: `${client.contractsCount} contrato(s), ${formatCurrency(client.totalCreditValue)} em credito.`,
-      href: "/operations/clients",
-      id: `client-created-${client.id}`,
-      occurredAt: client.createdAt ?? client.updatedAt ?? now,
-      severity: (client.attentionItems.length
-        ? "attention"
-        : "info") as OperationsTimelineSeverity,
-      title: "Cliente criado ou convertido",
-    })),
-    ...revenueResult.entries.map((entry) => ({
-      area: "revenue" as const,
-      description: buildRevenueDescription(entry),
-      href: "/operations/revenue",
-      id: `revenue-${entry.id}`,
-      occurredAt: entry.paidAt ?? entry.dueDate ?? now,
-      severity: entry.attentionItems.length
-        ? "attention"
-        : resolveRevenueSeverity(entry.status),
-      title: buildRevenueTitle(entry.status),
-    })),
-    ...administratorsResult.administrators
-      .filter((administrator) => administrator.contractsCount > 0)
-      .map((administrator) => ({
-        area: "administrators" as const,
-        description: `${administrator.contractsCount} contrato(s), ${administrator.clientsCount} cliente(s), ${administrator.exposurePercentage.toLocaleString("pt-BR")}% da carteira.`,
-        href: "/operations/administrators",
-        id: `administrator-linked-${administrator.id}`,
-        occurredAt: administrator.updatedAt ?? administrator.createdAt ?? now,
-        severity: (administrator.attentionItems.length
-          ? "attention"
-          : "info") as OperationsTimelineSeverity,
-        title: "Administradora vinculada a contratos",
-      })),
-    ...portfolioResult.clientExposures
-      .filter((exposure) => exposure.status === "concentrated")
-      .map((exposure) => ({
-        area: "portfolio" as const,
-        description: `${exposure.label} concentra ${exposure.exposurePercentage.toLocaleString("pt-BR")}% da carteira.`,
-        href: "/operations/portfolio",
-        id: `portfolio-client-concentration-${exposure.id}`,
-        occurredAt: now,
-        severity: "attention" as const,
-        title: "Concentracao de carteira por cliente",
-      })),
-    ...portfolioResult.administratorExposures
-      .filter((exposure) => exposure.status === "concentrated")
-      .map((exposure) => ({
-        area: "portfolio" as const,
-        description: `${exposure.label} concentra ${exposure.exposurePercentage.toLocaleString("pt-BR")}% da carteira.`,
-        href: "/operations/portfolio",
-        id: `portfolio-administrator-concentration-${exposure.id}`,
-        occurredAt: now,
-        severity: "attention" as const,
-        title: "Concentracao de carteira por administradora",
-      })),
-    ...summaryResult.summary.attentionItems.map((item) => ({
-      area: "attention" as const,
-      description: item.description,
-      href: item.href ?? "/operations/attention",
-      id: `attention-${item.id}`,
-      occurredAt: summaryResult.summary.generatedAt,
-      severity: mapAttentionSeverity(item.severity),
-      title: "Pendencia operacional identificada",
-    })),
+    ...dataset.recognizedRevenueEntries.flatMap((entry) =>
+      buildRecognizedRevenueActivityItems(entry, dataset.contractsById, clientsById),
+    ),
   ];
 
   return {
@@ -146,131 +121,487 @@ export async function listOperationsTimeline(
   };
 }
 
-function buildContractTimelineItems(contract: {
-  attentionItems: string[];
-  clientName: string;
-  contractNumber?: string;
-  createdAt?: string;
-  creditValue: number;
-  id: string;
-  status: string;
-  updatedAt?: string;
-}) {
-  const createdAt = contract.createdAt ?? contract.updatedAt;
-  const updatedAt = contract.updatedAt;
-  const baseDescription = `${contract.clientName}, ${formatCurrency(contract.creditValue)} em credito.`;
-  const severity: OperationsTimelineSeverity = contract.attentionItems.length
-    ? "attention"
-    : "info";
-  const items: OperationsTimelineItem[] = [];
+async function loadOperationsTimelineDataset(context: RequestContext) {
+  const [clientsResult, contractsResult, recognizedRevenueResult] =
+    await Promise.all([
+      context.supabase
+        .from("clients")
+        .select("id, organization_id, name, created_at, updated_at")
+        .eq("organization_id", context.profile.organization_id),
+      context.supabase
+        .from("contracts")
+        .select(
+          [
+            "id",
+            "organization_id",
+            "client_id",
+            "contract_number",
+            "status",
+            "credit_amount",
+            "created_at",
+            "submitted_at",
+            "approved_at",
+            "activated_at",
+            "completed_at",
+            "cancelled_at",
+            "rejected_at",
+            "metadata",
+          ].join(","),
+        )
+        .eq("organization_id", context.profile.organization_id),
+      context.supabase
+        .from("recognized_revenue_entries")
+        .select(
+          [
+            "id",
+            "organization_id",
+            "contract_id",
+            "expected_revenue_entry_id",
+            "recognized_amount",
+            "recognized_at",
+            "reversed_at",
+          ].join(","),
+        )
+        .eq("organization_id", context.profile.organization_id)
+        .is("reversed_at", null),
+    ]);
 
-  if (createdAt) {
-    items.push({
-      area: "contracts",
-      description: baseDescription,
-      href: "/operations/contracts",
-      id: `contract-created-${contract.id}`,
-      occurredAt: createdAt,
-      severity,
-      title: "Contrato criado",
-    });
+  if (
+    clientsResult.error ||
+    contractsResult.error ||
+    recognizedRevenueResult.error
+  ) {
+    return {
+      error: "Nao foi possivel carregar a atividade operacional.",
+      ok: false as const,
+      status: 500,
+    };
   }
 
-  if (updatedAt && updatedAt !== createdAt) {
-    const normalizedStatus = normalizeContractTimelineStatus(contract.status);
+  const clients = ((clientsResult.data ?? []) as unknown as ClientRow[]).filter(
+    (client) => client.organization_id === context.profile.organization_id,
+  );
+  const contracts = ((contractsResult.data ?? []) as unknown as ContractRow[])
+    .filter(
+      (contract) => contract.organization_id === context.profile.organization_id,
+    );
+  const recognizedRevenueEntries = (
+    (recognizedRevenueResult.data ?? []) as unknown as RecognizedRevenueEntryRow[]
+  ).filter(
+    (entry) => entry.organization_id === context.profile.organization_id,
+  );
 
-    items.push({
-      area: "contracts",
-      description:
-        normalizedStatus === "inativo"
-          ? `${baseDescription} Contrato inativado e fluxo operacional aplicado aos futuros.`
-          : `${baseDescription} Status operacional: ${normalizedStatus}.`,
-      href: "/operations/contracts",
-      id: `contract-updated-${contract.id}`,
-      occurredAt: updatedAt,
-      severity,
-      title:
-        normalizedStatus === "inativo"
-          ? "Contrato inativado"
-          : "Contrato atualizado",
-    });
+  return {
+    clients,
+    contracts,
+    contractsById: new Map(contracts.map((contract) => [contract.id, contract])),
+    ok: true as const,
+    recognizedRevenueEntries,
+  };
+}
+
+function buildClientActivityItems(client: ClientRow) {
+  if (!client.created_at) {
+    return [];
+  }
+
+  return [
+    createTimelineItem({
+      area: "clients",
+      description: `${normalizeText(client.name) || "Cliente sem nome"} entrou na base operacional.`,
+      eventType: "client_created",
+      href: "/operations/clients",
+      id: `client-created:${client.id}`,
+      occurredAt: client.created_at,
+      severity: "info",
+      title: "Cliente entrou na operacao",
+    }),
+  ];
+}
+
+function buildContractActivityItems(
+  contract: ContractRow,
+  clientsById: Map<string, string>,
+) {
+  const clientName = contract.client_id
+    ? clientsById.get(contract.client_id) ?? "Cliente nao encontrado"
+    : "Cliente nao vinculado";
+  const contractLabel = resolveContractLabel(contract.contract_number);
+  const creditLabel = formatCurrency(normalizeNumber(contract.credit_amount) ?? 0);
+  const items: OperationsTimelineItem[] = [];
+
+  if (contract.created_at) {
+    items.push(
+      createTimelineItem({
+        area: "contracts",
+        description: `${contractLabel} de ${clientName} foi cadastrado com ${creditLabel} em credito.`,
+        eventType: "contract_created",
+        href: buildContractHref(contract.id),
+        id: `contract-created:${contract.id}`,
+        occurredAt: contract.created_at,
+        severity: "info",
+        title: "Contrato cadastrado",
+      }),
+    );
+  }
+
+  if (contract.submitted_at && contract.submitted_at !== contract.created_at) {
+    items.push(
+      createTimelineItem({
+        area: "contracts",
+        description: `${contractLabel} de ${clientName} foi enviado para a proxima etapa operacional.`,
+        eventType: "contract_submitted",
+        href: buildContractHref(contract.id),
+        id: `contract-submitted:${contract.id}`,
+        occurredAt: contract.submitted_at,
+        severity: "info",
+        title: "Contrato enviado",
+      }),
+    );
+  }
+
+  if (contract.approved_at && contract.approved_at !== contract.created_at) {
+    items.push(
+      createTimelineItem({
+        area: "contracts",
+        description: `${contractLabel} de ${clientName} foi aprovado para seguir na operacao.`,
+        eventType: "contract_approved",
+        href: buildContractHref(contract.id),
+        id: `contract-approved:${contract.id}`,
+        occurredAt: contract.approved_at,
+        severity: "info",
+        title: "Contrato aprovado",
+      }),
+    );
+  }
+
+  if (contract.activated_at && contract.activated_at !== contract.created_at) {
+    items.push(
+      createTimelineItem({
+        area: "contracts",
+        description: `${contractLabel} de ${clientName} foi ativado e voltou para a operacao ativa.`,
+        eventType: "contract_activated",
+        href: buildContractHref(contract.id),
+        id: `contract-activated:${contract.id}`,
+        occurredAt: contract.activated_at,
+        severity: "info",
+        title: "Contrato ativado",
+      }),
+    );
+  }
+
+  if (contract.completed_at) {
+    items.push(
+      createTimelineItem({
+        area: "contracts",
+        description: `${contractLabel} de ${clientName} foi concluido.`,
+        eventType: "contract_completed",
+        href: buildContractHref(contract.id),
+        id: `contract-completed:${contract.id}`,
+        occurredAt: contract.completed_at,
+        severity: "info",
+        title: "Contrato concluido",
+      }),
+    );
+  }
+
+  if (contract.cancelled_at) {
+    items.push(
+      createTimelineItem({
+        area: "contracts",
+        description: `${contractLabel} de ${clientName} foi cancelado.`,
+        eventType: "contract_cancelled",
+        href: buildContractHref(contract.id),
+        id: `contract-cancelled:${contract.id}`,
+        occurredAt: contract.cancelled_at,
+        severity: "attention",
+        title: "Contrato cancelado",
+      }),
+    );
+  }
+
+  if (contract.rejected_at) {
+    items.push(
+      createTimelineItem({
+        area: "contracts",
+        description: `${contractLabel} de ${clientName} foi rejeitado.`,
+        eventType: "contract_rejected",
+        href: buildContractHref(contract.id),
+        id: `contract-rejected:${contract.id}`,
+        occurredAt: contract.rejected_at,
+        severity: "critical",
+        title: "Contrato rejeitado",
+      }),
+    );
+  }
+
+  for (const historyEvent of readOperationalHistory(contract.metadata)) {
+    if (!historyEvent.occurredAt) {
+      continue;
+    }
+
+    if (historyEvent.type === "contract_inactivated") {
+      items.push(
+        createTimelineItem({
+          area: "contracts",
+          description: [
+            `${contractLabel} de ${clientName} foi inativado e os futuros pendentes sairam da operacao.`,
+            historyEvent.notes ? `Observacao: ${historyEvent.notes}.` : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+          eventType: "contract_inactivated",
+          href: buildContractHref(contract.id),
+          id: `contract-inactivated:${contract.id}:${historyEvent.occurredAt}`,
+          occurredAt: historyEvent.occurredAt,
+          severity: "attention",
+          title: "Contrato inativado",
+        }),
+      );
+    }
+
+    if (historyEvent.type === "contract_reactivated") {
+      items.push(
+        createTimelineItem({
+          area: "contracts",
+          description: [
+            `${contractLabel} de ${clientName} foi reativado e voltou para o fluxo futuro da operacao.`,
+            historyEvent.notes ? `Observacao: ${historyEvent.notes}.` : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+          eventType: "contract_reactivated",
+          href: buildContractHref(contract.id),
+          id: `contract-reactivated:${contract.id}:${historyEvent.occurredAt}`,
+          occurredAt: historyEvent.occurredAt,
+          severity: "info",
+          title: "Contrato reativado",
+        }),
+      );
+    }
   }
 
   return items;
 }
 
-function buildRevenueTitle(status: string) {
-  if (status === "recognized") {
-    return "Receita reconhecida";
+function buildRecognizedRevenueActivityItems(
+  entry: RecognizedRevenueEntryRow,
+  contractsById: Map<string, ContractRow>,
+  clientsById: Map<string, string>,
+) {
+  if (!entry.contract_id || !entry.recognized_at) {
+    return [];
   }
 
-  if (status === "cancelled") {
-    return "Receita cancelada";
-  }
+  const contract = contractsById.get(entry.contract_id);
+  const clientName =
+    contract?.client_id
+      ? clientsById.get(contract.client_id) ?? "Cliente nao encontrado"
+      : "Cliente nao vinculado";
+  const contractLabel = resolveContractLabel(contract?.contract_number ?? null);
 
-  if (status === "pending") {
-    return "Receita pendente";
-  }
-
-  return "Receita registrada";
+  return [
+    createTimelineItem({
+      area: "revenue",
+      description: `${formatCurrency(normalizeNumber(entry.recognized_amount) ?? 0)} foi reconhecido para ${clientName} em ${contractLabel}.`,
+      eventType: "revenue_recognized",
+      href: buildRevenueHref(entry.contract_id, entry.expected_revenue_entry_id),
+      id: `revenue-recognized:${entry.id}`,
+      occurredAt: entry.recognized_at,
+      severity: "info",
+      title: "Receita reconhecida",
+    }),
+  ];
 }
 
-function buildRevenueDescription(entry: {
-  clientName: string;
-  expectedAmount: number;
-  recognizedAmount: number;
+function createTimelineItem(input: {
+  area: OperationsTimelineItem["area"];
+  description: string;
+  eventType: OperationsTimelineEventType;
+  href?: string;
+  id: string;
+  occurredAt: string;
+  severity: OperationsTimelineSeverity;
+  title: string;
 }) {
-  return `${entry.clientName}, ${formatCurrency(entry.expectedAmount)} previsto, ${formatCurrency(entry.recognizedAmount)} reconhecido.`;
+  return {
+    area: input.area,
+    description: input.description,
+    eventType: input.eventType,
+    href: input.href,
+    id: input.id,
+    occurredAt: input.occurredAt,
+    severity: input.severity,
+    title: input.title,
+  } satisfies OperationsTimelineItem;
 }
 
-function resolveRevenueSeverity(status: string): OperationsTimelineSeverity {
-  return status === "pending" ? "attention" : "info";
+function resolveContractLabel(contractNumber: string | null) {
+  const normalizedContractNumber = normalizeNullableText(contractNumber);
+
+  if (!normalizedContractNumber) {
+    return "contrato sem numero";
+  }
+
+  return `contrato ${normalizedContractNumber}`;
 }
 
-function normalizeContractTimelineStatus(status: string) {
-  if (status === "inactive") {
-    return "inativo";
+function readOperationalHistory(metadata: unknown) {
+  if (!isRecord(metadata)) {
+    return [] as ContractHistoryEvent[];
   }
 
-  if (status === "active") {
-    return "ativo";
-  }
+  const operationalHistory = Array.isArray(metadata.operationalHistory)
+    ? metadata.operationalHistory.filter(isRecord)
+    : [];
 
-  if (status === "completed") {
-    return "concluido";
-  }
-
-  if (status === "approved") {
-    return "aprovado";
-  }
-
-  if (status === "submitted") {
-    return "enviado";
-  }
-
-  if (status === "pending_documentation") {
-    return "aguardando documentacao";
-  }
-
-  return status;
+  return operationalHistory.map((event) => ({
+    action: normalizeNullableText(event.action),
+    fromStatus: normalizeNullableText(event.fromStatus),
+    notes: normalizeNullableText(event.notes),
+    occurredAt: normalizeNullableText(event.occurredAt),
+    toStatus: normalizeNullableText(event.toStatus),
+    type: normalizeNullableText(event.type),
+  }));
 }
 
-function mapAttentionSeverity(
-  severity: OperationAttentionSeverity,
-): OperationsTimelineSeverity {
-  if (severity === "critical") {
-    return "critical";
-  }
-
-  if (severity === "high" || severity === "medium") {
-    return "attention";
-  }
-
-  return "info";
+function buildContractHref(contractId: string) {
+  return `/operations/contracts?contractId=${encodeURIComponent(contractId)}&origem=atividade`;
 }
 
-function isValidDate(value: string) {
-  return !Number.isNaN(new Date(value).getTime());
+function buildRevenueHref(contractId: string, entryId: string | null) {
+  const params = new URLSearchParams({
+    contractId,
+    origem: "atividade",
+  });
+
+  if (entryId) {
+    params.set("entryId", entryId);
+  }
+
+  return `/operations/revenue?${params.toString()}`;
+}
+
+function createServerOperationsTimelineSupabaseClient(accessToken: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error(
+      "Supabase operations timeline server environment is not configured.",
+    );
+  }
+
+  return createClient(supabaseUrl, publishableKey, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+}
+
+async function resolveOperationsTimelineRequestContext(accessToken: string | null) {
+  if (!accessToken) {
+    return {
+      error: "Sessao invalida.",
+      ok: false as const,
+      status: 401,
+    };
+  }
+
+  try {
+    const supabase = createServerOperationsTimelineSupabaseClient(accessToken);
+    const { data: userData, error: userError } =
+      await supabase.auth.getUser(accessToken);
+
+    if (userError || !userData.user) {
+      return {
+        error: "Sessao invalida.",
+        ok: false as const,
+        status: 401,
+      };
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, organization_id, role, is_active")
+      .eq("id", userData.user.id)
+      .maybeSingle<OperationsTimelineProfile>();
+
+    if (profileError || !isValidProfile(profile)) {
+      return {
+        error: "Perfil nao encontrado.",
+        ok: false as const,
+        status: 403,
+      };
+    }
+
+    return {
+      ok: true as const,
+      profile,
+      supabase,
+      user: userData.user,
+    };
+  } catch {
+    return {
+      error: genericAccessError,
+      ok: false as const,
+      status: 500,
+    };
+  }
+}
+
+function isValidProfile(
+  profile: OperationsTimelineProfile | null,
+): profile is OperationsTimelineProfile & {
+  is_active: true;
+  organization_id: string;
+  role: "admin" | "master" | "sdr";
+} {
+  return Boolean(
+    profile?.id &&
+      profile.organization_id &&
+      profile.is_active === true &&
+      (profile.role === "admin" ||
+        profile.role === "master" ||
+        profile.role === "sdr"),
+  );
+}
+
+function normalizeText(value: unknown) {
+  return normalizeNullableText(value) ?? "";
+}
+
+function normalizeNullableText(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed || null;
+}
+
+function normalizeNumber(value: number | string | null) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 }
 
 function formatCurrency(value: number) {
@@ -279,4 +610,12 @@ function formatCurrency(value: number) {
     maximumFractionDigits: 0,
     style: "currency",
   }).format(value);
+}
+
+function isValidDate(value: string) {
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }

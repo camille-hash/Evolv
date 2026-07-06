@@ -5,7 +5,7 @@ export async function fetchOperationsTimeline(accessToken?: string | null) {
   const resolvedAccessToken =
     accessToken ??
     (await requireSupabaseAccessToken(
-      "Sessao invalida para carregar a timeline operacional.",
+      "Sessao invalida para carregar a atividade operacional.",
     ));
   const response = await fetch("/api/operations/timeline", {
     headers: {
@@ -19,7 +19,7 @@ export async function fetchOperationsTimeline(accessToken?: string | null) {
 
   if (!response.ok || !Array.isArray(payload?.items)) {
     throw new Error(
-      payload?.error ?? "Nao foi possivel carregar a timeline operacional.",
+      payload?.error ?? "Nao foi possivel carregar a atividade operacional.",
     );
   }
 
