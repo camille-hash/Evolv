@@ -236,6 +236,25 @@ export type CancelFutureCommissionEntriesForContractResult =
       status: number;
     };
 
+export type ReactivateFutureCommissionEntriesForContractParams =
+  ActivateCommissionScheduleForEventParams;
+
+export type ReactivateFutureCommissionEntriesForContractResult =
+  | {
+      activationResult: Extract<
+        ActivateCommissionScheduleForEventResult,
+        { ok: true }
+      >;
+      ok: true;
+      restoredExpectedRevenueEntries: number;
+      restoredScheduleItems: number;
+    }
+  | {
+      error: string;
+      ok: false;
+      status: number;
+    };
+
 export type RecognizeExpectedRevenueResult =
   | {
       expectedRevenueEntry: ExpectedRevenueEntry;

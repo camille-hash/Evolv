@@ -14,6 +14,8 @@ import type {
   GetContractCommissionSummaryParams,
   GetContractCommissionSummaryResult,
   RecognizedRevenueEntry,
+  ReactivateFutureCommissionEntriesForContractParams,
+  ReactivateFutureCommissionEntriesForContractResult,
   RecognizeExpectedRevenueParams,
   RecognizeExpectedRevenueResult,
 } from "./types";
@@ -691,6 +693,182 @@ export async function cancelFutureCommissionEntriesForContract(
     skippedReason: expectedEntryIdsToCancel.length
       ? null
       : "no_pending_expected_revenue",
+  };
+}
+
+export async function reactivateFutureCommissionEntriesForContract(
+  params: ReactivateFutureCommissionEntriesForContractParams,
+): Promise<ReactivateFutureCommissionEntriesForContractResult> {
+  const normalizedEventType = params.eventType.trim();
+
+  if (!normalizedEventType) {
+    return commissionEngineError("Evento de comissao invalido.", 400);
+  }
+
+  if (!isSupportedOperationalEventType(normalizedEventType)) {
+    return commissionEngineError(
+      "Evento operacional de comissao ainda nao suportado.",
+      400,
+    );
+  }
+
+  const occurredAt = normalizeDate(params.occurredAt);
+
+  if (!occurredAt) {
+    return commissionEngineError("Data de reativacao de comissao invalida.", 400);
+  }
+
+  const scheduleResult = await listScheduleItemsForEvent(
+    params,
+    resolveScheduleEventTypes(normalizedEventType),
+  );
+
+  if (!scheduleResult.ok) {
+    return scheduleResult;
+  }
+
+  if (!scheduleResult.scheduleItems.length) {
+    return commissionEngineError(
+      "Agenda financeira de comissao nao encontrada para a reativacao do contrato.",
+      404,
+    );
+  }
+
+  const expectedRevenueResult = await listExpectedRevenueEntriesByContract({
+    contractId: params.contractId,
+    organizationId: params.organizationId,
+    supabase: params.supabase,
+  });
+
+  if (!expectedRevenueResult.ok) {
+    return expectedRevenueResult;
+  }
+
+  const activeExpectedRevenueByScheduleItemId = new Map<string, ExpectedRevenueEntry>();
+  const cancelledExpectedRevenueByScheduleItemId = new Map<
+    string,
+    ExpectedRevenueEntry
+  >();
+
+  for (const entry of expectedRevenueResult.expectedRevenueEntries) {
+    if (!entry.commissionScheduleItemId) {
+      continue;
+    }
+
+    if (entry.cancelledAt || entry.lifecycle === "cancelada") {
+      if (!cancelledExpectedRevenueByScheduleItemId.has(entry.commissionScheduleItemId)) {
+        cancelledExpectedRevenueByScheduleItemId.set(
+          entry.commissionScheduleItemId,
+          entry,
+        );
+      }
+
+      continue;
+    }
+
+    if (!activeExpectedRevenueByScheduleItemId.has(entry.commissionScheduleItemId)) {
+      activeExpectedRevenueByScheduleItemId.set(
+        entry.commissionScheduleItemId,
+        entry,
+      );
+    }
+  }
+
+  let restoredExpectedRevenueEntries = 0;
+  let restoredScheduleItems = 0;
+
+  for (const scheduleItem of scheduleResult.scheduleItems) {
+    if (!scheduleItem.cancelledAt && scheduleItem.lifecycle !== "cancelada") {
+      continue;
+    }
+
+    const dueDate = calculateDueDate(
+      occurredAt,
+      scheduleItem.offsetMonths,
+      scheduleItem.offsetDays,
+    );
+    const activeExpectedRevenueEntry = activeExpectedRevenueByScheduleItemId.get(
+      scheduleItem.id,
+    );
+    const cancelledExpectedRevenueEntry =
+      cancelledExpectedRevenueByScheduleItemId.get(scheduleItem.id);
+
+    if (activeExpectedRevenueEntry) {
+      const restoredScheduleItemResult = await restoreCancelledScheduleItem(
+        params,
+        scheduleItem,
+        occurredAt.toISOString(),
+        activeExpectedRevenueEntry.expectedDate ?? dueDate,
+        normalizedEventType,
+        "executada",
+      );
+
+      if (!restoredScheduleItemResult.ok) {
+        return restoredScheduleItemResult;
+      }
+
+      restoredScheduleItems += 1;
+      continue;
+    }
+
+    if (cancelledExpectedRevenueEntry) {
+      const restoredScheduleItemResult = await restoreCancelledScheduleItem(
+        params,
+        scheduleItem,
+        occurredAt.toISOString(),
+        dueDate,
+        normalizedEventType,
+        "executada",
+      );
+
+      if (!restoredScheduleItemResult.ok) {
+        return restoredScheduleItemResult;
+      }
+
+      const restoredExpectedRevenueResult =
+        await restoreCancelledExpectedRevenueEntry(
+          params,
+          cancelledExpectedRevenueEntry,
+          dueDate,
+          normalizedEventType,
+        );
+
+      if (!restoredExpectedRevenueResult.ok) {
+        return restoredExpectedRevenueResult;
+      }
+
+      restoredScheduleItems += 1;
+      restoredExpectedRevenueEntries += 1;
+      continue;
+    }
+
+    const restoredScheduleItemResult = await restoreCancelledScheduleItem(
+      params,
+      scheduleItem,
+      null,
+      null,
+      normalizedEventType,
+      "pendente",
+    );
+
+    if (!restoredScheduleItemResult.ok) {
+      return restoredScheduleItemResult;
+    }
+
+    restoredScheduleItems += 1;
+  }
+
+  const activationResult = await activateCommissionScheduleForEvent(params);
+
+  if (!activationResult.ok) {
+    return activationResult;
+  }
+
+  return {
+    activationResult,
+    ok: true,
+    restoredExpectedRevenueEntries,
+    restoredScheduleItems,
   };
 }
 
@@ -1486,6 +1664,107 @@ async function findActiveExpectedRevenueEntry(
 
   return {
     expectedRevenueEntry: data ? mapExpectedRevenueEntryRow(data) : null,
+    ok: true as const,
+  };
+}
+
+async function restoreCancelledScheduleItem(
+  params: ActivateCommissionScheduleForEventParams,
+  scheduleItem: ContractCommissionScheduleItem,
+  occurredAt: string | null,
+  dueDate: string | null,
+  operationalEventType: string,
+  businessStatus: "executada" | "pendente",
+) {
+  const { data, error } = await params.supabase
+    .from("contract_commission_schedule_items")
+    .update({
+      business_status: businessStatus,
+      cancelled_at: null,
+      cancelled_reason: null,
+      due_date: dueDate,
+      lifecycle: businessStatus === "executada" ? "ativa" : "criada",
+      metadata: {
+        ...scheduleItem.metadata,
+        reactivation: {
+          metadata: params.metadata ?? {},
+          operationalEventType,
+          restoredAt: new Date().toISOString(),
+        },
+      },
+      trigger_event_id:
+        businessStatus === "executada" ? params.triggerEventId ?? null : null,
+      triggered_at: businessStatus === "executada" ? occurredAt : null,
+    })
+    .eq("organization_id", params.organizationId)
+    .eq("id", scheduleItem.id)
+    .select(scheduleItemColumns)
+    .single<ContractCommissionScheduleItemRow>();
+
+  if (error || !data) {
+    return commissionEngineError(
+      "Nao foi possivel restaurar agenda financeira cancelada do contrato.",
+      500,
+    );
+  }
+
+  return {
+    ok: true as const,
+    scheduleItem: mapScheduleItemRow(data),
+  };
+}
+
+async function restoreCancelledExpectedRevenueEntry(
+  params: ActivateCommissionScheduleForEventParams,
+  expectedRevenueEntry: ExpectedRevenueEntry,
+  dueDate: string,
+  operationalEventType: string,
+) {
+  const remainingAmount = roundCurrency(
+    Math.max(
+      expectedRevenueEntry.expectedAmount - expectedRevenueEntry.recognizedAmount,
+      0,
+    ),
+  );
+  const businessStatus =
+    remainingAmount <= 0
+      ? "reconhecida"
+      : expectedRevenueEntry.recognizedAmount > 0
+        ? "parcialmente_reconhecida"
+        : "aguardando_reconhecimento";
+  const { data, error } = await params.supabase
+    .from("expected_revenue_entries")
+    .update({
+      business_status: businessStatus,
+      cancelled_at: null,
+      cancelled_reason: null,
+      expected_date: dueDate,
+      lifecycle: "ativa",
+      metadata: {
+        ...expectedRevenueEntry.metadata,
+        reactivation: {
+          metadata: params.metadata ?? {},
+          operationalEventType,
+          restoredAt: new Date().toISOString(),
+          triggerEventId: params.triggerEventId ?? null,
+        },
+      },
+      remaining_amount: remainingAmount,
+    })
+    .eq("organization_id", params.organizationId)
+    .eq("id", expectedRevenueEntry.id)
+    .select(expectedRevenueColumns)
+    .single<ExpectedRevenueEntryRow>();
+
+  if (error || !data) {
+    return commissionEngineError(
+      "Nao foi possivel restaurar receita prevista cancelada do contrato.",
+      500,
+    );
+  }
+
+  return {
+    expectedRevenueEntry: mapExpectedRevenueEntryRow(data),
     ok: true as const,
   };
 }

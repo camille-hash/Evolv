@@ -5,6 +5,7 @@ import {
   activateCommissionScheduleForEvent,
   cancelFutureCommissionEntriesForContract,
   ensureContractCommissionSnapshotAndSchedule,
+  reactivateFutureCommissionEntriesForContract,
 } from "@/modules/commission-engine/server";
 import type {
   Contract,
@@ -504,8 +505,11 @@ async function activateCommissionEngineForContractStatusTransition(
     };
   }
 
-  const occurredAt = input.contract.activatedAt ?? new Date().toISOString();
-  const result = await activateCommissionScheduleForEvent({
+  const occurredAt =
+    input.previousStatus === "inactive"
+      ? new Date().toISOString()
+      : input.contract.activatedAt ?? new Date().toISOString();
+  const activationParams = {
     contractId: input.contract.id,
     eventType,
     metadata: {
@@ -517,7 +521,11 @@ async function activateCommissionEngineForContractStatusTransition(
     organizationId: context.profile.organization_id,
     supabase: context.supabase,
     triggerEventId: `contract-status:${input.contract.id}:${input.contract.status}`,
-  });
+  };
+  const result =
+    input.previousStatus === "inactive" && input.contract.status === "active"
+      ? await reactivateFutureCommissionEntriesForContract(activationParams)
+      : await activateCommissionScheduleForEvent(activationParams);
 
   if (!result.ok) {
     return {
@@ -528,7 +536,10 @@ async function activateCommissionEngineForContractStatusTransition(
 
   return {
     ok: true as const,
-    skippedReason: result.skippedReason,
+    skippedReason:
+      "activationResult" in result
+        ? result.activationResult.skippedReason
+        : result.skippedReason,
   };
 }
 
@@ -988,6 +999,18 @@ function createStatusPayload(
     });
   }
 
+  if (status === "active" && contract.status === "inactive") {
+    payload.metadata = appendOperationalHistoryEvent(contract.metadata, {
+      action: "reactivate_future_entries",
+      contractId: contract.id,
+      fromStatus: contract.status,
+      notes: normalizeOptionalText(notes),
+      occurredAt: timestamp,
+      toStatus: status,
+      type: "contract_reactivated",
+    });
+  }
+
   return payload;
 }
 
@@ -1059,7 +1082,7 @@ function resolveInactiveActionForStatusTransition(
 function appendOperationalHistoryEvent(
   metadata: Record<string, unknown>,
   input: {
-    action: ContractInactiveAction;
+    action: string;
     contractId: string;
     fromStatus: ContractStatus;
     notes: string | null;
