@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OperationsUniversalSearch } from "./operations-universal-search";
 
 type OperationsPageHeaderProps = {
   description?: string;
@@ -7,9 +8,9 @@ type OperationsPageHeaderProps = {
 };
 
 export function OperationsPageHeader({
-  description = "Área operacional para organizar o trabalho do dia com base em contratos, receitas, integridade e carteira.",
-  eyebrow = "Área Operacional",
-  title = "Operação EVOLV",
+  description = "Area operacional para organizar o trabalho do dia com base em contratos, receitas, integridade, carteira e atividade recente.",
+  eyebrow = "Area Operacional",
+  title = "Operacao EVOLV",
 }: OperationsPageHeaderProps) {
   return (
     <header className="rounded-md border bg-card p-6 text-card-foreground shadow-sm">
@@ -27,7 +28,7 @@ export function OperationsPageHeader({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full border bg-background px-4 py-2 text-xs font-semibold text-muted-foreground">
-            Read-only
+            Uso operacional
           </span>
           <Link
             className="rounded-full border bg-background px-4 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:text-primary"
@@ -36,6 +37,9 @@ export function OperationsPageHeader({
             Voltar ao EVOLV
           </Link>
         </div>
+      </div>
+      <div className="mt-5">
+        <OperationsUniversalSearch />
       </div>
     </header>
   );
