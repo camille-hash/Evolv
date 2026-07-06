@@ -37,10 +37,31 @@ type AdministratorRow = {
 
 type RevenueEntryRow = {
   actual_amount: number | string | null;
+  administrator_id: string | null;
+  client_id: string | null;
   contract_id: string | null;
   expected_amount: number | string | null;
   organization_id: string | null;
+  paid_at: string | null;
   status: string | null;
+};
+
+type ExpectedRevenueEntryRow = {
+  business_status: string | null;
+  cancelled_at: string | null;
+  contract_id: string | null;
+  expected_amount: number | string | null;
+  id: string;
+  lifecycle: string | null;
+  organization_id: string | null;
+};
+
+type RecognizedRevenueEntryRow = {
+  expected_revenue_entry_id: string | null;
+  organization_id: string | null;
+  recognized_amount: number | string | null;
+  recognized_at: string | null;
+  reversed_at: string | null;
 };
 
 type RequestContext = {
@@ -402,7 +423,14 @@ function resolvePortfolioStatus(input: {
 }
 
 async function loadOperationsPortfolioDataset(context: RequestContext) {
-  const [contractsResult, clientsResult, administratorsResult, revenueResult] =
+  const [
+    contractsResult,
+    clientsResult,
+    administratorsResult,
+    revenueResult,
+    expectedRevenueResult,
+    recognizedRevenueResult,
+  ] =
     await Promise.all([
       context.supabase
         .from("contracts")
@@ -431,19 +459,51 @@ async function loadOperationsPortfolioDataset(context: RequestContext) {
           [
             "organization_id",
             "contract_id",
+            "client_id",
+            "administrator_id",
             "status",
             "expected_amount",
             "actual_amount",
+            "paid_at",
           ].join(","),
         )
         .eq("organization_id", context.profile.organization_id),
+      context.supabase
+        .from("expected_revenue_entries")
+        .select(
+          [
+            "id",
+            "organization_id",
+            "contract_id",
+            "expected_amount",
+            "cancelled_at",
+            "lifecycle",
+            "business_status",
+          ].join(","),
+        )
+        .eq("organization_id", context.profile.organization_id),
+      context.supabase
+        .from("recognized_revenue_entries")
+        .select(
+          [
+            "organization_id",
+            "expected_revenue_entry_id",
+            "recognized_amount",
+            "recognized_at",
+            "reversed_at",
+          ].join(","),
+        )
+        .eq("organization_id", context.profile.organization_id)
+        .is("reversed_at", null),
     ]);
 
   if (
     contractsResult.error ||
     clientsResult.error ||
     administratorsResult.error ||
-    revenueResult.error
+    revenueResult.error ||
+    expectedRevenueResult.error ||
+    recognizedRevenueResult.error
   ) {
     return {
       error: "Nao foi possivel carregar a carteira operacional.",
@@ -451,6 +511,10 @@ async function loadOperationsPortfolioDataset(context: RequestContext) {
       status: 500,
     };
   }
+
+  const contracts = ((contractsResult.data ?? []) as unknown as ContractRow[]).filter(
+    (contract) => contract.organization_id === context.profile.organization_id,
+  );
 
   return {
     administrators: (
@@ -462,15 +526,26 @@ async function loadOperationsPortfolioDataset(context: RequestContext) {
     clients: ((clientsResult.data ?? []) as unknown as ClientRow[]).filter(
       (client) => client.organization_id === context.profile.organization_id,
     ),
-    contracts: ((contractsResult.data ?? []) as unknown as ContractRow[]).filter(
-      (contract) => contract.organization_id === context.profile.organization_id,
-    ),
+    contracts,
     ok: true as const,
-    revenueEntries: (
-      (revenueResult.data ?? []) as unknown as RevenueEntryRow[]
-    ).filter(
-      (entry) => entry.organization_id === context.profile.organization_id,
-    ),
+    revenueEntries: buildUnifiedRevenueEntries({
+      contracts,
+      expectedRevenueEntries: (
+        (expectedRevenueResult.data ?? []) as unknown as ExpectedRevenueEntryRow[]
+      ).filter(
+        (entry) => entry.organization_id === context.profile.organization_id,
+      ),
+      legacyRevenueEntries: (
+        (revenueResult.data ?? []) as unknown as RevenueEntryRow[]
+      ).filter(
+        (entry) => entry.organization_id === context.profile.organization_id,
+      ),
+      recognizedRevenueEntries: (
+        (recognizedRevenueResult.data ?? []) as unknown as RecognizedRevenueEntryRow[]
+      ).filter(
+        (entry) => entry.organization_id === context.profile.organization_id,
+      ),
+    }),
   };
 }
 
@@ -570,6 +645,64 @@ function groupRevenueByContractId(revenueEntries: RevenueEntryRow[]) {
   return groupedEntries;
 }
 
+function buildUnifiedRevenueEntries(input: {
+  contracts: ContractRow[];
+  expectedRevenueEntries: ExpectedRevenueEntryRow[];
+  legacyRevenueEntries: RevenueEntryRow[];
+  recognizedRevenueEntries: RecognizedRevenueEntryRow[];
+}) {
+  const contractsById = new Map(
+    input.contracts.map((contract) => [contract.id, contract]),
+  );
+  const recognizedRevenueByExpectedId = new Map<string, number>();
+
+  for (const entry of input.recognizedRevenueEntries) {
+    if (!entry.expected_revenue_entry_id || entry.reversed_at) {
+      continue;
+    }
+
+    recognizedRevenueByExpectedId.set(
+      entry.expected_revenue_entry_id,
+      roundCurrency(
+        (recognizedRevenueByExpectedId.get(entry.expected_revenue_entry_id) ?? 0) +
+          (normalizeNumber(entry.recognized_amount) ?? 0),
+      ),
+    );
+  }
+
+  const contractsWithCommissionRevenue = new Set<string>();
+  const commissionEngineEntries: RevenueEntryRow[] = [];
+
+  for (const entry of input.expectedRevenueEntries) {
+    if (!entry.contract_id) {
+      continue;
+    }
+
+    contractsWithCommissionRevenue.add(entry.contract_id);
+
+    const contract = contractsById.get(entry.contract_id) ?? null;
+    const recognizedAmount = recognizedRevenueByExpectedId.get(entry.id) ?? 0;
+
+    commissionEngineEntries.push({
+      actual_amount: recognizedAmount > 0 ? recognizedAmount : null,
+      administrator_id: contract?.administrator_id ?? null,
+      client_id: contract?.client_id ?? null,
+      contract_id: entry.contract_id,
+      expected_amount: entry.expected_amount,
+      organization_id: entry.organization_id,
+      paid_at: null,
+      status: normalizeCommissionEngineRevenueStatus(entry, recognizedAmount),
+    });
+  }
+
+  const legacyFallbackEntries = input.legacyRevenueEntries.filter(
+    (entry) =>
+      !entry.contract_id || !contractsWithCommissionRevenue.has(entry.contract_id),
+  );
+
+  return [...commissionEngineEntries, ...legacyFallbackEntries];
+}
+
 function sumEstimatedRevenue(revenueEntries: RevenueEntryRow[]) {
   return roundCurrency(
     revenueEntries.reduce((total, entry) => {
@@ -650,4 +783,29 @@ function roundCurrency(value: number) {
 
 function roundPercentage(value: number) {
   return Math.round((value + Number.EPSILON) * 10) / 10;
+}
+
+function normalizeCommissionEngineRevenueStatus(
+  entry: ExpectedRevenueEntryRow,
+  recognizedAmount: number,
+) {
+  if (entry.cancelled_at || entry.lifecycle === "cancelada") {
+    return "cancelled";
+  }
+
+  if (
+    entry.business_status === "reconhecida" ||
+    entry.lifecycle === "encerrada"
+  ) {
+    return "paid";
+  }
+
+  if (
+    entry.business_status === "parcialmente_reconhecida" ||
+    recognizedAmount > 0
+  ) {
+    return "pending";
+  }
+
+  return "expected";
 }

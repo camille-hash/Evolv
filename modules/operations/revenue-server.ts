@@ -25,6 +25,27 @@ type RevenueEntryRow = {
   status: string | null;
 };
 
+type ExpectedRevenueEntryRow = {
+  business_status: string | null;
+  cancelled_at: string | null;
+  contract_id: string | null;
+  created_at: string | null;
+  expected_amount: number | string | null;
+  expected_date: string | null;
+  id: string;
+  lifecycle: string | null;
+  organization_id: string | null;
+  updated_at: string | null;
+};
+
+type RecognizedRevenueEntryRow = {
+  expected_revenue_entry_id: string | null;
+  organization_id: string | null;
+  recognized_amount: number | string | null;
+  recognized_at: string | null;
+  reversed_at: string | null;
+};
+
 type ContractRow = {
   administrator_id: string | null;
   client_id: string | null;
@@ -257,7 +278,14 @@ function resolveOperationsRevenueStatus(
 }
 
 async function loadOperationsRevenueDataset(context: RequestContext) {
-  const [revenueResult, contractsResult, clientsResult, administratorsResult] =
+  const [
+    revenueResult,
+    expectedRevenueResult,
+    recognizedRevenueResult,
+    contractsResult,
+    clientsResult,
+    administratorsResult,
+  ] =
     await Promise.all([
       context.supabase
         .from("revenue_entries")
@@ -276,6 +304,36 @@ async function loadOperationsRevenueDataset(context: RequestContext) {
           ].join(","),
         )
         .eq("organization_id", context.profile.organization_id),
+      context.supabase
+        .from("expected_revenue_entries")
+        .select(
+          [
+            "id",
+            "organization_id",
+            "contract_id",
+            "expected_amount",
+            "expected_date",
+            "created_at",
+            "updated_at",
+            "cancelled_at",
+            "lifecycle",
+            "business_status",
+          ].join(","),
+        )
+        .eq("organization_id", context.profile.organization_id),
+      context.supabase
+        .from("recognized_revenue_entries")
+        .select(
+          [
+            "organization_id",
+            "expected_revenue_entry_id",
+            "recognized_amount",
+            "recognized_at",
+            "reversed_at",
+          ].join(","),
+        )
+        .eq("organization_id", context.profile.organization_id)
+        .is("reversed_at", null),
       context.supabase
         .from("contracts")
         .select(
@@ -300,6 +358,8 @@ async function loadOperationsRevenueDataset(context: RequestContext) {
 
   if (
     revenueResult.error ||
+    expectedRevenueResult.error ||
+    recognizedRevenueResult.error ||
     contractsResult.error ||
     clientsResult.error ||
     administratorsResult.error
@@ -311,6 +371,10 @@ async function loadOperationsRevenueDataset(context: RequestContext) {
     };
   }
 
+  const contracts = ((contractsResult.data ?? []) as unknown as ContractRow[]).filter(
+    (contract) => contract.organization_id === context.profile.organization_id,
+  );
+
   return {
     administrators: (
       (administratorsResult.data ?? []) as unknown as AdministratorRow[]
@@ -321,16 +385,112 @@ async function loadOperationsRevenueDataset(context: RequestContext) {
     clients: ((clientsResult.data ?? []) as unknown as ClientRow[]).filter(
       (client) => client.organization_id === context.profile.organization_id,
     ),
-    contracts: ((contractsResult.data ?? []) as unknown as ContractRow[]).filter(
-      (contract) => contract.organization_id === context.profile.organization_id,
-    ),
+    contracts,
     ok: true as const,
-    revenueEntries: (
-      (revenueResult.data ?? []) as unknown as RevenueEntryRow[]
-    ).filter(
-      (entry) => entry.organization_id === context.profile.organization_id,
-    ),
+    revenueEntries: buildUnifiedRevenueEntries({
+      contracts,
+      expectedRevenueEntries: (
+        (expectedRevenueResult.data ?? []) as unknown as ExpectedRevenueEntryRow[]
+      ).filter(
+        (entry) => entry.organization_id === context.profile.organization_id,
+      ),
+      legacyRevenueEntries: (
+        (revenueResult.data ?? []) as unknown as RevenueEntryRow[]
+      ).filter(
+        (entry) => entry.organization_id === context.profile.organization_id,
+      ),
+      recognizedRevenueEntries: (
+        (recognizedRevenueResult.data ?? []) as unknown as RecognizedRevenueEntryRow[]
+      ).filter(
+        (entry) => entry.organization_id === context.profile.organization_id,
+      ),
+    }),
   };
+}
+
+function buildUnifiedRevenueEntries(input: {
+  contracts: ContractRow[];
+  expectedRevenueEntries: ExpectedRevenueEntryRow[];
+  legacyRevenueEntries: RevenueEntryRow[];
+  recognizedRevenueEntries: RecognizedRevenueEntryRow[];
+}) {
+  const contractsById = new Map(
+    input.contracts.map((contract) => [contract.id, contract]),
+  );
+  const recognizedRevenueByExpectedId = new Map<
+    string,
+    {
+      latestRecognizedAt: string | null;
+      recognizedAmount: number;
+    }
+  >();
+
+  for (const entry of input.recognizedRevenueEntries) {
+    if (!entry.expected_revenue_entry_id || entry.reversed_at) {
+      continue;
+    }
+
+    const current = recognizedRevenueByExpectedId.get(
+      entry.expected_revenue_entry_id,
+    ) ?? {
+      latestRecognizedAt: null,
+      recognizedAmount: 0,
+    };
+
+    recognizedRevenueByExpectedId.set(entry.expected_revenue_entry_id, {
+      latestRecognizedAt: resolveLatestDate(
+        current.latestRecognizedAt,
+        entry.recognized_at,
+      ),
+      recognizedAmount: roundCurrency(
+        current.recognizedAmount +
+          (normalizeNumber(entry.recognized_amount) ?? 0),
+      ),
+    });
+  }
+
+  const contractsWithCommissionRevenue = new Set<string>();
+  const commissionEngineEntries: RevenueEntryRow[] = [];
+
+  for (const entry of input.expectedRevenueEntries) {
+    if (!entry.contract_id) {
+      continue;
+    }
+
+    contractsWithCommissionRevenue.add(entry.contract_id);
+
+    const contract = contractsById.get(entry.contract_id) ?? null;
+    const recognizedRevenue =
+      recognizedRevenueByExpectedId.get(entry.id) ?? null;
+    const recognizedAmount = recognizedRevenue?.recognizedAmount ?? 0;
+    const status = normalizeCommissionEngineRevenueStatus(
+      entry,
+      recognizedAmount,
+    );
+
+    commissionEngineEntries.push({
+      actual_amount: recognizedAmount > 0 ? recognizedAmount : null,
+      administrator_id: contract?.administrator_id ?? null,
+      client_id: contract?.client_id ?? null,
+      contract_id: entry.contract_id,
+      due_date: entry.expected_date,
+      expected_amount: entry.expected_amount,
+      id: entry.id,
+      organization_id: entry.organization_id,
+      paid_at:
+        status === "paid"
+          ? recognizedRevenue?.latestRecognizedAt ?? null
+          : null,
+      status,
+    });
+  }
+
+  const legacyFallbackEntries = input.legacyRevenueEntries.filter(
+    (entry) =>
+      !entry.contract_id || !contractsWithCommissionRevenue.has(entry.contract_id),
+  );
+
+  return [...commissionEngineEntries, ...legacyFallbackEntries];
 }
 
 function createServerOperationsRevenueSupabaseClient(accessToken: string) {
@@ -463,4 +623,46 @@ function roundCurrency(value: number) {
 
 function roundPercentage(value: number) {
   return Math.round((value + Number.EPSILON) * 10) / 10;
+}
+
+function normalizeCommissionEngineRevenueStatus(
+  entry: ExpectedRevenueEntryRow,
+  recognizedAmount: number,
+) {
+  if (entry.cancelled_at || entry.lifecycle === "cancelada") {
+    return "cancelled";
+  }
+
+  if (
+    entry.business_status === "reconhecida" ||
+    entry.lifecycle === "encerrada"
+  ) {
+    return "paid";
+  }
+
+  if (
+    entry.business_status === "parcialmente_reconhecida" ||
+    recognizedAmount > 0
+  ) {
+    return "pending";
+  }
+
+  return "expected";
+}
+
+function resolveLatestDate(
+  currentValue: string | null,
+  nextValue: string | null,
+) {
+  if (!nextValue) {
+    return currentValue;
+  }
+
+  if (!currentValue) {
+    return nextValue;
+  }
+
+  return new Date(nextValue).getTime() >= new Date(currentValue).getTime()
+    ? nextValue
+    : currentValue;
 }
