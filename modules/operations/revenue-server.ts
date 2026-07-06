@@ -386,23 +386,29 @@ function buildOperationsRevenueDailyPanel(
 ): OperationsRevenueDailyPanel {
   const todayKey = getBrazilCivilDateKey(new Date());
   const tomorrowKey = shiftDateKey(todayKey, 1);
+  const openEntries = entries.filter((entry) => isOpenRevenueStatus(entry.status));
   const overdueEntries = entries.filter(
     (entry) => isOpenRevenueStatus(entry.status) && Boolean(entry.dueDate) && entry.dueDate! < todayKey,
   );
-  const dueTodayEntries = entries.filter((entry) => entry.dueDate === todayKey);
-  const dueTomorrowEntries = entries.filter((entry) => entry.dueDate === tomorrowKey);
+  const dueTodayEntries = openEntries.filter((entry) => entry.dueDate === todayKey);
+  const dueTomorrowEntries = openEntries.filter(
+    (entry) => entry.dueDate === tomorrowKey,
+  );
   const receivedTodayEntries = entries.filter((entry) =>
     normalizeDateKey(entry.paidAt) === todayKey,
   );
   const expectedTodayTotal = roundCurrency(
-    dueTodayEntries.reduce((total, entry) => total + entry.expectedAmount, 0),
+    entries
+      .filter((entry) => entry.dueDate === todayKey)
+      .reduce((total, entry) => total + entry.expectedAmount, 0),
   );
-  const criticalEntries = [...entries]
+  const criticalEntries = [...overdueEntries]
     .filter(
       (entry) =>
-        isOpenRevenueStatus(entry.status) &&
-        Boolean(entry.dueDate) &&
-        (entry.expectedAmount - entry.recognizedAmount > 0 || entry.status === "expected" || entry.status === "pending" || entry.status === "attention"),
+        Math.max(entry.expectedAmount - entry.recognizedAmount, 0) > 0 ||
+        entry.status === "expected" ||
+        entry.status === "pending" ||
+        entry.status === "attention",
     )
     .sort((left, right) => {
       const leftDaysOverdue = calculateDaysOverdue(left.dueDate, todayKey);
@@ -496,7 +502,12 @@ function summarizeDailyMetric(entries: OperationsRevenueRow[]) {
   return {
     count: entries.length,
     totalAmount: roundCurrency(
-      entries.reduce((total, entry) => total + entry.expectedAmount, 0),
+      entries.reduce(
+        (total, entry) =>
+          total +
+          Math.max(entry.expectedAmount - entry.recognizedAmount, 0),
+        0,
+      ),
     ),
   };
 }

@@ -225,98 +225,19 @@ export function OperationsRevenuePage() {
             value={dailyPanel.expectedToday.totalAmount}
           />
         </div>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Pendencias criticas
-              </p>
-              <h2 className="mt-2 text-lg font-semibold text-slate-950">
-                O que merece atencao imediata
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Esta lista prioriza recebimentos em aberto com maior atraso e
-                maior impacto financeiro.
-              </p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              Ate 10 itens prioritarios por consulta.
-            </div>
-          </div>
-
-          {dailyPanel.criticalEntries.length ? (
-            <div className="mt-4 grid gap-3">
-              {dailyPanel.criticalEntries.map((entry) => (
-                <article
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"
-                  key={entry.id}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-sm font-semibold text-slate-950">
-                          {entry.clientName}
-                        </h3>
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
-                          {resolveCriticalStatusLabel(entry.status)}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {entry.contractNumber
-                          ? `Contrato ${entry.contractNumber}`
-                          : "Contrato sem numero"}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {entry.administratorName}
-                      </p>
-                    </div>
-                    <div className="grid gap-1 text-right">
-                      <p className="text-sm font-semibold text-slate-950">
-                        {formatCurrency(entry.expectedAmount)}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Vence em {formatDate(entry.dueDate) ?? "sem data"}
-                      </p>
-                      <p className="text-xs text-amber-800">
-                        {entry.daysOverdue > 0
-                          ? `${entry.daysOverdue} dia(s) de atraso`
-                          : "Vence hoje ou amanha"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    <OperationsContextLink
-                      href={`/operations/revenue?entryId=${encodeURIComponent(entry.id)}`}
-                    >
-                      Ver recebimento
-                    </OperationsContextLink>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              Nenhuma pendencia critica encontrada no recorte atual.
-            </div>
-          )}
-        </section>
       </section>
-
-      <OperationsRevenueSummaryCards summary={summary} />
 
       <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Pesquisa operacional
+              Pesquisa
             </p>
             <h2 className="mt-2 text-lg font-semibold text-slate-950">
               Localize recebimentos com rapidez
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Busque por cliente, contrato, administradora ou plano e refine a
-              consulta por periodo, valor e situacao.
+              Busque por cliente, contrato, administradora ou plano.
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -351,6 +272,21 @@ export function OperationsRevenuePage() {
               Pesquisar
             </button>
           </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Filtros operacionais
+          </p>
+          <h2 className="mt-2 text-lg font-semibold text-slate-950">
+            Refine a consulta
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Ajuste situacao, datas, valores, ordenacao e quantidade de itens por
+            pagina.
+          </p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -497,7 +433,7 @@ export function OperationsRevenuePage() {
 
         <div className="flex flex-wrap justify-between gap-3 rounded-lg bg-slate-50 px-4 py-3">
           <p className="text-sm text-slate-600">
-            A consulta abaixo usa filtros, ordenacao e paginação no servidor.
+            A consulta abaixo usa filtros, ordenacao e paginacao no servidor.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -525,6 +461,86 @@ export function OperationsRevenuePage() {
           </div>
         </div>
       </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Pendencias criticas
+            </p>
+            <h2 className="mt-2 text-lg font-semibold text-slate-950">
+              O que merece atencao imediata
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Esta lista mostra apenas recebimentos vencidos e em aberto,
+              priorizados por atraso e valor.
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            Ate 10 itens prioritarios por consulta.
+          </div>
+        </div>
+
+        {dailyPanel.criticalEntries.length ? (
+          <div className="mt-4 grid gap-3">
+            {dailyPanel.criticalEntries.map((entry) => (
+              <article
+                className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"
+                key={entry.id}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-slate-950">
+                        {entry.clientName}
+                      </h3>
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                        {resolveCriticalStatusLabel(entry.status)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {entry.contractNumber
+                        ? `Contrato ${entry.contractNumber}`
+                        : "Contrato sem numero"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {entry.administratorName}
+                    </p>
+                  </div>
+                  <div className="grid gap-1 text-right">
+                    <p className="text-sm font-semibold text-slate-950">
+                      {formatCurrency(entry.expectedAmount)}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Venceu em {formatDate(entry.dueDate) ?? "sem data"}
+                    </p>
+                    <p className="text-xs text-amber-800">
+                      {describeDueSituation({
+                        daysOverdue: entry.daysOverdue,
+                        dueDate: entry.dueDate,
+                      })}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <OperationsContextLink
+                    href={`/operations/revenue?entryId=${encodeURIComponent(entry.id)}`}
+                  >
+                    Ver recebimento
+                  </OperationsContextLink>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            Nenhuma pendencia critica encontrada. Quando houver recebimentos
+            vencidos em aberto, eles aparecerao aqui.
+          </div>
+        )}
+      </section>
+
+      <OperationsRevenueSummaryCards summary={summary} />
 
       {entries.length === 0 ? (
         isContextDrilldown ? (
@@ -750,10 +766,7 @@ function buildRevenueRequestQuery(
     ...query,
     contractId: pageContext.contractId ?? query.contractId ?? null,
     entryId: pageContext.entryId ?? query.entryId ?? null,
-    status:
-      normalizeRevenueStatus(pageContext.status) ??
-      query.status ??
-      null,
+    status: normalizeRevenueStatus(pageContext.status) ?? query.status ?? null,
   };
 }
 
@@ -843,6 +856,26 @@ function resolveCriticalStatusLabel(status: OperationsRevenueStatus) {
   }
 
   return "Reconhecida";
+}
+
+function describeDueSituation({
+  daysOverdue,
+  dueDate,
+}: {
+  daysOverdue: number;
+  dueDate?: string;
+}) {
+  if (daysOverdue > 1) {
+    return `${daysOverdue} dias em atraso`;
+  }
+
+  if (daysOverdue === 1) {
+    return "1 dia em atraso";
+  }
+
+  return dueDate
+    ? `Vence em ${formatDate(dueDate) ?? dueDate}`
+    : "Sem vencimento informado";
 }
 
 function formatDate(value: string | undefined) {
