@@ -1,9 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { listOperationsRevenue } from "@/modules/operations/revenue-server";
+import {
+  listOperationsRevenue,
+  parseOperationsRevenueQuery,
+} from "@/modules/operations/revenue-server";
 
 export async function GET(request: NextRequest) {
   const accessToken = readBearerToken(request);
-  const result = await listOperationsRevenue(accessToken);
+  const parsedQuery = parseOperationsRevenueQuery(request.nextUrl.searchParams);
+
+  if (!parsedQuery.ok) {
+    return NextResponse.json(
+      { error: parsedQuery.error },
+      { status: parsedQuery.status },
+    );
+  }
+
+  const result = await listOperationsRevenue(accessToken, parsedQuery.input);
 
   if (!result.ok) {
     return NextResponse.json(
@@ -13,7 +25,10 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
+    dailyPanel: result.dailyPanel,
     entries: result.entries,
+    filters: result.filters,
+    pagination: result.pagination,
     summary: result.summary,
   });
 }

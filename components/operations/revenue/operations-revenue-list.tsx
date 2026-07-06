@@ -13,22 +13,18 @@ type OperationsRevenueListProps = {
   onRefresh?: () => Promise<void> | void;
 };
 
-type RevenueGroup = {
-  dateKey: string;
-  entries: OperationsRevenueRow[];
-  expectedAmount: number;
-  pendingAmount: number;
-  recognizedAmount: number;
-};
-
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
   maximumFractionDigits: 0,
   style: "currency",
 });
 
+const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+  dateStyle: "short",
+});
+
 const statusLabels: Record<OperationsRevenueStatus, string> = {
-  attention: "Atencao",
+  attention: "Com problema",
   cancelled: "Cancelada",
   expected: "Prevista",
   pending: "Parcial",
@@ -49,7 +45,7 @@ export function OperationsRevenueList({
 }: OperationsRevenueListProps) {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [recognizedAmountInput, setRecognizedAmountInput] = useState("");
-  const [recognizedAt, setRecognizedAt] = useState(todayDateInputValue);
+  const [recognizedAt, setRecognizedAt] = useState(todayDateInputValue());
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -62,123 +58,137 @@ export function OperationsRevenueList({
     : 0;
 
   if (!entries.length) {
-    return <OperationsRevenueEmptyState />;
+    return (
+      <OperationsRevenueEmptyState
+        description="Ajuste a busca ou os filtros para localizar outro recebimento."
+        title="Nenhum recebimento encontrado."
+      />
+    );
   }
-
-  const groups = groupRevenueEntries(entries);
 
   return (
     <>
-      <section className="grid gap-4">
-        {groups.map((group) => (
-          <article
-            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-            key={group.dateKey}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Vencimento
-                </p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-950">
-                  {formatDateLabel(group.dateKey)}
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  {group.entries.length} receita(s) previstas para esta data.
-                </p>
-              </div>
-              <div className="grid min-w-[280px] gap-3 sm:grid-cols-3">
-                <SummaryValue
-                  label="Previsto"
-                  value={currencyFormatter.format(group.expectedAmount)}
-                />
-                <SummaryValue
-                  label="Reconhecido"
-                  value={currencyFormatter.format(group.recognizedAmount)}
-                />
-                <SummaryValue
-                  label="Saldo"
-                  value={currencyFormatter.format(group.pendingAmount)}
-                />
-              </div>
-            </div>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="hidden grid-cols-[1.35fr_0.95fr_1fr_0.72fr_0.78fr_0.72fr_0.9fr_auto] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 lg:grid">
+          <span>Cliente</span>
+          <span>Contrato</span>
+          <span>Administradora</span>
+          <span>Vencimento</span>
+          <span>Competencia</span>
+          <span>Valor</span>
+          <span>Situacao</span>
+          <span className="text-right">Acao</span>
+        </div>
 
-            <div className="mt-4 grid gap-3">
-              {group.entries.map((entry) => {
-                const pendingAmount = roundCurrency(
-                  Math.max(entry.expectedAmount - entry.recognizedAmount, 0),
-                );
+        <div className="grid">
+          {entries.map((entry) => {
+            const pendingAmount = roundCurrency(
+              Math.max(entry.expectedAmount - entry.recognizedAmount, 0),
+            );
+            const canRecognize = pendingAmount > 0 && entry.status !== "cancelled";
 
-                return (
-                  <div
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"
-                    key={entry.id}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-semibold text-slate-950">
-                            {entry.clientName}
-                          </h3>
-                          <span
-                            className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${statusClasses[entry.status]}`}
-                          >
-                            {statusLabels[entry.status]}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-slate-600">
-                          {entry.contractNumber
-                            ? `Contrato ${entry.contractNumber}`
-                            : "Contrato nao identificado"}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {entry.administratorName}
-                        </p>
-                      </div>
-                      <div className="grid gap-2 text-right">
-                        <div className="grid gap-1">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Previsto
-                          </p>
-                          <p className="text-sm font-semibold text-slate-950">
-                            {currencyFormatter.format(entry.expectedAmount)}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Reconhecido {currencyFormatter.format(entry.recognizedAmount)}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Saldo {currencyFormatter.format(pendingAmount)}
-                          </p>
-                        </div>
-                        {pendingAmount > 0 ? (
-                          <button
-                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-100"
-                            onClick={() => {
-                              setSelectedEntryId(entry.id);
-                              setRecognizedAmountInput(String(pendingAmount));
-                              setRecognizedAt(todayDateInputValue());
-                              setNotes("");
-                              setSubmitError(null);
-                            }}
-                            type="button"
-                          >
-                            Marcar como recebido
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {entry.attentionItems.length ? (
-                      <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                        {entry.attentionItems.join(" | ")}
-                      </div>
-                    ) : null}
+            return (
+              <article
+                className="border-b border-slate-100 px-5 py-4 last:border-b-0"
+                key={entry.id}
+              >
+                <div className="grid gap-4 lg:grid-cols-[1.35fr_0.95fr_1fr_0.72fr_0.78fr_0.72fr_0.9fr_auto] lg:items-center">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-950">
+                      {entry.clientName}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {entry.planName
+                        ? `Plano ${entry.planName}`
+                        : "Plano nao informado"}
+                    </p>
                   </div>
-                );
-              })}
-            </div>
-          </article>
-        ))}
+
+                  <ValuePair
+                    label="Contrato"
+                    value={
+                      entry.contractNumber
+                        ? `Contrato ${entry.contractNumber}`
+                        : "Sem numero"
+                    }
+                  />
+
+                  <ValuePair
+                    label="Administradora"
+                    value={entry.administratorName}
+                  />
+
+                  <ValuePair
+                    label="Vencimento"
+                    value={formatDate(entry.dueDate) ?? "Sem data"}
+                  />
+
+                  <ValuePair
+                    label="Competencia"
+                    value={formatCompetency(entry.competency) ?? "Sem competencia"}
+                  />
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 lg:hidden">
+                      Valor
+                    </p>
+                    <p className="text-sm font-semibold text-slate-950">
+                      {currencyFormatter.format(entry.expectedAmount)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Reconhecido {currencyFormatter.format(entry.recognizedAmount)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Saldo {currencyFormatter.format(pendingAmount)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 lg:hidden">
+                      Situacao
+                    </p>
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses[entry.status]}`}
+                    >
+                      {statusLabels[entry.status]}
+                    </span>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Recebido em {formatDate(entry.paidAt) ?? "ainda nao"}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-stretch gap-2 lg:items-end">
+                    {canRecognize ? (
+                      <button
+                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-100"
+                        onClick={() => {
+                          setSelectedEntryId(entry.id);
+                          setRecognizedAmountInput(String(pendingAmount));
+                          setRecognizedAt(todayDateInputValue());
+                          setNotes("");
+                          setSubmitError(null);
+                        }}
+                        type="button"
+                      >
+                        Marcar como recebido
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-500">
+                        Sem acao disponivel
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {entry.attentionItems.length ? (
+                  <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {entry.attentionItems.join(" | ")}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
       </section>
 
       {selectedEntry ? (
@@ -275,10 +285,6 @@ function RecognizeRevenueModal({
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }) {
-  const dueDateLabel = entry.dueDate
-    ? formatDateLabel(normalizeDateKey(entry.dueDate) ?? "sem-data")
-    : "Sem vencimento informado";
-
   return (
     <div
       aria-modal="true"
@@ -310,7 +316,7 @@ function RecognizeRevenueModal({
           </div>
           <div className="flex flex-wrap justify-between gap-2">
             <span className="font-medium text-slate-500">Vencimento</span>
-            <span>{dueDateLabel}</span>
+            <span>{formatDate(entry.dueDate) ?? "Sem vencimento informado"}</span>
           </div>
           <div className="flex flex-wrap justify-between gap-2">
             <span className="font-medium text-slate-500">Saldo pendente</span>
@@ -392,91 +398,18 @@ function RecognizeRevenueModal({
   );
 }
 
-function groupRevenueEntries(entries: OperationsRevenueRow[]) {
-  const groups = new Map<string, RevenueGroup>();
-
-  const sortedEntries = [...entries].sort((left, right) => {
-    const leftDate = normalizeDateKey(left.dueDate) ?? "9999-12-31";
-    const rightDate = normalizeDateKey(right.dueDate) ?? "9999-12-31";
-
-    if (leftDate !== rightDate) {
-      return leftDate.localeCompare(rightDate);
-    }
-
-    const leftClient = left.clientName.toLocaleLowerCase("pt-BR");
-    const rightClient = right.clientName.toLocaleLowerCase("pt-BR");
-
-    if (leftClient !== rightClient) {
-      return leftClient.localeCompare(rightClient);
-    }
-
-    return (left.contractNumber ?? "").localeCompare(right.contractNumber ?? "");
-  });
-
-  for (const entry of sortedEntries) {
-    const dateKey = normalizeDateKey(entry.dueDate) ?? "sem-data";
-    const current = groups.get(dateKey) ?? {
-      dateKey,
-      entries: [],
-      expectedAmount: 0,
-      pendingAmount: 0,
-      recognizedAmount: 0,
-    };
-
-    current.entries.push(entry);
-    current.expectedAmount = roundCurrency(current.expectedAmount + entry.expectedAmount);
-    current.recognizedAmount = roundCurrency(
-      current.recognizedAmount + entry.recognizedAmount,
-    );
-    current.pendingAmount = roundCurrency(
-      current.pendingAmount +
-        Math.max(entry.expectedAmount - entry.recognizedAmount, 0),
-    );
-
-    groups.set(dateKey, current);
-  }
-
-  return Array.from(groups.values()).sort((left, right) => {
-    if (left.dateKey === "sem-data") {
-      return 1;
-    }
-
-    if (right.dateKey === "sem-data") {
-      return -1;
-    }
-
-    return left.dateKey.localeCompare(right.dateKey);
-  });
-}
-
-function SummaryValue({ label, value }: { label: string; value: string }) {
+function ValuePair({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-slate-50 px-3 py-2">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-950">{value}</p>
+    <div className="min-w-0">
+      <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 lg:hidden">
+        {label}
+      </p>
+      <p className="text-sm text-slate-700">{value}</p>
     </div>
   );
 }
 
-function formatDateLabel(dateKey: string) {
-  if (dateKey === "sem-data") {
-    return "Sem vencimento informado";
-  }
-
-  const date = new Date(`${dateKey}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Sem vencimento informado";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  }).format(date);
-}
-
-function normalizeDateKey(value: string | undefined) {
+function formatDate(value: string | undefined) {
   if (!value) {
     return null;
   }
@@ -487,11 +420,21 @@ function normalizeDateKey(value: string | undefined) {
     return null;
   }
 
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
+  return dateFormatter.format(date);
+}
+
+function formatCompetency(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const [year, month] = value.split("-");
+
+  if (!year || !month) {
+    return value;
+  }
+
+  return `${month}/${year}`;
 }
 
 function roundCurrency(value: number) {
