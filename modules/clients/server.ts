@@ -1,4 +1,5 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+import { getContractCommissionSummary } from "@/modules/commission-engine/server";
 import type { ContractStatus } from "@/modules/contracts/types";
 import type {
   ClientContract,
@@ -55,6 +56,14 @@ type CommissionPlanRow = {
   id: string;
   name: string | null;
   organization_id: string | null;
+};
+
+type RevenueEntryRow = {
+  actual_amount: number | string | null;
+  contract_id: string | null;
+  expected_amount: number | string | null;
+  organization_id: string | null;
+  status: string | null;
 };
 
 type RequestContext = {
@@ -175,10 +184,18 @@ export async function listClients(
     context,
     clients.map((client) => client.id),
   );
+  const operationalStatusesByContractId = await buildOperationalStatusesByContractId(
+    context,
+    Array.from(contractsByClientId.contracts.values()).flat(),
+  );
 
   return {
     clients: clients.map((client) =>
-      mapClientListItem(client, contractsByClientId.contracts.get(client.id) ?? []),
+      mapClientListItem(
+        client,
+        contractsByClientId.contracts.get(client.id) ?? [],
+        operationalStatusesByContractId,
+      ),
     ),
     ok: true,
   };
@@ -252,12 +269,16 @@ export async function getClientById(
   const contracts = contractsResult.contracts.map((contract) =>
     mapClientContract(contract, commissionPlansById),
   );
+  const operationalStatusesByContractId = await buildOperationalStatusesByContractId(
+    context,
+    contractsResult.contracts,
+  );
 
   return {
     client: mapClientDetail(data),
     contracts,
     ok: true,
-    summary: summarizeContracts(contracts),
+    summary: summarizeContracts(contracts, operationalStatusesByContractId),
   };
 }
 
@@ -557,9 +578,10 @@ function normalizeClientListFilters(filters: ClientListFilters) {
 function mapClientListItem(
   client: ClientRow,
   contractRows: ClientContractRow[],
+  operationalStatusesByContractId: Map<string, "active" | "attention" | "other">,
 ): ClientListItem {
   const contracts = contractRows.map((contract) => mapClientContract(contract));
-  const summary = summarizeContracts(contracts);
+  const summary = summarizeContracts(contracts, operationalStatusesByContractId);
 
   return {
     activeContractsCount: summary.activeContractsCount,
@@ -647,11 +669,15 @@ async function listCommissionPlansById(
   return commissionPlansById;
 }
 
-function summarizeContracts(contracts: ClientContract[]): ClientSummary {
+function summarizeContracts(
+  contracts: ClientContract[],
+  operationalStatusesByContractId = new Map<string, "active" | "attention" | "other">(),
+): ClientSummary {
   return contracts.reduce<ClientSummary>(
     (summary, contract) => ({
       activeContractsCount:
-        summary.activeContractsCount + (contract.status === "active" ? 1 : 0),
+        summary.activeContractsCount +
+        (operationalStatusesByContractId.get(contract.id) === "active" ? 1 : 0),
       contractsCount: summary.contractsCount + 1,
       draftContractsCount:
         summary.draftContractsCount + (contract.status === "draft" ? 1 : 0),
@@ -663,6 +689,240 @@ function summarizeContracts(contracts: ClientContract[]): ClientSummary {
       draftContractsCount: 0,
       totalCreditAmount: 0,
     },
+  );
+}
+
+async function buildOperationalStatusesByContractId(
+  context: RequestContext,
+  contractRows: ClientContractRow[],
+) {
+  const operationalStatusesByContractId = new Map<
+    string,
+    "active" | "attention" | "other"
+  >();
+
+  if (!contractRows.length) {
+    return operationalStatusesByContractId;
+  }
+
+  const contractIds = contractRows.map((contract) => contract.id);
+  const { data, error } = await context.supabase
+    .from("revenue_entries")
+    .select(
+      [
+        "organization_id",
+        "contract_id",
+        "status",
+        "expected_amount",
+        "actual_amount",
+      ].join(","),
+    )
+    .eq("organization_id", context.profile.organization_id)
+    .in("contract_id", contractIds);
+
+  const revenueEntries = error
+    ? []
+    : ((data ?? []) as unknown as RevenueEntryRow[]).filter(
+        (entry) => entry.organization_id === context.profile.organization_id,
+      );
+  const revenueByContractId = groupRevenueByContractId(revenueEntries);
+  const commissionSummaries = await loadCommissionSummariesByContractId(
+    context,
+    contractRows,
+  );
+
+  for (const contract of contractRows) {
+    const commissionSummary = commissionSummaries.get(contract.id);
+    const revenueEntriesForContract = revenueByContractId.get(contract.id) ?? [];
+    const estimatedRevenue = resolveOperationalEstimatedRevenue(
+      sumEstimatedRevenue(revenueEntriesForContract),
+      commissionSummary?.totals.expectedAmount ?? 0,
+    );
+    const recognizedRevenue = sumRecognizedRevenue(revenueEntriesForContract);
+    const attentionItems = buildContractAttentionItems({
+      administratorId: contract.administrator_id,
+      clientId: "linked-client",
+      contractNumber: contract.contract_number,
+      creditValue: normalizeNumber(contract.credit_amount) ?? 0,
+      estimatedRevenue,
+      recognizedRevenue,
+      sourceStatus: contract.status,
+    });
+    const operationalStatus = resolveOperationalContractStatus(
+      contract.status,
+      attentionItems,
+    );
+
+    operationalStatusesByContractId.set(
+      contract.id,
+      operationalStatus === "active"
+        ? "active"
+        : operationalStatus === "attention"
+          ? "attention"
+          : "other",
+    );
+  }
+
+  return operationalStatusesByContractId;
+}
+
+async function loadCommissionSummariesByContractId(
+  context: RequestContext,
+  contractRows: ClientContractRow[],
+) {
+  const entries = await Promise.all(
+    contractRows.map(async (contract) => {
+      const summary = await getContractCommissionSummary({
+        contractId: contract.id,
+        organizationId: context.profile.organization_id,
+        supabase: context.supabase,
+      });
+
+      return summary.ok ? ([contract.id, summary] as const) : null;
+    }),
+  );
+
+  return new Map(
+    entries.filter(
+      (entry): entry is readonly [string, Awaited<ReturnType<typeof getContractCommissionSummary>> & { ok: true }] =>
+        Boolean(entry),
+    ),
+  );
+}
+
+function buildContractAttentionItems(input: {
+  administratorId: string | null;
+  clientId: string | null;
+  contractNumber: string | null;
+  creditValue: number;
+  estimatedRevenue: number;
+  recognizedRevenue: number;
+  sourceStatus: string | null;
+}) {
+  const attentionItems: string[] = [];
+
+  if (!input.clientId) {
+    attentionItems.push("Missing linked client");
+  }
+
+  if (!input.administratorId) {
+    attentionItems.push("Missing linked administrator");
+  }
+
+  if (!normalizeNullableText(input.contractNumber)) {
+    attentionItems.push("Missing contract number");
+  }
+
+  if (
+    input.estimatedRevenue <= 0 &&
+    input.sourceStatus !== "inactive" &&
+    input.sourceStatus !== "cancelled" &&
+    input.sourceStatus !== "rejected"
+  ) {
+    attentionItems.push("Zero estimated revenue");
+  }
+
+  if (input.recognizedRevenue > input.estimatedRevenue) {
+    attentionItems.push("Recognized revenue greater than estimated revenue");
+  }
+
+  if (input.creditValue <= 0) {
+    attentionItems.push("Zero credit value");
+  }
+
+  return attentionItems;
+}
+
+function resolveOperationalContractStatus(
+  status: string | null,
+  attentionItems: string[],
+) {
+  if (status === "completed") {
+    return "completed";
+  }
+
+  if (status === "inactive") {
+    return "inactive";
+  }
+
+  if (status === "cancelled" || status === "rejected") {
+    return "cancelled";
+  }
+
+  if (attentionItems.length > 0) {
+    return "attention";
+  }
+
+  if (status === "active") {
+    return "active";
+  }
+
+  if (
+    status === "draft" ||
+    status === "pending_documentation" ||
+    status === "submitted" ||
+    status === "approved"
+  ) {
+    return "pending";
+  }
+
+  return "unknown";
+}
+
+function groupRevenueByContractId(revenueEntries: RevenueEntryRow[]) {
+  const groupedEntries = new Map<string, RevenueEntryRow[]>();
+
+  for (const entry of revenueEntries) {
+    if (!entry.contract_id) {
+      continue;
+    }
+
+    groupedEntries.set(entry.contract_id, [
+      ...(groupedEntries.get(entry.contract_id) ?? []),
+      entry,
+    ]);
+  }
+
+  return groupedEntries;
+}
+
+function sumEstimatedRevenue(revenueEntries: RevenueEntryRow[]) {
+  return roundCurrency(
+    revenueEntries.reduce((total, entry) => {
+      if (entry.status !== "expected" && entry.status !== "pending") {
+        return total;
+      }
+
+      return total + (normalizeNumber(entry.expected_amount) ?? 0);
+    }, 0),
+  );
+}
+
+function resolveOperationalEstimatedRevenue(
+  legacyEstimatedRevenue: number,
+  commissionExpectedRevenue: number,
+) {
+  if (legacyEstimatedRevenue > 0) {
+    return legacyEstimatedRevenue;
+  }
+
+  return roundCurrency(commissionExpectedRevenue);
+}
+
+function sumRecognizedRevenue(revenueEntries: RevenueEntryRow[]) {
+  return roundCurrency(
+    revenueEntries.reduce((total, entry) => {
+      if (entry.status !== "paid") {
+        return total;
+      }
+
+      return (
+        total +
+        (normalizeNumber(entry.actual_amount) ??
+          normalizeNumber(entry.expected_amount) ??
+          0)
+      );
+    }, 0),
   );
 }
 
@@ -1015,6 +1275,10 @@ function normalizeNumber(value: number | string | null) {
   }
 
   return null;
+}
+
+function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function escapePostgrestSearch(value: string) {
