@@ -123,6 +123,7 @@ function buildOperationsContractRows(dataset: {
     const estimatedRevenue = resolveOperationalEstimatedRevenue(
       sumEstimatedRevenue(revenueEntries),
       commissionSummary?.totals.expectedAmount ?? 0,
+      commissionSummary?.hasCommissionEngine === true,
     );
     const recognizedRevenue = sumRecognizedRevenue(revenueEntries);
     const clientName = contract.client_id
@@ -551,7 +552,12 @@ function sumEstimatedRevenue(revenueEntries: RevenueEntryRow[]) {
 function resolveOperationalEstimatedRevenue(
   legacyEstimatedRevenue: number,
   commissionExpectedRevenue: number,
+  hasActiveCommissionEngine: boolean,
 ) {
+  if (hasActiveCommissionEngine) {
+    return roundCurrency(commissionExpectedRevenue);
+  }
+
   if (legacyEstimatedRevenue > 0) {
     return legacyEstimatedRevenue;
   }
