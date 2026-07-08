@@ -245,7 +245,7 @@ export async function listOperationsRevenue(
     return dataset;
   }
 
-  const allEntries = excludeInactiveContractOperationalEntries(
+  const allEntries = excludeNonOperationalContractEntries(
     buildOperationsRevenueRows(dataset),
   );
   const filteredEntries = filterOperationsRevenueRows(allEntries, normalizedQuery);
@@ -385,11 +385,11 @@ function summarizeRevenue(
   };
 }
 
-function excludeInactiveContractOperationalEntries(
+function excludeNonOperationalContractEntries(
   entries: OperationsRevenueRow[],
 ) {
   return entries.filter((entry) => {
-    if (entry.contractStatus !== "inactive") {
+    if (!isNonOperationalContractStatus(entry.contractStatus)) {
       return true;
     }
 
@@ -1210,6 +1210,14 @@ function normalizeDateTime(value: string | null | undefined) {
   const date = new Date(value);
 
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function isNonOperationalContractStatus(status: string | undefined) {
+  return (
+    status === "inactive" ||
+    status === "cancelled" ||
+    status === "rejected"
+  );
 }
 
 function isOpenRevenueStatus(status: OperationsRevenueStatus) {
