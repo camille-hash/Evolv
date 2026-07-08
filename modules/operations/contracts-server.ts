@@ -275,24 +275,7 @@ function resolveOperationsContractStatus(
 async function loadOperationsContractsDataset(context: RequestContext) {
   const [contractsResult, clientsResult, administratorsResult, revenueResult] =
     await Promise.all([
-      context.supabase
-        .from("contracts")
-        .select(
-          [
-            "id",
-            "organization_id",
-            "client_id",
-            "administrator_id",
-            "contract_group",
-            "contract_quota",
-            "contract_number",
-            "status",
-            "credit_amount",
-            "created_at",
-            "updated_at",
-          ].join(","),
-        )
-        .eq("organization_id", context.profile.organization_id),
+      loadOperationsContractRows(context),
       context.supabase
         .from("clients")
         .select("id, organization_id, name")
@@ -493,6 +476,64 @@ function groupRevenueByContractId(revenueEntries: RevenueEntryRow[]) {
   }
 
   return groupedEntries;
+}
+
+async function loadOperationsContractRows(context: RequestContext) {
+  const queryWithIdentification = context.supabase
+    .from("contracts")
+    .select(
+      [
+        "id",
+        "organization_id",
+        "client_id",
+        "administrator_id",
+        "contract_group",
+        "contract_quota",
+        "contract_number",
+        "status",
+        "credit_amount",
+        "created_at",
+        "updated_at",
+      ].join(","),
+    )
+    .eq("organization_id", context.profile.organization_id);
+
+  const resultWithIdentification = await queryWithIdentification;
+
+  if (!isMissingContractIdentificationColumnsError(resultWithIdentification.error)) {
+    return resultWithIdentification;
+  }
+
+  return context.supabase
+    .from("contracts")
+    .select(
+      [
+        "id",
+        "organization_id",
+        "client_id",
+        "administrator_id",
+        "contract_number",
+        "status",
+        "credit_amount",
+        "created_at",
+        "updated_at",
+      ].join(","),
+    )
+    .eq("organization_id", context.profile.organization_id);
+}
+
+function isMissingContractIdentificationColumnsError(
+  error: { code?: string | null; message?: string | null } | null,
+) {
+  if (!error || error.code !== "42703") {
+    return false;
+  }
+
+  const message = error.message ?? "";
+
+  return (
+    message.includes("contract_group") || message.includes("contract_quota")
+  );
 }
 
 function sumEstimatedRevenue(revenueEntries: RevenueEntryRow[]) {
