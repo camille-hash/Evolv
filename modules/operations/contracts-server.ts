@@ -167,22 +167,29 @@ function summarizeContracts(
   contracts: OperationsContractRow[],
 ): OperationsContractsResponse["summary"] {
   return contracts.reduce(
-    (summary, contract) => ({
-      activeContracts:
-        summary.activeContracts + (contract.status === "active" ? 1 : 0),
-      attentionContracts:
-        summary.attentionContracts + (contract.attentionItems.length ? 1 : 0),
-      estimatedRevenue: roundCurrency(
-        summary.estimatedRevenue + contract.estimatedRevenue,
-      ),
-      recognizedRevenue: roundCurrency(
-        summary.recognizedRevenue + contract.recognizedRevenue,
-      ),
-      totalContracts: summary.totalContracts + 1,
-      totalCreditValue: roundCurrency(
-        summary.totalCreditValue + contract.creditValue,
-      ),
-    }),
+    (summary, contract) => {
+      const countsForOperationalCredit = isOperationalContractStatus(
+        contract.sourceStatus,
+      );
+
+      return {
+        activeContracts:
+          summary.activeContracts + (contract.status === "active" ? 1 : 0),
+        attentionContracts:
+          summary.attentionContracts + (contract.attentionItems.length ? 1 : 0),
+        estimatedRevenue: roundCurrency(
+          summary.estimatedRevenue + contract.estimatedRevenue,
+        ),
+        recognizedRevenue: roundCurrency(
+          summary.recognizedRevenue + contract.recognizedRevenue,
+        ),
+        totalContracts: summary.totalContracts + 1,
+        totalCreditValue: roundCurrency(
+          summary.totalCreditValue +
+            (countsForOperationalCredit ? contract.creditValue : 0),
+        ),
+      };
+    },
     {
       activeContracts: 0,
       attentionContracts: 0,
@@ -271,6 +278,14 @@ function resolveOperationsContractStatus(
   }
 
   return "unknown";
+}
+
+function isOperationalContractStatus(status: string | undefined) {
+  return (
+    status !== "inactive" &&
+    status !== "cancelled" &&
+    status !== "rejected"
+  );
 }
 
 async function loadOperationsContractsDataset(context: RequestContext) {

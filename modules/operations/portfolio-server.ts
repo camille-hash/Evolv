@@ -21,6 +21,7 @@ type ContractRow = {
   credit_amount: number | string | null;
   id: string;
   organization_id: string | null;
+  status: string | null;
 };
 
 type ClientRow = {
@@ -117,12 +118,26 @@ export async function getOperationsPortfolio(
   }
 
   const contracts = buildPortfolioContractRows(dataset);
-  const totalPortfolioValue = roundCurrency(
-    contracts.reduce((total, contract) => total + contract.creditValue, 0),
+  const operationalContracts = dataset.contracts.filter((contract) =>
+    isOperationalContractStatus(contract.status),
   );
-  const clientExposures = buildExposureRows(dataset, "client", totalPortfolioValue);
+  const totalPortfolioValue = roundCurrency(
+    operationalContracts.reduce(
+      (total, contract) => total + (normalizeNumber(contract.credit_amount) ?? 0),
+      0,
+    ),
+  );
+  const operationalDataset = {
+    ...dataset,
+    contracts: operationalContracts,
+  };
+  const clientExposures = buildExposureRows(
+    operationalDataset,
+    "client",
+    totalPortfolioValue,
+  );
   const administratorExposures = buildExposureRows(
-    dataset,
+    operationalDataset,
     "administrator",
     totalPortfolioValue,
   );
@@ -442,6 +457,7 @@ async function loadOperationsPortfolioDataset(context: RequestContext) {
             "administrator_id",
             "contract_number",
             "credit_amount",
+            "status",
           ].join(","),
         )
         .eq("organization_id", context.profile.organization_id),
@@ -835,4 +851,12 @@ function resolveOperationalExpectedAmount(
   }
 
   return normalizeNumber(entry.expected_amount) ?? 0;
+}
+
+function isOperationalContractStatus(status: string | null) {
+  return (
+    status !== "inactive" &&
+    status !== "cancelled" &&
+    status !== "rejected"
+  );
 }
