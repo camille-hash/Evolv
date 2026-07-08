@@ -1,4 +1,6 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
+import { getContractCommissionSummary } from "@/modules/commission-engine/server";
+import type { ContractCommissionSummary } from "@/modules/commission-engine/types";
 import type {
   OperationsClientRow,
   OperationsClientsResponse,
@@ -98,6 +100,7 @@ export async function listOperationsClients(
 function buildOperationsClientRows(dataset: {
   administrators: AdministratorRow[];
   clients: ClientRow[];
+  commissionSummaries: Map<string, ContractCommissionSummary>;
   contracts: ContractRow[];
   revenueEntries: RevenueEntryRow[];
 }): OperationsClientRow[] {
@@ -116,6 +119,12 @@ function buildOperationsClientRows(dataset: {
       (summary, contract) => {
         const revenueEntries = revenueByContractId.get(contract.id) ?? [];
         const creditValue = normalizeNumber(contract.credit_amount) ?? 0;
+        const commissionSummary = dataset.commissionSummaries.get(contract.id);
+        const estimatedRevenue = resolveOperationalEstimatedRevenue(
+          sumEstimatedRevenue(revenueEntries),
+          commissionSummary?.totals.expectedAmount ?? 0,
+        );
+        const recognizedRevenue = sumRecognizedRevenue(revenueEntries);
         const administratorName = contract.administrator_id
           ? administratorsById.get(contract.administrator_id) ??
             "Administradora nao encontrada"
@@ -126,10 +135,10 @@ function buildOperationsClientRows(dataset: {
           summary.totalCreditValue + creditValue,
         );
         summary.estimatedRevenue = roundCurrency(
-          summary.estimatedRevenue + sumEstimatedRevenue(revenueEntries),
+          summary.estimatedRevenue + estimatedRevenue,
         );
         summary.recognizedRevenue = roundCurrency(
-          summary.recognizedRevenue + sumRecognizedRevenue(revenueEntries),
+          summary.recognizedRevenue + recognizedRevenue,
         );
         summary.updatedAt = pickLatestDate(
           summary.updatedAt,
@@ -148,8 +157,8 @@ function buildOperationsClientRows(dataset: {
           administratorId: contract.administrator_id,
           contractNumber: contract.contract_number,
           creditValue,
-          estimatedRevenue: sumEstimatedRevenue(revenueEntries),
-          recognizedRevenue: sumRecognizedRevenue(revenueEntries),
+          estimatedRevenue,
+          recognizedRevenue,
         })) {
           summary.attentionItems.add(attentionItem);
         }
@@ -355,6 +364,18 @@ async function loadOperationsClientsDataset(context: RequestContext) {
     };
   }
 
+  const contracts = ((contractsResult.data ?? []) as unknown as ContractRow[]).filter(
+    (contract) => contract.organization_id === context.profile.organization_id,
+  );
+  const commissionSummariesResult = await loadCommissionSummaries(
+    context,
+    contracts,
+  );
+
+  if (!commissionSummariesResult.ok) {
+    return commissionSummariesResult;
+  }
+
   return {
     administrators: (
       (administratorsResult.data ?? []) as unknown as AdministratorRow[]
@@ -365,9 +386,8 @@ async function loadOperationsClientsDataset(context: RequestContext) {
     clients: ((clientsResult.data ?? []) as unknown as ClientRow[]).filter(
       (client) => client.organization_id === context.profile.organization_id,
     ),
-    contracts: ((contractsResult.data ?? []) as unknown as ContractRow[]).filter(
-      (contract) => contract.organization_id === context.profile.organization_id,
-    ),
+    commissionSummaries: commissionSummariesResult.commissionSummaries,
+    contracts,
     ok: true as const,
     revenueEntries: (
       (revenueResult.data ?? []) as unknown as RevenueEntryRow[]
@@ -503,6 +523,17 @@ function sumEstimatedRevenue(revenueEntries: RevenueEntryRow[]) {
   );
 }
 
+function resolveOperationalEstimatedRevenue(
+  legacyEstimatedRevenue: number,
+  commissionExpectedRevenue: number,
+) {
+  if (legacyEstimatedRevenue > 0) {
+    return legacyEstimatedRevenue;
+  }
+
+  return roundCurrency(commissionExpectedRevenue);
+}
+
 function sumRecognizedRevenue(revenueEntries: RevenueEntryRow[]) {
   return roundCurrency(
     revenueEntries.reduce((total, entry) => {
@@ -532,6 +563,42 @@ function pickLatestDate(current: string | null, candidate: string | null) {
   return new Date(candidate).getTime() > new Date(current).getTime()
     ? candidate
     : current;
+}
+
+async function loadCommissionSummaries(
+  context: RequestContext,
+  contracts: ContractRow[],
+) {
+  const commissionSummaries = new Map<string, ContractCommissionSummary>();
+
+  for (const contract of contracts) {
+    const summary = await getContractCommissionSummary({
+      contractId: contract.id,
+      organizationId: context.profile.organization_id,
+      supabase: context.supabase,
+    });
+
+    if (!summary.ok) {
+      return {
+        error: "Nao foi possivel carregar resumo de comissao dos contratos.",
+        ok: false as const,
+        status: summary.status,
+      };
+    }
+
+    commissionSummaries.set(contract.id, {
+      expectedRevenue: summary.expectedRevenue,
+      hasCommissionEngine: summary.hasCommissionEngine,
+      schedule: summary.schedule,
+      snapshot: summary.snapshot,
+      totals: summary.totals,
+    });
+  }
+
+  return {
+    commissionSummaries,
+    ok: true as const,
+  };
 }
 
 function isValidProfile(
