@@ -41,6 +41,8 @@ type ClientContractRow = {
   administrator_id: string | null;
   commission_plan_id: string | null;
   contract_number: string | null;
+  contract_group: string | null;
+  contract_quota: string | null;
   created_at: string | null;
   credit_amount: number | string | null;
   id: string;
@@ -102,6 +104,8 @@ const clientColumns = [
 const clientContractColumns = [
   "id",
   "lead_id",
+  "contract_group",
+  "contract_quota",
   "contract_number",
   "status",
   "product_type",
@@ -623,10 +627,12 @@ function mapClientContract(
     contractNumber: row.contract_number,
     createdAt: row.created_at ?? new Date().toISOString(),
     creditAmount: normalizeNumber(row.credit_amount) ?? 0,
+    group: row.contract_group,
     id: row.id,
     installmentAmount: normalizeNumber(row.installment_amount),
     leadId: row.lead_id,
     productType: row.product_type,
+    quota: row.contract_quota,
     status: normalizeContractStatus(row.status),
     termMonths: row.term_months,
     updatedAt: row.updated_at ?? row.created_at ?? new Date().toISOString(),

@@ -18,6 +18,8 @@ type ContractRow = {
   administrator_id: string | null;
   client_id: string | null;
   contract_number: string | null;
+  contract_group: string | null;
+  contract_quota: string | null;
   created_at: string | null;
   credit_amount: number | string | null;
   id: string;
@@ -149,7 +151,9 @@ function buildOperationsContractRows(dataset: {
       createdAt: contract.created_at ?? undefined,
       creditValue,
       estimatedRevenue,
+      group: normalizeNullableText(contract.contract_group) ?? undefined,
       id: contract.id,
+      quota: normalizeNullableText(contract.contract_quota) ?? undefined,
       recognizedRevenue,
       sourceStatus: normalizeNullableText(contract.status) ?? undefined,
       status: resolveOperationsContractStatus(contract.status, attentionItems),
@@ -279,6 +283,8 @@ async function loadOperationsContractsDataset(context: RequestContext) {
             "organization_id",
             "client_id",
             "administrator_id",
+            "contract_group",
+            "contract_quota",
             "contract_number",
             "status",
             "credit_amount",

@@ -45,6 +45,8 @@ type ContractRow = {
   completed_at: string | null;
   contemplation_model: string | null;
   contract_number: string | null;
+  contract_group: string | null;
+  contract_quota: string | null;
   created_at: string | null;
   created_by: string | null;
   credit_amount: number | string | null;
@@ -93,6 +95,8 @@ const contractColumns = [
   "client_id",
   "administrator_id",
   "commission_plan_id",
+  "contract_group",
+  "contract_quota",
   "contract_number",
   "status",
   "product_type",
@@ -220,6 +224,12 @@ export async function createContract(
 
   if (!relationshipValidation.ok) {
     return relationshipValidation;
+  }
+
+  const identificationValidation = validateRequiredContractIdentification(input);
+
+  if (!identificationValidation.ok) {
+    return identificationValidation;
   }
 
   const { data, error } = await context.supabase
@@ -926,6 +936,8 @@ function toContractPayload(input: ContractInput) {
   setIfDefined(payload, "client_id", input.clientId);
   setIfDefined(payload, "administrator_id", input.administratorId);
   setIfDefined(payload, "commission_plan_id", input.commissionPlanId);
+  setIfDefined(payload, "contract_group", input.group);
+  setIfDefined(payload, "contract_quota", input.quota);
   setIfDefined(payload, "contract_number", input.contractNumber);
   setIfDefined(payload, "status", input.status);
   setIfDefined(payload, "product_type", input.productType);
@@ -1157,12 +1169,14 @@ function mapContractRow(row: ContractRow): Contract {
     createdAt: row.created_at ?? now,
     createdBy: row.created_by,
     creditAmount: normalizeNumber(row.credit_amount) ?? 0,
+    group: row.contract_group,
     id: row.id,
     installmentAmount: normalizeNumber(row.installment_amount),
     leadId: row.lead_id,
     metadata: isRecord(row.metadata) ? row.metadata : {},
     organizationId: row.organization_id,
     productType: row.product_type,
+    quota: row.contract_quota,
     rejectedAt: row.rejected_at,
     signedAt: row.signed_at,
     status: normalizeContractStatus(row.status),
@@ -1213,6 +1227,28 @@ function normalizeOptionalText(value: string | null | undefined) {
   const trimmed = value.trim();
 
   return trimmed || null;
+}
+
+function validateRequiredContractIdentification(input: ContractInput) {
+  if (!normalizeOptionalText(input.group)) {
+    return {
+      error: "Informe o grupo do contrato.",
+      ok: false as const,
+      status: 400,
+    };
+  }
+
+  if (!normalizeOptionalText(input.quota)) {
+    return {
+      error: "Informe a cota do contrato.",
+      ok: false as const,
+      status: 400,
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

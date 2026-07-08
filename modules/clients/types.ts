@@ -39,10 +39,12 @@ export type ClientContract = {
   contractNumber: string | null;
   createdAt: string;
   creditAmount: number;
+  group: string | null;
   id: string;
   installmentAmount: number | null;
   leadId: string | null;
   productType: string | null;
+  quota: string | null;
   status: ContractStatus;
   termMonths: number | null;
   updatedAt: string;

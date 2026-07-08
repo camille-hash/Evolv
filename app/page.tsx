@@ -399,11 +399,6 @@ export default function Home() {
             ) : null}
             <CrmPage
               onConvertToClient={handleConvertLeadToClient}
-              onGenerateMultiCotas={
-                canCurrentUserUseSimulationTools
-                  ? (lead) => handleGenerateSimulationFromLead(lead, "multi_cotas")
-                  : undefined
-              }
               onGenerateSimulation={
                 canCurrentUserGenerateLeadBoundCommercialSimulation
                   ? (lead) => handleGenerateSimulationFromLead(lead, "simulation")

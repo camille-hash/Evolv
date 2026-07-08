@@ -38,6 +38,8 @@ type ContractRow = {
   completed_at: string | null;
   contemplation_model: string | null;
   contract_number: string | null;
+  contract_group: string | null;
+  contract_quota: string | null;
   created_at: string | null;
   created_by: string | null;
   credit_amount: number | string | null;
@@ -73,9 +75,11 @@ export type LeadContractInput = {
   contemplationModel?: string | null;
   contractNumber?: string | null;
   creditAmount?: number;
+  group?: string | null;
   installmentAmount?: number | null;
   metadata?: Record<string, unknown>;
   productType?: string | null;
+  quota?: string | null;
   termMonths?: number | null;
 };
 
@@ -95,6 +99,8 @@ const contractColumns = [
   "client_id",
   "administrator_id",
   "commission_plan_id",
+  "contract_group",
+  "contract_quota",
   "contract_number",
   "status",
   "product_type",
@@ -130,8 +136,10 @@ export function parseLeadContractInput(value: unknown) {
     ["clientId", "clientId"],
     ["administratorId", "administratorId"],
     ["commissionPlanId", "commissionPlanId"],
+    ["group", "group"],
     ["contractNumber", "contractNumber"],
     ["productType", "productType"],
+    ["quota", "quota"],
     ["contemplationModel", "contemplationModel"],
   ] as const;
 
@@ -229,6 +237,12 @@ export async function createContractFromLead(
     return relationshipValidation;
   }
 
+  const identificationValidation = validateRequiredContractIdentification(input);
+
+  if (!identificationValidation.ok) {
+    return identificationValidation;
+  }
+
   const { data, error } = await context.supabase
     .from("contracts")
     .insert({
@@ -237,6 +251,8 @@ export async function createContractFromLead(
       commission_plan_id: input.commissionPlanId ?? null,
       contemplation_model: input.contemplationModel ?? null,
       contract_number: input.contractNumber ?? null,
+      contract_group: input.group ?? null,
+      contract_quota: input.quota ?? null,
       created_by: context.profile.id,
       credit_amount:
         input.creditAmount ??
@@ -562,12 +578,14 @@ function mapContractRow(row: ContractRow): Contract {
     createdAt: row.created_at ?? now,
     createdBy: row.created_by,
     creditAmount: normalizeNumber(row.credit_amount) ?? 0,
+    group: row.contract_group,
     id: row.id,
     installmentAmount: normalizeNumber(row.installment_amount),
     leadId: row.lead_id,
     metadata: isRecord(row.metadata) ? row.metadata : {},
     organizationId: row.organization_id,
     productType: row.product_type,
+    quota: row.contract_quota,
     rejectedAt: row.rejected_at,
     signedAt: row.signed_at,
     status: normalizeContractStatus(row.status),
@@ -607,6 +625,28 @@ function normalizeNullableText(value: unknown) {
   const trimmed = value.trim();
 
   return trimmed || null;
+}
+
+function validateRequiredContractIdentification(input: LeadContractInput) {
+  if (!normalizeNullableText(input.group)) {
+    return {
+      error: "Informe o grupo do contrato.",
+      ok: false as const,
+      status: 400,
+    };
+  }
+
+  if (!normalizeNullableText(input.quota)) {
+    return {
+      error: "Informe a cota do contrato.",
+      ok: false as const,
+      status: 400,
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
 }
 
 function normalizeNonNegativeNumber(value: unknown) {

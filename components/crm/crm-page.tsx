@@ -211,11 +211,9 @@ const dateWindowWithNoSimulationOptions = [
 
 export function CrmPage({
   onConvertToClient,
-  onGenerateMultiCotas,
   onGenerateSimulation,
 }: {
   onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
-  onGenerateMultiCotas?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
 }) {

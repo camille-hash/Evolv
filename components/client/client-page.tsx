@@ -62,8 +62,10 @@ type ContractCreationFormState = {
   creditAmount: string;
   expectedCommissionAmount: string;
   expectedCommissionDueDate: string;
+  group: string;
   installmentAmount: string;
   productType: string;
+  quota: string;
   status: ContractStatus;
   termMonths: string;
 };
@@ -76,8 +78,10 @@ const emptyContractCreationForm: ContractCreationFormState = {
   creditAmount: "",
   expectedCommissionAmount: "",
   expectedCommissionDueDate: "",
+  group: "",
   installmentAmount: "",
   productType: "",
+  quota: "",
   status: "active",
   termMonths: "",
 };
@@ -357,6 +361,16 @@ export function ClientPage({
       return;
     }
 
+    if (!normalizeOptionalFormText(contractForm.group)) {
+      setContractError("Informe o grupo do contrato.");
+      return;
+    }
+
+    if (!normalizeOptionalFormText(contractForm.quota)) {
+      setContractError("Informe a cota do contrato.");
+      return;
+    }
+
     const installmentAmount = parseOptionalCurrencyValue(
       contractForm.installmentAmount,
     );
@@ -401,11 +415,13 @@ export function ClientPage({
         ),
         contractNumber: normalizeOptionalFormText(contractForm.contractNumber),
         creditAmount,
+        group: normalizeOptionalFormText(contractForm.group),
         installmentAmount,
         metadata: {
           origin: "client_contract_creation_flow",
         },
         productType: normalizeOptionalFormText(contractForm.productType),
+        quota: normalizeOptionalFormText(contractForm.quota),
         status: contractForm.status,
         termMonths,
       });
@@ -608,141 +624,170 @@ export function ClientPage({
                 </div>
               ) : null}
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <ContractFormField label="Administradora">
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
-                    onChange={(event) =>
-                      updateContractForm({
-                        administratorId: event.target.value,
-                        commissionPlanId: "",
-                      })
-                    }
-                    value={contractForm.administratorId}
-                  >
-                    <option value="">Sem administradora</option>
-                    {administrators.map((administrator) => (
-                      <option key={administrator.id} value={administrator.id}>
-                        {administrator.name}
-                      </option>
-                    ))}
-                  </select>
-                </ContractFormField>
-
-                <ContractFormField label="Plano de comissao">
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
-                    disabled={!contractForm.administratorId}
-                    onChange={(event) =>
-                      updateContractForm({ commissionPlanId: event.target.value })
-                    }
-                    value={contractForm.commissionPlanId}
-                  >
-                    <option value="">
-                      {contractForm.administratorId
-                        ? "Sem plano"
-                        : "Selecione uma administradora"}
-                    </option>
-                    {commissionPlans.map((plan) => (
-                      <option key={plan.id} value={plan.id}>
-                        {plan.name}
-                      </option>
-                    ))}
-                  </select>
-                  {contractForm.administratorId && !commissionPlans.length ? (
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      Nenhum plano ativo encontrado para esta administradora.
+              <div className="grid gap-4">
+                <section className="grid gap-4 rounded-md border bg-card/40 p-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Identificacao contratual
                     </p>
-                  ) : null}
-                </ContractFormField>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Preencha os dados principais usados na identificacao
+                      operacional do contrato.
+                    </p>
+                  </div>
 
-                <ContractFormField label="Status">
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
-                    onChange={(event) =>
-                      updateContractForm({
-                        status: event.target.value as ContractStatus,
-                      })
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <ContractFormField label="Administradora">
+                      <select
+                        className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        onChange={(event) =>
+                          updateContractForm({
+                            administratorId: event.target.value,
+                            commissionPlanId: "",
+                          })
+                        }
+                        value={contractForm.administratorId}
+                      >
+                        <option value="">Sem administradora</option>
+                        {administrators.map((administrator) => (
+                          <option key={administrator.id} value={administrator.id}>
+                            {administrator.name}
+                          </option>
+                        ))}
+                      </select>
+                    </ContractFormField>
+
+                    <ContractFormInput
+                      label="Grupo"
+                      onChange={(value) => updateContractForm({ group: value })}
+                      placeholder="Obrigatorio"
+                      value={contractForm.group}
+                    />
+                    <ContractFormInput
+                      label="Cota"
+                      onChange={(value) => updateContractForm({ quota: value })}
+                      placeholder="Obrigatoria"
+                      value={contractForm.quota}
+                    />
+                    <ContractFormInput
+                      label="Numero do Contrato"
+                      onChange={(value) =>
+                        updateContractForm({ contractNumber: value })
+                      }
+                      placeholder="Opcional"
+                      value={contractForm.contractNumber}
+                    />
+                  </div>
+                </section>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <ContractFormField label="Plano de comissao">
+                    <select
+                      className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                      disabled={!contractForm.administratorId}
+                      onChange={(event) =>
+                        updateContractForm({ commissionPlanId: event.target.value })
+                      }
+                      value={contractForm.commissionPlanId}
+                    >
+                      <option value="">
+                        {contractForm.administratorId
+                          ? "Sem plano"
+                          : "Selecione uma administradora"}
+                      </option>
+                      {commissionPlans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name}
+                        </option>
+                      ))}
+                    </select>
+                    {contractForm.administratorId && !commissionPlans.length ? (
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Nenhum plano ativo encontrado para esta administradora.
+                      </p>
+                    ) : null}
+                  </ContractFormField>
+
+                  <ContractFormField label="Status">
+                    <select
+                      className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                      onChange={(event) =>
+                        updateContractForm({
+                          status: event.target.value as ContractStatus,
+                        })
+                      }
+                      value={contractForm.status}
+                    >
+                      <option value="active">Ativo</option>
+                      <option value="draft">Rascunho</option>
+                      <option value="pending_documentation">
+                        Documentacao pendente
+                      </option>
+                      <option value="approved">Aprovado</option>
+                    </select>
+                  </ContractFormField>
+
+                  <ContractFormInput
+                    label="Produto"
+                    onChange={(value) => updateContractForm({ productType: value })}
+                    placeholder="Consorcio, carta, imovel..."
+                    value={contractForm.productType}
+                  />
+                  <ContractFormInput
+                    label="Credito"
+                    onChange={(value) => updateContractForm({ creditAmount: value })}
+                    placeholder="Ex: 250000"
+                    type="number"
+                    value={contractForm.creditAmount}
+                  />
+                  <ContractFormInput
+                    label="Parcela"
+                    onChange={(value) =>
+                      updateContractForm({ installmentAmount: value })
                     }
-                    value={contractForm.status}
-                  >
-                    <option value="active">Ativo</option>
-                    <option value="draft">Rascunho</option>
-                    <option value="pending_documentation">
-                      Documentacao pendente
-                    </option>
-                    <option value="approved">Aprovado</option>
-                  </select>
-                </ContractFormField>
-
-                <ContractFormInput
-                  label="Numero do contrato"
-                  onChange={(value) =>
-                    updateContractForm({ contractNumber: value })
-                  }
-                  placeholder="Opcional"
-                  value={contractForm.contractNumber}
-                />
-                <ContractFormInput
-                  label="Produto"
-                  onChange={(value) => updateContractForm({ productType: value })}
-                  placeholder="Consorcio, carta, imovel..."
-                  value={contractForm.productType}
-                />
-                <ContractFormInput
-                  label="Credito"
-                  onChange={(value) => updateContractForm({ creditAmount: value })}
-                  placeholder="Ex: 250000"
-                  type="number"
-                  value={contractForm.creditAmount}
-                />
-                <ContractFormInput
-                  label="Parcela"
-                  onChange={(value) =>
-                    updateContractForm({ installmentAmount: value })
-                  }
-                  placeholder="Opcional"
-                  type="number"
-                  value={contractForm.installmentAmount}
-                />
-                <ContractFormInput
-                  label="Prazo em meses"
-                  onChange={(value) => updateContractForm({ termMonths: value })}
-                  placeholder="Opcional"
-                  type="number"
-                  value={contractForm.termMonths}
-                />
-                <ContractFormInput
-                  label="Modelo de contemplacao"
-                  onChange={(value) =>
-                    updateContractForm({ contemplationModel: value })
-                  }
-                  placeholder="Opcional"
-                  value={contractForm.contemplationModel}
-                />
-                <ContractFormInput
-                  disabled={Boolean(contractForm.commissionPlanId)}
-                  label="Comissao manual"
-                  onChange={(value) =>
-                    updateContractForm({ expectedCommissionAmount: value })
-                  }
-                  placeholder={
-                    contractForm.commissionPlanId
-                      ? "Calculada pelo plano"
-                      : "Opcional"
-                  }
-                  type="number"
-                  value={contractForm.expectedCommissionAmount}
-                />
-                <ContractFormInput
-                  disabled={Boolean(contractForm.commissionPlanId)}
-                  label="Vencimento manual"
-                  onChange={(value) =>
-                    updateContractForm({ expectedCommissionDueDate: value })
-                  }
-                  type="date"
-                  value={contractForm.expectedCommissionDueDate}
-                />
+                    placeholder="Opcional"
+                    type="number"
+                    value={contractForm.installmentAmount}
+                  />
+                  <ContractFormInput
+                    label="Prazo em meses"
+                    onChange={(value) => updateContractForm({ termMonths: value })}
+                    placeholder="Opcional"
+                    type="number"
+                    value={contractForm.termMonths}
+                  />
+                  <ContractFormInput
+                    label="Modelo de contemplacao"
+                    onChange={(value) =>
+                      updateContractForm({ contemplationModel: value })
+                    }
+                    placeholder="Opcional"
+                    value={contractForm.contemplationModel}
+                  />
+                  <ContractFormInput
+                    disabled={Boolean(contractForm.commissionPlanId)}
+                    label="Comissao manual"
+                    onChange={(value) =>
+                      updateContractForm({ expectedCommissionAmount: value })
+                    }
+                    placeholder={
+                      contractForm.commissionPlanId
+                        ? "Calculada pelo plano"
+                        : "Opcional"
+                    }
+                    type="number"
+                    value={contractForm.expectedCommissionAmount}
+                  />
+                  <ContractFormInput
+                    disabled={Boolean(contractForm.commissionPlanId)}
+                    label="Vencimento manual"
+                    onChange={(value) =>
+                      updateContractForm({ expectedCommissionDueDate: value })
+                    }
+                    type="date"
+                    value={contractForm.expectedCommissionDueDate}
+                  />
+                </div>
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -1069,6 +1114,14 @@ function ClientContractItem({
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <ClientSummaryItem
+          label="Grupo"
+          value={contract.group ?? "Nao informado"}
+        />
+        <ClientSummaryItem
+          label="Cota"
+          value={contract.quota ?? "Nao informada"}
+        />
         <ClientSummaryItem
           label="Produto"
           value={contract.productType ?? "Nao informado"}

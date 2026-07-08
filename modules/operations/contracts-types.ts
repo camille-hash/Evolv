@@ -18,7 +18,9 @@ export type OperationsContractRow = {
   createdAt?: string;
   creditValue: number;
   estimatedRevenue: number;
+  group?: string;
   id: string;
+  quota?: string;
   recognizedRevenue: number;
   sourceStatus?: string;
   status: OperationsContractStatus;

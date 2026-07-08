@@ -50,17 +50,17 @@ import {
   getDefaultStageForPipeline,
   getStagesForPipeline,
   isStageInPipeline,
-  resolveCrmLeadGreenFlags,
   resolveCrmLeadCommercialSignal,
+  resolveCrmLeadGreenFlags,
   resolveCrmLeadOperationalPriority,
   resolveCrmTaskTemporalStatus,
   resolveNextPendingCrmTask,
+  type CrmCommercialSignal,
   type CrmLeadKnowledgeConfidence,
   type CrmLeadKnowledgeItem,
   type CrmLeadKnowledgeType,
   type KnowledgeEvidence,
   type KnowledgeEvidenceType,
-  type CrmCommercialSignal,
   type CrmLeadGreenFlag,
   type CrmLead,
   type CrmLeadInput,
@@ -70,9 +70,9 @@ import {
   type CrmLeadProfilePrimaryGoal,
   type CrmLeadProfileStrategicTopic,
   type CrmLeadSimulation,
+  type CrmOperationalPriority,
   type CrmTask,
   type CrmTaskType,
-  type CrmOperationalPriority,
   type CrmOperationalTimelineEvent,
   type CrmTimelineReadModel,
   type CrmPipeline,
@@ -382,7 +382,6 @@ export function CrmLeadDetail({
     !isLoadingStrategicProfile &&
     !isLoadingSimulations &&
     Boolean(onConvertToClient);
-
   useEffect(() => {
     let isActive = true;
 
@@ -1330,12 +1329,57 @@ export function CrmLeadDetail({
         </div>
       </section>
 
-      <DossierMultichannelNavigation
-        activeTab={activeDossierTab}
-        onChange={setActiveDossierTab}
-      />
+      <section className="executive-surface rounded-md p-3 sm:p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <DossierMultichannelNavigation
+            activeTab={activeDossierTab}
+            className="min-w-0 flex-1"
+            onChange={setActiveDossierTab}
+          />
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,14rem)_auto] xl:min-w-[34rem]">
+            <Field label="Funil">
+              <select
+                className={fieldInputClass}
+                form="lead-detail-form"
+                onChange={(event) =>
+                  handlePipelineChange(event.target.value as CrmPipeline)
+                }
+                value={draft.pipeline}
+              >
+                {crmPipelines.map((pipeline) => (
+                  <option key={pipeline.key} value={pipeline.key}>
+                    {pipeline.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Etapa">
+              <select
+                className={fieldInputClass}
+                form="lead-detail-form"
+                onChange={(event) =>
+                  updateDraft({ etapa: event.target.value as CrmStage })
+                }
+                value={draft.etapa}
+              >
+                {getStagesForPipeline(draft.pipeline).map((stage) => (
+                  <option key={stage.key} value={stage.key}>
+                    {stage.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div className="flex items-end">
+              <Button form="lead-detail-form" type="submit">
+                <Plus className="h-4 w-4" aria-hidden />
+                Salvar lead
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <form className="grid gap-4" onSubmit={onSave}>
+      <form className="grid gap-4" id="lead-detail-form" onSubmit={onSave}>
         {feedbackMessage ? (
           <SuccessFeedback message={feedbackMessage} />
         ) : null}
@@ -1646,22 +1690,6 @@ export function CrmLeadDetail({
                           />
                         </Field>
 
-                        <Field label="Funil">
-                          <select
-                            className={fieldInputClass}
-                            onChange={(event) =>
-                              handlePipelineChange(event.target.value as CrmPipeline)
-                            }
-                            value={draft.pipeline}
-                          >
-                            {crmPipelines.map((pipeline) => (
-                              <option key={pipeline.key} value={pipeline.key}>
-                                {pipeline.label}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-
                         <Field label="Temperatura">
                           <select
                             className={fieldInputClass}
@@ -1680,21 +1708,6 @@ export function CrmLeadDetail({
                           </select>
                         </Field>
 
-                        <Field label="Etapa">
-                          <select
-                            className={fieldInputClass}
-                            onChange={(event) =>
-                              updateDraft({ etapa: event.target.value as CrmStage })
-                            }
-                            value={draft.etapa}
-                          >
-                            {getStagesForPipeline(draft.pipeline).map((stage) => (
-                              <option key={stage.key} value={stage.key}>
-                                {stage.label}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
                       </div>
                       <Field label="Observacoes atuais">
                         <textarea
@@ -2618,15 +2631,17 @@ const dossierNavigationItems: Array<{ key: DossierTabKey; label: string }> = [
 
 function DossierMultichannelNavigation({
   activeTab,
+  className,
   onChange,
 }: {
   activeTab: DossierTabKey;
+  className?: string;
   onChange: (tab: DossierTabKey) => void;
 }) {
   return (
     <nav
       aria-label="Navegacao do Dossie Multicanal"
-      className="executive-surface rounded-md p-3"
+      className={cn("min-w-0", className)}
     >
       <div className="flex flex-wrap gap-2">
         {dossierNavigationItems.map((item) => (

@@ -85,6 +85,14 @@ export function LeadContractsCard({
               value={currencyFormatter.format(contract.creditAmount)}
             />
             <ContractMetric
+              label="Grupo"
+              value={contract.group ?? "Nao informado"}
+            />
+            <ContractMetric
+              label="Cota"
+              value={contract.quota ?? "Nao informada"}
+            />
+            <ContractMetric
               label="Produto"
               value={contract.productType ?? "Nao informado"}
             />

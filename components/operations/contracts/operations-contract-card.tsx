@@ -65,6 +65,13 @@ export function OperationsContractCard({
               Contrato {contract.contractNumber}
             </p>
           ) : null}
+          {contract.group || contract.quota ? (
+            <p className="mt-1 text-xs text-slate-400">
+              {[contract.group ? `Grupo ${contract.group}` : null, contract.quota ? `Cota ${contract.quota}` : null]
+                .filter(Boolean)
+                .join(" | ")}
+            </p>
+          ) : null}
         </div>
       </div>
 
