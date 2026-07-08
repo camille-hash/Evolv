@@ -204,9 +204,7 @@ function buildPortfolioSummaryResponse(input: {
       ).length,
       activeCreditAmount: roundCurrency(
         input.contracts
-          .filter(
-            (contract) => normalizeContractSourceStatus(contract.sourceStatus) === "active",
-          )
+          .filter((contract) => contract.status === "active")
           .reduce((total, contract) => total + contract.creditValue, 0),
       ),
       cancelledContractsCount: input.contracts.filter(
