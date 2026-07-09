@@ -327,13 +327,21 @@ function summarizeContracts(
   return contracts.reduce<OperationsContractsSummary>(
     (summary, contract) => {
       summary.totalContracts += 1;
-      summary.totalCreditValue += contract.creditValue;
-      summary.estimatedRevenue += contract.estimatedRevenue;
-      summary.recognizedRevenue += contract.recognizedRevenue;
+      summary.totalCreditValue = roundCurrency(
+        summary.totalCreditValue + contract.creditValue,
+      );
+      summary.estimatedRevenue = roundCurrency(
+        summary.estimatedRevenue + contract.estimatedRevenue,
+      );
+      summary.recognizedRevenue = roundCurrency(
+        summary.recognizedRevenue + contract.recognizedRevenue,
+      );
 
       if (contract.status === "active") {
         summary.activeContracts += 1;
-        summary.activeCreditValue += contract.creditValue;
+        summary.activeCreditValue = roundCurrency(
+          summary.activeCreditValue + contract.creditValue,
+        );
       }
 
       if (contract.attentionItems.length > 0 || contract.status === "attention") {
@@ -352,6 +360,10 @@ function summarizeContracts(
       totalCreditValue: 0,
     },
   );
+}
+
+function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function resolveContractsContextTitle(pageContext: ContractsPageContext) {
