@@ -1,6 +1,7 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import type {
   OperationsPortfolioContractRow,
+  OperationsPortfolioContractStatus,
   OperationsPortfolioExposureRow,
   OperationsPortfolioExposureType,
   OperationsPortfolioResponse,
@@ -188,11 +189,20 @@ function buildPortfolioContractRows(
   const revenueByContractId = groupRevenueByContractId(dataset.revenueEntries);
 
   return dataset.contracts
-    .map((contract) => {
+    .map<OperationsPortfolioContractRow>((contract) => {
       const revenueEntries = revenueByContractId.get(contract.id) ?? [];
       const creditValue = normalizeNumber(contract.credit_amount) ?? 0;
       const estimatedRevenue = sumEstimatedRevenue(revenueEntries);
       const recognizedRevenue = sumRecognizedRevenue(revenueEntries);
+      const operationalAttentionItems = buildOperationalContractAttentionItems({
+        administratorId: contract.administrator_id,
+        clientId: contract.client_id,
+        contractNumber: contract.contract_number,
+        creditValue,
+        estimatedRevenue,
+        recognizedRevenue,
+        sourceStatus: contract.status,
+      });
       const attentionItems = buildContractAttentionItems({
         administratorId: contract.administrator_id,
         clientId: contract.client_id,
@@ -216,6 +226,10 @@ function buildPortfolioContractRows(
         estimatedRevenue,
         id: contract.id,
         recognizedRevenue,
+        status: resolveOperationalPortfolioContractStatus(
+          contract.status,
+          operationalAttentionItems,
+        ),
       };
     })
     .sort((left, right) => right.creditValue - left.creditValue);
@@ -476,7 +490,7 @@ function buildOperationalContractAttentionItems(input: {
 function resolveOperationalPortfolioContractStatus(
   status: string | null,
   attentionItems: string[],
-) {
+): OperationsPortfolioContractStatus {
   if (status === "completed") {
     return "completed";
   }

@@ -16,6 +16,8 @@ import { OperationsContextLink } from "../operations-context-link";
 import { OperationsContractsList } from "./operations-contracts-list";
 import { OperationsContractsSummary as OperationsContractsSummaryCards } from "./operations-contracts-summary";
 
+type ContractVisibilityFilter = "active" | "all" | "inactive";
+
 type ContractsPageContext = {
   contractId: string | null;
   focus: string | null;
@@ -33,6 +35,8 @@ export function OperationsContractsPage() {
   const [feedbackTone, setFeedbackTone] = useState<"warning" | "success">(
     "success",
   );
+  const [visibilityFilter, setVisibilityFilter] =
+    useState<ContractVisibilityFilter>("all");
   const [selectedContract, setSelectedContract] =
     useState<OperationsContractRow | null>(null);
 
@@ -109,7 +113,11 @@ export function OperationsContractsPage() {
 
   const pageContext = readContractsPageContext(searchParams);
   const allContracts = contractsResponse?.contracts ?? [];
-  const visibleContracts = filterContractsByContext(allContracts, pageContext);
+  const contextualContracts = filterContractsByContext(allContracts, pageContext);
+  const visibleContracts = filterContractsByVisibility(
+    contextualContracts,
+    visibilityFilter,
+  );
   const summary = summarizeContracts(visibleContracts);
 
   return (
@@ -145,6 +153,12 @@ export function OperationsContractsPage() {
           {feedbackMessage}
         </div>
       ) : null}
+
+      <StatusVisibilityFilter
+        currentValue={visibilityFilter}
+        onChange={setVisibilityFilter}
+        title="Filtrar contratos por situacao"
+      />
 
       <OperationsContractsSummaryCards summary={summary} />
 
@@ -183,6 +197,50 @@ export function OperationsContractsPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+function StatusVisibilityFilter({
+  currentValue,
+  onChange,
+  title,
+}: {
+  currentValue: ContractVisibilityFilter;
+  onChange: (value: ContractVisibilityFilter) => void;
+  title: string;
+}) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm font-medium text-slate-700">{title}</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: "Todos", value: "all" },
+            { label: "Ativos", value: "active" },
+            { label: "Inativos", value: "inactive" },
+          ].map((option) => {
+            const isActive = currentValue === option.value;
+
+            return (
+              <button
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                  isActive
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                }`}
+                key={option.value}
+                onClick={() =>
+                  onChange(option.value as ContractVisibilityFilter)
+                }
+                type="button"
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -243,6 +301,21 @@ function filterContractsByContext(
     return contracts.filter(
       (contract) => normalizeText(contract.sourceStatus) === pageContext.status,
     );
+  }
+
+  return contracts;
+}
+
+function filterContractsByVisibility(
+  contracts: OperationsContractRow[],
+  visibilityFilter: ContractVisibilityFilter,
+) {
+  if (visibilityFilter === "active") {
+    return contracts.filter((contract) => contract.status === "active");
+  }
+
+  if (visibilityFilter === "inactive") {
+    return contracts.filter((contract) => contract.status === "inactive");
   }
 
   return contracts;

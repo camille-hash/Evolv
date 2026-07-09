@@ -5,6 +5,14 @@ export type OperationsPortfolioStatus =
   | "healthy"
   | "unknown";
 
+export type OperationsPortfolioContractStatus =
+  | "active"
+  | "attention"
+  | "cancelled"
+  | "completed"
+  | "draft"
+  | "inactive";
+
 export type OperationsPortfolioExposureType = "administrator" | "client";
 
 export type OperationsPortfolioExposureRow = {
@@ -29,6 +37,7 @@ export type OperationsPortfolioContractRow = {
   estimatedRevenue: number;
   id: string;
   recognizedRevenue: number;
+  status: OperationsPortfolioContractStatus;
 };
 
 export type OperationsPortfolioSummary = {
