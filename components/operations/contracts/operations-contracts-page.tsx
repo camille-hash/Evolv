@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { ContractEditDialog } from "@/components/contracts/contract-edit-dialog";
 import { ContractStatusDialog } from "@/components/contracts/contract-status-dialog";
+import type { Contract } from "@/modules/contracts/types";
 import type { ContractStatus } from "@/modules/contracts/types";
 import { fetchOperationsContracts } from "@/modules/operations/contracts-client";
 import type { UpdateContractStatusResult } from "@/modules/contracts/client";
@@ -37,7 +39,9 @@ export function OperationsContractsPage() {
   );
   const [visibilityFilter, setVisibilityFilter] =
     useState<ContractVisibilityFilter>("all");
-  const [selectedContract, setSelectedContract] =
+  const [selectedStatusContract, setSelectedStatusContract] =
+    useState<OperationsContractRow | null>(null);
+  const [selectedEditContract, setSelectedEditContract] =
     useState<OperationsContractRow | null>(null);
 
   useEffect(() => {
@@ -96,6 +100,16 @@ export function OperationsContractsPage() {
       result.warning ?? "Situacao do contrato atualizada com sucesso.",
     );
     setFeedbackTone(result.warning ? "warning" : "success");
+  }
+
+  async function handleContractUpdated(contract: Contract) {
+    await refreshContracts();
+    setFeedbackMessage(
+      contract.contractNumber
+        ? "Numero do contrato atualizado com sucesso."
+        : "Contrato atualizado com sucesso.",
+    );
+    setFeedbackTone("success");
   }
 
   if (isLoading) {
@@ -171,28 +185,50 @@ export function OperationsContractsPage() {
         <OperationsContractsList
           contracts={visibleContracts}
           onChangeStatus={(contract) => {
-            setSelectedContract(contract);
+            setSelectedStatusContract(contract);
+            setFeedbackMessage(null);
+          }}
+          onResolveMissingContractNumber={(contract) => {
+            setSelectedEditContract(contract);
             setFeedbackMessage(null);
           }}
         />
       )}
 
-      {selectedContract ? (
+      {selectedStatusContract ? (
         <ContractStatusDialog
-          contractId={selectedContract.id}
+          contractId={selectedStatusContract.id}
           contractLabel={
-            selectedContract.contractNumber
-              ? `Contrato ${selectedContract.contractNumber}`
-              : `Contrato de ${selectedContract.clientName}`
+            selectedStatusContract.contractNumber
+              ? `Contrato ${selectedStatusContract.contractNumber}`
+              : `Contrato de ${selectedStatusContract.clientName}`
           }
           currentStatus={
-            resolveCurrentContractStatus(selectedContract) ?? "active"
+            resolveCurrentContractStatus(selectedStatusContract) ?? "active"
           }
           isOpen
-          onClose={() => setSelectedContract(null)}
+          onClose={() => setSelectedStatusContract(null)}
           onUpdated={async (result) => {
             await handleContractStatusUpdated(result);
-            setSelectedContract(null);
+            setSelectedStatusContract(null);
+          }}
+        />
+      ) : null}
+
+      {selectedEditContract ? (
+        <ContractEditDialog
+          contractId={selectedEditContract.id}
+          contractLabel={
+            selectedEditContract.contractNumber
+              ? `Contrato ${selectedEditContract.contractNumber}`
+              : `Contrato de ${selectedEditContract.clientName}`
+          }
+          initialContractNumber={selectedEditContract.contractNumber}
+          isOpen
+          onClose={() => setSelectedEditContract(null)}
+          onUpdated={async (contract) => {
+            await handleContractUpdated(contract);
+            setSelectedEditContract(null);
           }}
         />
       ) : null}

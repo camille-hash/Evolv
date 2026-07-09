@@ -32,6 +32,33 @@ export async function createContract(
   return payload.contract;
 }
 
+export async function updateContract(
+  accessToken: string | null | undefined,
+  contractId: string,
+  input: ContractInput,
+) {
+  const resolvedAccessToken = await requireContractsAccessToken(accessToken);
+  const response = await fetch(`/api/contracts/${encodeURIComponent(contractId)}`, {
+    body: JSON.stringify(input),
+    headers: {
+      Authorization: `Bearer ${resolvedAccessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  const payload = (await response.json().catch(() => null)) as {
+    contract?: Contract;
+    error?: string;
+  } | null;
+
+  if (!response.ok || !payload?.contract) {
+    throw new Error(payload?.error ?? "Nao foi possivel atualizar o contrato.");
+  }
+
+  return payload.contract;
+}
+
 export async function fetchLeadContracts(
   accessToken: string | null | undefined,
   leadId: string,

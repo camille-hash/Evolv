@@ -9,6 +9,7 @@ import { ContractCommissionSummaryCard } from "./contract-commission-summary-car
 type OperationsContractCardProps = {
   contract: OperationsContractRow;
   onChangeStatus?: () => void;
+  onResolveMissingContractNumber?: () => void;
 };
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -40,6 +41,7 @@ const statusClasses: Record<OperationsContractStatus, string> = {
 export function OperationsContractCard({
   contract,
   onChangeStatus,
+  onResolveMissingContractNumber,
 }: OperationsContractCardProps) {
   const currentContractStatus = normalizeContractStatus(contract.sourceStatus);
 
@@ -123,7 +125,22 @@ export function OperationsContractCard({
           </p>
           <ul className="mt-2 grid gap-1.5 text-sm text-amber-900">
             {contract.attentionItems.map((item) => (
-              <li key={item}>- {item}</li>
+              <li
+                className="flex flex-wrap items-center justify-between gap-2"
+                key={item}
+              >
+                <span>- {item}</span>
+                {item === "Missing contract number" &&
+                onResolveMissingContractNumber ? (
+                  <button
+                    className="inline-flex items-center justify-center rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-900 transition hover:border-amber-400 hover:bg-amber-100"
+                    onClick={onResolveMissingContractNumber}
+                    type="button"
+                  >
+                    Resolver
+                  </button>
+                ) : null}
+              </li>
             ))}
           </ul>
         </div>

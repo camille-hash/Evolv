@@ -5,11 +5,13 @@ import { OperationsContractsEmptyState } from "./operations-contracts-empty-stat
 type OperationsContractsListProps = {
   contracts: OperationsContractRow[];
   onChangeStatus?: (contract: OperationsContractRow) => void;
+  onResolveMissingContractNumber?: (contract: OperationsContractRow) => void;
 };
 
 export function OperationsContractsList({
   contracts,
   onChangeStatus,
+  onResolveMissingContractNumber,
 }: OperationsContractsListProps) {
   if (!contracts.length) {
     return <OperationsContractsEmptyState />;
@@ -23,6 +25,11 @@ export function OperationsContractsList({
           key={contract.id}
           onChangeStatus={
             onChangeStatus ? () => onChangeStatus(contract) : undefined
+          }
+          onResolveMissingContractNumber={
+            onResolveMissingContractNumber
+              ? () => onResolveMissingContractNumber(contract)
+              : undefined
           }
         />
       ))}
