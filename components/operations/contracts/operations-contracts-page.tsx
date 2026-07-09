@@ -115,19 +115,6 @@ export function OperationsContractsPage() {
     setFeedbackTone("success");
   }
 
-  if (isLoading) {
-    return (
-      <OperationalEmptyState
-        description="Carregando contratos operacionais..."
-        title="Contratos"
-      />
-    );
-  }
-
-  if (error) {
-    return <OperationalEmptyState description={error} title="Erro operacional" />;
-  }
-
   const pageContext = readContractsPageContext(searchParams);
   const allContracts = contractsResponse?.contracts ?? [];
   const contextualContracts = filterContractsByContext(allContracts, pageContext);
@@ -180,6 +167,19 @@ export function OperationsContractsPage() {
       window.clearTimeout(timeoutId);
     };
   }, [pageContext.contractId, visibleContracts]);
+
+  if (isLoading) {
+    return (
+      <OperationalEmptyState
+        description="Carregando contratos operacionais..."
+        title="Contratos"
+      />
+    );
+  }
+
+  if (error) {
+    return <OperationalEmptyState description={error} title="Erro operacional" />;
+  }
 
   return (
     <div className="grid gap-5">
