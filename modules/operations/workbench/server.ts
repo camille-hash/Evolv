@@ -112,7 +112,7 @@ function buildWorkNowItems(
 
       return (
         !problemContractIds.has(contract.id) &&
-        contract.attentionItems.length > 0 &&
+        contract.status === "attention" &&
         sourceStatus !== "inactive" &&
         sourceStatus !== "approved" &&
         sourceStatus !== "pending_documentation" &&

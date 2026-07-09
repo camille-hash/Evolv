@@ -380,7 +380,7 @@ function summarizeContracts(
         );
       }
 
-      if (contract.attentionItems.length > 0 || contract.status === "attention") {
+      if (contract.status === "attention") {
         summary.attentionContracts += 1;
       }
 

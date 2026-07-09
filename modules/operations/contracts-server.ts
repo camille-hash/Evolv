@@ -175,7 +175,7 @@ function summarizeContracts(
           (contract.status === "active" ? contract.creditValue : 0),
       ),
       attentionContracts:
-        summary.attentionContracts + (contract.attentionItems.length ? 1 : 0),
+        summary.attentionContracts + (contract.status === "attention" ? 1 : 0),
       estimatedRevenue: roundCurrency(
         summary.estimatedRevenue + contract.estimatedRevenue,
       ),
@@ -208,6 +208,10 @@ function buildContractAttentionItems(input: {
   recognizedRevenue: number;
   sourceStatus: string | null;
 }) {
+  if (!canGenerateOperationalContractAttention(input.sourceStatus)) {
+    return [];
+  }
+
   const attentionItems: string[] = [];
 
   if (!input.clientId) {
@@ -258,7 +262,7 @@ function resolveOperationsContractStatus(
     return "cancelled";
   }
 
-  if (attentionItems.length > 0) {
+  if (status === "active" && attentionItems.length > 0) {
     return "attention";
   }
 
@@ -634,4 +638,12 @@ function normalizeNumber(value: number | string | null) {
 
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function canGenerateOperationalContractAttention(status: string | null) {
+  return (
+    status !== "inactive" &&
+    status !== "cancelled" &&
+    status !== "rejected"
+  );
 }
