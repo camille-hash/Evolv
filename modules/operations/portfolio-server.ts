@@ -118,8 +118,13 @@ export async function getOperationsPortfolio(
   }
 
   const contracts = buildPortfolioContractRows(dataset);
+  const revenueByContractId = groupRevenueByContractId(dataset.revenueEntries);
   const activeContracts = dataset.contracts.filter(
-    (contract) => contract.status === "active",
+    (contract) =>
+      isOperationallyActivePortfolioContract(
+        contract,
+        revenueByContractId.get(contract.id) ?? [],
+      ),
   );
   const totalPortfolioValue = roundCurrency(
     dataset.contracts.reduce(
@@ -423,6 +428,99 @@ function buildContractAttentionItems(input: {
   }
 
   return attentionItems;
+}
+
+function buildOperationalContractAttentionItems(input: {
+  administratorId: string | null;
+  clientId: string | null;
+  contractNumber: string | null;
+  creditValue: number;
+  estimatedRevenue: number;
+  recognizedRevenue: number;
+  sourceStatus: string | null;
+}) {
+  const attentionItems: string[] = [];
+
+  if (!input.clientId) {
+    attentionItems.push("Missing linked client");
+  }
+
+  if (!input.administratorId) {
+    attentionItems.push("Missing linked administrator");
+  }
+
+  if (!normalizeNullableText(input.contractNumber)) {
+    attentionItems.push("Missing contract number");
+  }
+
+  if (
+    input.estimatedRevenue <= 0 &&
+    input.sourceStatus !== "inactive" &&
+    input.sourceStatus !== "cancelled" &&
+    input.sourceStatus !== "rejected"
+  ) {
+    attentionItems.push("Zero estimated revenue");
+  }
+
+  if (input.recognizedRevenue > input.estimatedRevenue) {
+    attentionItems.push("Recognized revenue greater than estimated revenue");
+  }
+
+  if (input.creditValue <= 0) {
+    attentionItems.push("Zero credit value");
+  }
+
+  return attentionItems;
+}
+
+function resolveOperationalPortfolioContractStatus(
+  status: string | null,
+  attentionItems: string[],
+) {
+  if (status === "completed") {
+    return "completed";
+  }
+
+  if (status === "inactive") {
+    return "inactive";
+  }
+
+  if (status === "cancelled" || status === "rejected") {
+    return "cancelled";
+  }
+
+  if (attentionItems.length > 0) {
+    return "attention";
+  }
+
+  if (status === "active") {
+    return "active";
+  }
+
+  return "draft";
+}
+
+function isOperationallyActivePortfolioContract(
+  contract: ContractRow,
+  revenueEntries: RevenueEntryRow[],
+) {
+  const creditValue = normalizeNumber(contract.credit_amount) ?? 0;
+  const estimatedRevenue = sumEstimatedRevenue(revenueEntries);
+  const recognizedRevenue = sumRecognizedRevenue(revenueEntries);
+  const attentionItems = buildOperationalContractAttentionItems({
+    administratorId: contract.administrator_id,
+    clientId: contract.client_id,
+    contractNumber: contract.contract_number,
+    creditValue,
+    estimatedRevenue,
+    recognizedRevenue,
+    sourceStatus: contract.status,
+  });
+
+  return (
+    resolveOperationalPortfolioContractStatus(contract.status, attentionItems) ===
+    "active"
+  );
 }
 
 function resolvePortfolioStatus(input: {
