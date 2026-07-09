@@ -26,6 +26,10 @@ export function OperationsPortfolioSummary({
         value={String(summary.totalAdministrators)}
       />
       <SummaryMetric
+        label="Credito ativo"
+        value={currencyFormatter.format(summary.activeCreditValue)}
+      />
+      <SummaryMetric
         label="Receita estimada"
         value={currencyFormatter.format(summary.estimatedRevenue)}
       />

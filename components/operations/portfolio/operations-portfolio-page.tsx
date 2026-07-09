@@ -63,6 +63,7 @@ export function OperationsPortfolioPage() {
   }
 
   const summary = portfolioResponse?.summary ?? {
+    activeCreditValue: 0,
     attentionItems: [],
     estimatedRevenue: 0,
     largestAdministratorExposurePercentage: 0,

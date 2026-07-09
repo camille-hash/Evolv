@@ -118,30 +118,37 @@ export async function getOperationsPortfolio(
   }
 
   const contracts = buildPortfolioContractRows(dataset);
-  const operationalContracts = dataset.contracts.filter((contract) =>
-    isOperationalContractStatus(contract.status),
+  const activeContracts = dataset.contracts.filter(
+    (contract) => contract.status === "active",
   );
   const totalPortfolioValue = roundCurrency(
-    operationalContracts.reduce(
+    dataset.contracts.reduce(
       (total, contract) => total + (normalizeNumber(contract.credit_amount) ?? 0),
       0,
     ),
   );
-  const operationalDataset = {
+  const activePortfolioValue = roundCurrency(
+    activeContracts.reduce(
+      (total, contract) => total + (normalizeNumber(contract.credit_amount) ?? 0),
+      0,
+    ),
+  );
+  const activeDataset = {
     ...dataset,
-    contracts: operationalContracts,
+    contracts: activeContracts,
   };
   const clientExposures = buildExposureRows(
-    operationalDataset,
+    activeDataset,
     "client",
-    totalPortfolioValue,
+    activePortfolioValue,
   );
   const administratorExposures = buildExposureRows(
-    operationalDataset,
+    activeDataset,
     "administrator",
-    totalPortfolioValue,
+    activePortfolioValue,
   );
   const summary = buildPortfolioSummary({
+    activeCreditValue: activePortfolioValue,
     administratorExposures,
     clientExposures,
     contracts,
@@ -335,6 +342,7 @@ function buildExposureRows(
 }
 
 function buildPortfolioSummary(input: {
+  activeCreditValue: number;
   administratorExposures: OperationsPortfolioExposureRow[];
   clientExposures: OperationsPortfolioExposureRow[];
   contracts: OperationsPortfolioContractRow[];
@@ -366,6 +374,7 @@ function buildPortfolioSummary(input: {
   }
 
   return {
+    activeCreditValue: input.activeCreditValue,
     attentionItems: Array.from(attentionItems),
     estimatedRevenue: roundCurrency(
       input.contracts.reduce(
@@ -851,12 +860,4 @@ function resolveOperationalExpectedAmount(
   }
 
   return normalizeNumber(entry.expected_amount) ?? 0;
-}
-
-function isOperationalContractStatus(status: string | null) {
-  return (
-    status !== "inactive" &&
-    status !== "cancelled" &&
-    status !== "rejected"
-  );
 }

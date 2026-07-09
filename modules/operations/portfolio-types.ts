@@ -32,6 +32,7 @@ export type OperationsPortfolioContractRow = {
 };
 
 export type OperationsPortfolioSummary = {
+  activeCreditValue: number;
   attentionItems: string[];
   estimatedRevenue: number;
   largestAdministratorExposurePercentage: number;

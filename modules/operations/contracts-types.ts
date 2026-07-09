@@ -29,6 +29,7 @@ export type OperationsContractRow = {
 
 export type OperationsContractsSummary = {
   activeContracts: number;
+  activeCreditValue: number;
   attentionContracts: number;
   estimatedRevenue: number;
   recognizedRevenue: number;

@@ -260,6 +260,7 @@ function summarizeContracts(
 
       if (contract.status === "active") {
         summary.activeContracts += 1;
+        summary.activeCreditValue += contract.creditValue;
       }
 
       if (contract.attentionItems.length > 0 || contract.status === "attention") {
@@ -270,6 +271,7 @@ function summarizeContracts(
     },
     {
       activeContracts: 0,
+      activeCreditValue: 0,
       attentionContracts: 0,
       estimatedRevenue: 0,
       recognizedRevenue: 0,

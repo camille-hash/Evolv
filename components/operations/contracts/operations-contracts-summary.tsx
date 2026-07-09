@@ -26,6 +26,10 @@ export function OperationsContractsSummary({
         value={currencyFormatter.format(summary.totalCreditValue)}
       />
       <SummaryMetric
+        label="Credito ativo"
+        value={currencyFormatter.format(summary.activeCreditValue)}
+      />
+      <SummaryMetric
         label="Receita estimada"
         value={currencyFormatter.format(summary.estimatedRevenue)}
       />
