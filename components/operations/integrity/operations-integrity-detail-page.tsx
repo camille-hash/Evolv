@@ -90,6 +90,7 @@ export function OperationsIntegrityDetailPage({
 
   const errorCount = contract.issues.filter((issue) => issue.severity === "error").length;
   const warningCount = contract.issues.length - errorCount;
+  const contractHref = `/operations/contracts?contractId=${encodeURIComponent(contract.contractId)}&origem=integridade`;
 
   return (
     <div className="grid gap-5">
@@ -124,7 +125,7 @@ export function OperationsIntegrityDetailPage({
             <OperationsContextLink href="/operations/integrity">
               Voltar para integrity
             </OperationsContextLink>
-            <OperationsContextLink href="/operations/contracts">
+            <OperationsContextLink href={contractHref}>
               Ver contratos
             </OperationsContextLink>
           </div>

@@ -4,12 +4,14 @@ import { OperationsContractsEmptyState } from "./operations-contracts-empty-stat
 
 type OperationsContractsListProps = {
   contracts: OperationsContractRow[];
+  highlightedContractId?: string | null;
   onChangeStatus?: (contract: OperationsContractRow) => void;
   onResolveMissingContractNumber?: (contract: OperationsContractRow) => void;
 };
 
 export function OperationsContractsList({
   contracts,
+  highlightedContractId,
   onChangeStatus,
   onResolveMissingContractNumber,
 }: OperationsContractsListProps) {
@@ -22,6 +24,7 @@ export function OperationsContractsList({
       {contracts.map((contract) => (
         <OperationsContractCard
           contract={contract}
+          isHighlighted={highlightedContractId === contract.id}
           key={contract.id}
           onChangeStatus={
             onChangeStatus ? () => onChangeStatus(contract) : undefined

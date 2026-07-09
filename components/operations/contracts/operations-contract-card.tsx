@@ -8,6 +8,7 @@ import { ContractCommissionSummaryCard } from "./contract-commission-summary-car
 
 type OperationsContractCardProps = {
   contract: OperationsContractRow;
+  isHighlighted?: boolean;
   onChangeStatus?: () => void;
   onResolveMissingContractNumber?: () => void;
 };
@@ -40,13 +41,22 @@ const statusClasses: Record<OperationsContractStatus, string> = {
 
 export function OperationsContractCard({
   contract,
+  isHighlighted = false,
   onChangeStatus,
   onResolveMissingContractNumber,
 }: OperationsContractCardProps) {
   const currentContractStatus = normalizeContractStatus(contract.sourceStatus);
 
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article
+      className={`rounded-xl border bg-white p-5 shadow-sm transition ${
+        isHighlighted
+          ? "border-sky-300 ring-2 ring-sky-200"
+          : "border-slate-200"
+      }`}
+      data-contract-id={contract.id}
+      id={`operations-contract-${contract.id}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

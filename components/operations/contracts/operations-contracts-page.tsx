@@ -39,6 +39,9 @@ export function OperationsContractsPage() {
   );
   const [visibilityFilter, setVisibilityFilter] =
     useState<ContractVisibilityFilter>("all");
+  const [highlightedContractId, setHighlightedContractId] = useState<
+    string | null
+  >(null);
   const [selectedStatusContract, setSelectedStatusContract] =
     useState<OperationsContractRow | null>(null);
   const [selectedEditContract, setSelectedEditContract] =
@@ -134,6 +137,50 @@ export function OperationsContractsPage() {
   );
   const summary = summarizeContracts(visibleContracts);
 
+  useEffect(() => {
+    if (!pageContext.contractId) {
+      return;
+    }
+
+    setVisibilityFilter("all");
+  }, [pageContext.contractId]);
+
+  useEffect(() => {
+    if (!pageContext.contractId) {
+      setHighlightedContractId(null);
+      return;
+    }
+
+    const targetContract = visibleContracts.find(
+      (contract) => contract.id === pageContext.contractId,
+    );
+
+    if (!targetContract) {
+      setHighlightedContractId(null);
+      return;
+    }
+
+    setHighlightedContractId(targetContract.id);
+
+    const frameId = window.requestAnimationFrame(() => {
+      const element = document.getElementById(
+        `operations-contract-${targetContract.id}`,
+      );
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    const timeoutId = window.setTimeout(() => {
+      setHighlightedContractId((currentValue) =>
+        currentValue === targetContract.id ? null : currentValue,
+      );
+    }, 2500);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [pageContext.contractId, visibleContracts]);
+
   return (
     <div className="grid gap-5">
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -184,6 +231,7 @@ export function OperationsContractsPage() {
       ) : (
         <OperationsContractsList
           contracts={visibleContracts}
+          highlightedContractId={highlightedContractId}
           onChangeStatus={(contract) => {
             setSelectedStatusContract(contract);
             setFeedbackMessage(null);
