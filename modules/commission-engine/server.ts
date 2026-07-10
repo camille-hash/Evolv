@@ -7,12 +7,15 @@ import type {
   CancelFutureCommissionEntriesForContractParams,
   CancelFutureCommissionEntriesForContractResult,
   ContractCommissionScheduleItem,
+  ContractCommissionSummary,
   ContractCommissionSnapshot,
   ExpectedRevenueEntry,
   EnsureContractCommissionSnapshotParams,
   EnsureContractCommissionSnapshotResult,
   GetContractCommissionSummaryParams,
   GetContractCommissionSummaryResult,
+  GetContractCommissionSummariesParams,
+  GetContractCommissionSummariesResult,
   RecognizedRevenueEntry,
   ReactivateFutureCommissionEntriesForContractParams,
   ReactivateFutureCommissionEntriesForContractResult,
@@ -938,6 +941,109 @@ export async function getContractCommissionSummary(
         expectedRevenueResult.expectedRevenueEntries,
       ),
     },
+  };
+}
+
+export async function getContractCommissionSummaries(
+  params: GetContractCommissionSummariesParams,
+): Promise<GetContractCommissionSummariesResult> {
+  const contractIds = Array.from(
+    new Set(params.contractIds.map((contractId) => contractId.trim()).filter(Boolean)),
+  );
+  const summaries = new Map<string, ContractCommissionSummary>();
+
+  for (const contractId of contractIds) {
+    summaries.set(contractId, buildEmptyContractCommissionSummary());
+  }
+
+  if (!contractIds.length) {
+    return {
+      ok: true,
+      summaries,
+    };
+  }
+
+  const snapshotsResult = await listActiveSnapshotsByContract(params, contractIds);
+
+  if (!snapshotsResult.ok) {
+    return snapshotsResult;
+  }
+
+  if (!snapshotsResult.snapshots.length) {
+    return {
+      ok: true,
+      summaries,
+    };
+  }
+
+  const snapshotsByContractId = new Map(
+    snapshotsResult.snapshots.map((snapshot) => [snapshot.contractId, snapshot]),
+  );
+  const snapshotIds = snapshotsResult.snapshots.map((snapshot) => snapshot.id);
+  const [scheduleResult, expectedRevenueResult] = await Promise.all([
+    listScheduleItemsBySnapshotIds(params, snapshotIds),
+    listExpectedRevenueEntriesByContractIds(params, contractIds),
+  ]);
+
+  if (!scheduleResult.ok) {
+    return scheduleResult;
+  }
+
+  if (!expectedRevenueResult.ok) {
+    return expectedRevenueResult;
+  }
+
+  const recognizedRevenueResult = await sumRecognizedRevenueEntriesByExpectedId(
+    params,
+    expectedRevenueResult.expectedRevenueEntries.map((entry) => entry.id),
+  );
+
+  if (!recognizedRevenueResult.ok) {
+    return recognizedRevenueResult;
+  }
+
+  const scheduleBySnapshotId = groupScheduleItemsBySnapshotId(
+    scheduleResult.scheduleItems,
+  );
+  const expectedRevenueByContractId = groupExpectedRevenueEntriesByContractId(
+    expectedRevenueResult.expectedRevenueEntries,
+  );
+
+  for (const contractId of contractIds) {
+    const snapshot = snapshotsByContractId.get(contractId);
+
+    if (!snapshot) {
+      continue;
+    }
+
+    const expectedRevenueEntries =
+      expectedRevenueByContractId.get(contractId) ?? [];
+
+    summaries.set(contractId, {
+      expectedRevenue: summarizeExpectedRevenue(expectedRevenueEntries),
+      hasCommissionEngine: true,
+      schedule: summarizeSchedule(scheduleBySnapshotId.get(snapshot.id) ?? []),
+      snapshot: {
+        businessStatus: snapshot.businessStatus,
+        frozenAt: snapshot.frozenAt,
+        id: snapshot.id,
+        lifecycle: snapshot.lifecycle,
+        sourceCommissionPlanName: snapshot.sourceCommissionPlanName,
+      },
+      totals: {
+        expectedAmount: sumExpectedAmount(expectedRevenueEntries),
+        recognizedAmount: sumRecognizedAmountForExpectedEntries(
+          expectedRevenueEntries,
+          recognizedRevenueResult.recognizedAmountByExpectedId,
+        ),
+        remainingAmount: sumRemainingAmount(expectedRevenueEntries),
+      },
+    });
+  }
+
+  return {
+    ok: true,
+    summaries,
   };
 }
 
@@ -1899,6 +2005,146 @@ async function listExpectedRevenueEntriesByContract(
   };
 }
 
+async function listActiveSnapshotsByContract(
+  params: GetContractCommissionSummariesParams,
+  contractIds: string[],
+) {
+  const { data, error } = await params.supabase
+    .from("contract_commission_snapshots")
+    .select(snapshotColumns)
+    .eq("organization_id", params.organizationId)
+    .in("contract_id", contractIds)
+    .is("superseded_at", null);
+
+  if (error) {
+    return commissionEngineError(
+      "Nao foi possivel verificar snapshots de comissao existentes.",
+      500,
+    );
+  }
+
+  return {
+    ok: true as const,
+    snapshots: ((data ?? []) as unknown as ContractCommissionSnapshotRow[])
+      .filter((snapshot) => snapshot.organization_id === params.organizationId)
+      .map(mapSnapshotRow),
+  };
+}
+
+async function listScheduleItemsBySnapshotIds(
+  params: GetContractCommissionSummariesParams,
+  snapshotIds: string[],
+) {
+  if (!snapshotIds.length) {
+    return {
+      ok: true as const,
+      scheduleItems: [],
+    };
+  }
+
+  const { data, error } = await params.supabase
+    .from("contract_commission_schedule_items")
+    .select(scheduleItemColumns)
+    .eq("organization_id", params.organizationId)
+    .in("snapshot_id", snapshotIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    return commissionEngineError(
+      "Nao foi possivel carregar agendas financeiras de comissao.",
+      500,
+    );
+  }
+
+  return {
+    ok: true as const,
+    scheduleItems: ((data ?? []) as unknown as ContractCommissionScheduleItemRow[])
+      .filter((item) => item.organization_id === params.organizationId)
+      .map(mapScheduleItemRow),
+  };
+}
+
+async function listExpectedRevenueEntriesByContractIds(
+  params: GetContractCommissionSummariesParams,
+  contractIds: string[],
+) {
+  if (!contractIds.length) {
+    return {
+      expectedRevenueEntries: [],
+      ok: true as const,
+    };
+  }
+
+  const { data, error } = await params.supabase
+    .from("expected_revenue_entries")
+    .select(expectedRevenueColumns)
+    .eq("organization_id", params.organizationId)
+    .in("contract_id", contractIds);
+
+  if (error) {
+    return commissionEngineError(
+      "Nao foi possivel carregar receitas previstas de comissao.",
+      500,
+    );
+  }
+
+  return {
+    expectedRevenueEntries: (
+      (data ?? []) as unknown as ExpectedRevenueEntryRow[]
+    )
+      .filter((entry) => entry.organization_id === params.organizationId)
+      .map(mapExpectedRevenueEntryRow),
+    ok: true as const,
+  };
+}
+
+async function sumRecognizedRevenueEntriesByExpectedId(
+  params: GetContractCommissionSummariesParams,
+  expectedRevenueEntryIds: string[],
+) {
+  const recognizedAmountByExpectedId = new Map<string, number>();
+
+  if (!expectedRevenueEntryIds.length) {
+    return {
+      ok: true as const,
+      recognizedAmountByExpectedId,
+    };
+  }
+
+  const { data, error } = await params.supabase
+    .from("recognized_revenue_entries")
+    .select("expected_revenue_entry_id, recognized_amount, reversed_at")
+    .eq("organization_id", params.organizationId)
+    .in("expected_revenue_entry_id", expectedRevenueEntryIds)
+    .is("reversed_at", null);
+
+  if (error) {
+    return commissionEngineError(
+      "Nao foi possivel somar receitas reconhecidas de comissao.",
+      500,
+    );
+  }
+
+  for (const entry of (data ?? []) as unknown as RecognizedRevenueEntryRow[]) {
+    if (!entry.expected_revenue_entry_id || entry.reversed_at) {
+      continue;
+    }
+
+    recognizedAmountByExpectedId.set(
+      entry.expected_revenue_entry_id,
+      roundCurrency(
+        (recognizedAmountByExpectedId.get(entry.expected_revenue_entry_id) ?? 0) +
+          (normalizeNumber(entry.recognized_amount) ?? 0),
+      ),
+    );
+  }
+
+  return {
+    ok: true as const,
+    recognizedAmountByExpectedId,
+  };
+}
+
 async function sumRecognizedRevenueEntries(
   params: GetContractCommissionSummaryParams,
   expectedRevenueEntryIds: string[],
@@ -2041,6 +2287,46 @@ function summarizeSchedule(scheduleItems: ContractCommissionScheduleItem[]) {
   );
 }
 
+function buildEmptyContractCommissionSummary(): ContractCommissionSummary {
+  return {
+    expectedRevenue: { ...emptyCommissionSummaryExpectedRevenue },
+    hasCommissionEngine: false,
+    schedule: { ...emptyCommissionSummarySchedule },
+    snapshot: null,
+    totals: { ...emptyCommissionSummaryTotals },
+  };
+}
+
+function groupScheduleItemsBySnapshotId(
+  scheduleItems: ContractCommissionScheduleItem[],
+) {
+  const groupedItems = new Map<string, ContractCommissionScheduleItem[]>();
+
+  for (const scheduleItem of scheduleItems) {
+    groupedItems.set(scheduleItem.snapshotId, [
+      ...(groupedItems.get(scheduleItem.snapshotId) ?? []),
+      scheduleItem,
+    ]);
+  }
+
+  return groupedItems;
+}
+
+function groupExpectedRevenueEntriesByContractId(
+  expectedRevenueEntries: ExpectedRevenueEntry[],
+) {
+  const groupedEntries = new Map<string, ExpectedRevenueEntry[]>();
+
+  for (const expectedRevenueEntry of expectedRevenueEntries) {
+    groupedEntries.set(expectedRevenueEntry.contractId, [
+      ...(groupedEntries.get(expectedRevenueEntry.contractId) ?? []),
+      expectedRevenueEntry,
+    ]);
+  }
+
+  return groupedEntries;
+}
+
 function summarizeExpectedRevenue(expectedRevenueEntries: ExpectedRevenueEntry[]) {
   return expectedRevenueEntries.reduce(
     (summary, expectedRevenueEntry) => ({
@@ -2066,6 +2352,19 @@ function summarizeExpectedRevenue(expectedRevenueEntries: ExpectedRevenueEntry[]
       total: summary.total + 1,
     }),
     { ...emptyCommissionSummaryExpectedRevenue },
+  );
+}
+
+function sumRecognizedAmountForExpectedEntries(
+  expectedRevenueEntries: ExpectedRevenueEntry[],
+  recognizedAmountByExpectedId: Map<string, number>,
+) {
+  return roundCurrency(
+    expectedRevenueEntries.reduce(
+      (total, expectedRevenueEntry) =>
+        total + (recognizedAmountByExpectedId.get(expectedRevenueEntry.id) ?? 0),
+      0,
+    ),
   );
 }
 

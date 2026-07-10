@@ -124,6 +124,12 @@ export type GetContractCommissionSummaryParams = {
   supabase: CommissionEngineSupabaseClient;
 };
 
+export type GetContractCommissionSummariesParams = {
+  contractIds: string[];
+  organizationId: string;
+  supabase: CommissionEngineSupabaseClient;
+};
+
 export type BackfillCommissionEngineForContractsParams = {
   contractIds?: string[];
   dryRun?: boolean;
@@ -271,6 +277,17 @@ export type GetContractCommissionSummaryResult =
   | ({
       ok: true;
     } & ContractCommissionSummary)
+  | {
+      error: string;
+      ok: false;
+      status: number;
+    };
+
+export type GetContractCommissionSummariesResult =
+  | {
+      ok: true;
+      summaries: Map<string, ContractCommissionSummary>;
+    }
   | {
       error: string;
       ok: false;

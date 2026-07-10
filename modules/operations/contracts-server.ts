@@ -1,5 +1,5 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
-import { getContractCommissionSummary } from "@/modules/commission-engine/server";
+import { getContractCommissionSummaries } from "@/modules/commission-engine/server";
 import type { ContractCommissionSummary } from "@/modules/commission-engine/types";
 import type {
   OperationsContractRow,
@@ -360,34 +360,22 @@ async function loadCommissionSummaries(
   context: RequestContext,
   contracts: ContractRow[],
 ) {
-  const commissionSummaries = new Map<string, ContractCommissionSummary>();
+  const summariesResult = await getContractCommissionSummaries({
+    contractIds: contracts.map((contract) => contract.id),
+    organizationId: context.profile.organization_id,
+    supabase: context.supabase,
+  });
 
-  for (const contract of contracts) {
-    const summary = await getContractCommissionSummary({
-      contractId: contract.id,
-      organizationId: context.profile.organization_id,
-      supabase: context.supabase,
-    });
-
-    if (!summary.ok) {
-      return {
-        error: "Nao foi possivel carregar resumo de comissao dos contratos.",
-        ok: false as const,
-        status: summary.status,
-      };
-    }
-
-    commissionSummaries.set(contract.id, {
-      expectedRevenue: summary.expectedRevenue,
-      hasCommissionEngine: summary.hasCommissionEngine,
-      schedule: summary.schedule,
-      snapshot: summary.snapshot,
-      totals: summary.totals,
-    });
+  if (!summariesResult.ok) {
+    return {
+      error: "Nao foi possivel carregar resumo de comissao dos contratos.",
+      ok: false as const,
+      status: summariesResult.status,
+    };
   }
 
   return {
-    commissionSummaries,
+    commissionSummaries: summariesResult.summaries,
     ok: true as const,
   };
 }
