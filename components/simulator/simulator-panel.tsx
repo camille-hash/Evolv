@@ -70,6 +70,7 @@ import {
   loadCrmLeadSimulations,
   type CrmLeadProposalContext,
 } from "@/modules/crm";
+import { createLeadCommercialProposal } from "@/modules/crm/client/crm-lead-commercial-proposals-client";
 import {
   loadPortfolioSnapshot,
   type PortfolioSnapshot,
@@ -93,6 +94,12 @@ type AnchoredPersonalizationSource = {
 type LeadSimulationSaveStatus = "idle" | "saving" | "success" | "error";
 
 type LeadSimulationSaveState = {
+  message: string;
+  status: LeadSimulationSaveStatus;
+};
+
+type CommercialProposalSaveState = {
+  kind: AnchoredProposal["kind"] | null;
   message: string;
   status: LeadSimulationSaveStatus;
 };
@@ -229,6 +236,12 @@ export function SimulatorPanel({
   const [comfortableInstallment, setComfortableInstallment] = useState("");
   const [leadSimulationSaveState, setLeadSimulationSaveState] =
     useState<LeadSimulationSaveState>({
+      message: "",
+      status: "idle",
+    });
+  const [commercialProposalSaveState, setCommercialProposalSaveState] =
+    useState<CommercialProposalSaveState>({
+      kind: null,
       message: "",
       status: "idle",
     });
@@ -516,6 +529,7 @@ export function SimulatorPanel({
           isTechnicalDataOpen={isTechnicalDataOpen}
           leadProposalContext={leadProposalContext}
           leadSimulationSaveState={leadSimulationSaveState}
+          commercialProposalSaveState={commercialProposalSaveState}
           personalizationSource={personalizationSource}
           onCommercialDataChange={updateCommercialData}
           onContemplationMonthChange={updateContemplationMonth}
@@ -766,12 +780,89 @@ export function SimulatorPanel({
     );
   }
 
-  function handleSaveAnchoredProposal(proposal: AnchoredProposal) {
-    const savedSimulation = persistAnchoredProposal(proposal);
+  async function handleSaveAnchoredProposal(proposal: AnchoredProposal) {
+    if (!leadProposalContext?.leadId) {
+      setCommercialProposalSaveState({
+        kind: proposal.kind,
+        message: "Abra a proposta a partir de um lead antes de salvar.",
+        status: "error",
+      });
+      return;
+    }
 
-    setSavedSimulations(loadSavedSimulations());
-    setSimulationName((currentName) => currentName || savedSimulation.name);
-    linkSimulationToLeadContext(savedSimulation);
+    if (commercialProposalSaveState.status === "saving") {
+      return;
+    }
+
+    setCommercialProposalSaveState({
+      kind: proposal.kind,
+      message: "Salvando proposta no lead...",
+      status: "saving",
+    });
+
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      setCommercialProposalSaveState({
+        kind: proposal.kind,
+        message: "Sessao Supabase indisponivel. Faca login novamente.",
+        status: "error",
+      });
+      return;
+    }
+
+    try {
+      const title = buildAnchoredProposalName(simulationName, proposal.label);
+
+      await createLeadCommercialProposal(accessToken, {
+        leadId: leadProposalContext.leadId,
+        metadata: {
+          savedFrom: "simulator_anchored_proposal",
+          simulatorContextIntent: leadProposalContext.intent,
+        },
+        originalSnapshot: buildAnchoredProposalSnapshot({
+          bidType,
+          commercialData,
+          formState,
+          insuranceOption,
+          leadProposalContext,
+          proposal,
+          selectedAdministrator,
+        }),
+        savedSnapshot: buildAnchoredProposalSnapshot({
+          bidType,
+          commercialData,
+          formState,
+          insuranceOption,
+          leadProposalContext,
+          proposal,
+          selectedAdministrator,
+        }),
+        sourceSuggestion: proposal.kind,
+        summary: buildAnchoredProposalSummary(proposal),
+        title,
+      });
+
+      const savedSimulation = persistAnchoredProposal(proposal);
+
+      setSavedSimulations(loadSavedSimulations());
+      setSimulationName((currentName) => currentName || savedSimulation.name);
+      linkSimulationToLeadContext(savedSimulation);
+      setCommercialProposalSaveState({
+        kind: proposal.kind,
+        message: "Proposta salva no lead.",
+        status: "success",
+      });
+    } catch (error) {
+      setCommercialProposalSaveState({
+        kind: proposal.kind,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel salvar a proposta comercial.",
+        status: "error",
+      });
+    }
   }
 
   function handleCustomizeAnchoredProposal(proposal: AnchoredProposal) {
@@ -982,6 +1073,7 @@ function SimulationOperationPanel({
   isTechnicalDataOpen,
   leadProposalContext,
   leadSimulationSaveState,
+  commercialProposalSaveState,
   personalizationSource,
   onCommercialDataChange,
   onContemplationMonthChange,
@@ -1016,6 +1108,7 @@ function SimulationOperationPanel({
   isTechnicalDataOpen: boolean;
   leadProposalContext?: CrmLeadProposalContext | null;
   leadSimulationSaveState: LeadSimulationSaveState;
+  commercialProposalSaveState: CommercialProposalSaveState;
   personalizationSource: AnchoredPersonalizationSource | null;
   onCommercialDataChange: (state: Partial<SimulatorCommercialData>) => void;
   onContemplationMonthChange: (month: number) => void;
@@ -1261,6 +1354,7 @@ function SimulationOperationPanel({
         />
 
         <AnchoredProposalsSection
+          commercialProposalSaveState={commercialProposalSaveState}
           comfortableInstallment={comfortableInstallment}
           isHighlighted={leadProposalContext?.intent === "proposal"}
           proposals={anchoredProposals}
@@ -1307,6 +1401,7 @@ function SimulationOperationPanel({
 }
 
 function AnchoredProposalsSection({
+  commercialProposalSaveState,
   comfortableInstallment,
   isHighlighted = false,
   proposals,
@@ -1315,6 +1410,7 @@ function AnchoredProposalsSection({
   onGenerate,
   onSaveProposal,
 }: {
+  commercialProposalSaveState: CommercialProposalSaveState;
   comfortableInstallment: string;
   isHighlighted?: boolean;
   proposals: AnchoredProposal[];
@@ -1410,11 +1506,32 @@ function AnchoredProposalsSection({
                 <SecondaryActionButton onClick={() => onCustomizeProposal(proposal)}>
                   Personalizar
                 </SecondaryActionButton>
-                <SecondaryActionButton onClick={() => onSaveProposal(proposal)}>
+                <SecondaryActionButton
+                  disabled={
+                    commercialProposalSaveState.status === "saving"
+                  }
+                  onClick={() => onSaveProposal(proposal)}
+                >
                   <Save className="h-4 w-4" aria-hidden="true" />
-                  Salvar proposta
+                  {commercialProposalSaveState.status === "saving" &&
+                  commercialProposalSaveState.kind === proposal.kind
+                    ? "Salvando..."
+                    : "Salvar proposta"}
                 </SecondaryActionButton>
               </div>
+              {commercialProposalSaveState.kind === proposal.kind &&
+              commercialProposalSaveState.message ? (
+                <p
+                  className={cn(
+                    "text-xs leading-5",
+                    commercialProposalSaveState.status === "error"
+                      ? "text-destructive"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {commercialProposalSaveState.message}
+                </p>
+              ) : null}
             </article>
           ))}
         </div>
@@ -2356,6 +2473,77 @@ function buildLeadSimulationApiPayload({
       simulatorInput,
     },
     title,
+  };
+}
+
+function buildAnchoredProposalSnapshot({
+  bidType,
+  commercialData,
+  formState,
+  insuranceOption,
+  leadProposalContext,
+  proposal,
+  selectedAdministrator,
+}: {
+  bidType: BidType;
+  commercialData: SimulatorCommercialData;
+  formState: SimulatorFormState;
+  insuranceOption: InsuranceOption;
+  leadProposalContext: CrmLeadProposalContext;
+  proposal: AnchoredProposal;
+  selectedAdministrator: SimulatorAdministrator | null;
+}) {
+  return {
+    input: proposal.input,
+    metadata: {
+      bidType,
+      comfortableInstallment: proposal.referenceInstallment,
+      distanceFromReference: proposal.distanceFromReference,
+      insuranceOption,
+      targetInstallment: proposal.targetInstallment,
+    },
+    presentation: proposal.presentation,
+    simulatorState: {
+      commercialData,
+      formState: {
+        ...formState,
+        credit: String(proposal.input.credit),
+      },
+      selectedAdministrator: selectedAdministrator
+        ? {
+            id: selectedAdministrator.id,
+            insuranceRequired: selectedAdministrator.insuranceRequired,
+            name: selectedAdministrator.name,
+            parameters: selectedAdministrator.parameters,
+          }
+        : null,
+      selectedScenarioKey: proposal.scenarioKey,
+    },
+    source: {
+      kind: proposal.kind,
+      label: proposal.label,
+      leadContext: {
+        createdAt: leadProposalContext.createdAt,
+        intent: leadProposalContext.intent,
+        leadDesiredCredit: leadProposalContext.leadDesiredCredit ?? null,
+        leadId: leadProposalContext.leadId,
+        leadName: leadProposalContext.leadName,
+      },
+      objective: proposal.objective,
+    },
+  };
+}
+
+function buildAnchoredProposalSummary(proposal: AnchoredProposal) {
+  return {
+    commercialCredit: proposal.presentation.commercialCredit,
+    contemplationMonth: proposal.presentation.contemplationMonth,
+    estimatedGain: proposal.presentation.estimatedCardSaleProfit,
+    estimatedRoi: proposal.presentation.estimatedCardSaleGainRate,
+    estimatedSaleValue: proposal.presentation.estimatedCardSaleValue,
+    monthlyPayment: proposal.presentation.installmentBeforeContemplation,
+    postContemplationPayment:
+      proposal.presentation.installmentAfterContemplation,
   };
 }
 

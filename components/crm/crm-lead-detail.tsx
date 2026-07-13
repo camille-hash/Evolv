@@ -21,6 +21,9 @@ import {
 } from "@/modules/crm-domain";
 import type { CommercialAttentionProductDecision } from "@/modules/decision-models/dm001-product-surface";
 import {
+  fetchLeadCommercialProposals,
+} from "@/modules/crm/client/crm-lead-commercial-proposals-client";
+import {
   archiveCrmLeadKnowledgeItem,
   createCrmLeadKnowledgeItem,
   fetchCrmLeadKnowledgeItems,
@@ -69,6 +72,7 @@ import {
   type CrmLeadProfileCurrentMoment,
   type CrmLeadProfilePrimaryGoal,
   type CrmLeadProfileStrategicTopic,
+  type CrmLeadCommercialProposal,
   type CrmLeadSimulation,
   type CrmOperationalPriority,
   type CrmTask,
@@ -250,6 +254,10 @@ export function CrmLeadDetail({
     leadId: string;
     simulations: CrmLeadSimulation[];
   } | null>(null);
+  const [commercialProposalsState, setCommercialProposalsState] = useState<{
+    leadId: string;
+    proposals: CrmLeadCommercialProposal[];
+  } | null>(null);
   const [contractsState, setContractsState] = useState<{
     contracts: LeadContractSummary[];
     leadId: string;
@@ -269,6 +277,8 @@ export function CrmLeadDetail({
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [isLoadingKnowledge, setIsLoadingKnowledge] = useState(false);
   const [isLoadingSimulations, setIsLoadingSimulations] = useState(false);
+  const [isLoadingCommercialProposals, setIsLoadingCommercialProposals] =
+    useState(false);
   const [isLoadingContracts, setIsLoadingContracts] = useState(false);
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [isLoadingCommercialAttention, setIsLoadingCommercialAttention] =
@@ -279,6 +289,9 @@ export function CrmLeadDetail({
   );
   const [taskActionError, setTaskActionError] = useState<string | null>(null);
   const [simulationsError, setSimulationsError] = useState<string | null>(null);
+  const [commercialProposalsError, setCommercialProposalsError] = useState<
+    string | null
+  >(null);
   const [contractsError, setContractsError] = useState<string | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [commercialAttentionError, setCommercialAttentionError] = useState<
@@ -317,6 +330,13 @@ export function CrmLeadDetail({
         ? simulationsState.simulations
         : [],
     [lead.id, simulationsState],
+  );
+  const commercialProposals = useMemo(
+    () =>
+      commercialProposalsState?.leadId === lead.id
+        ? commercialProposalsState.proposals
+        : [],
+    [commercialProposalsState, lead.id],
   );
   const leadContracts =
     contractsState?.leadId === lead.id ? contractsState.contracts : [];
@@ -464,6 +484,57 @@ export function CrmLeadDetail({
     }
 
     void loadKnowledgeItems();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadCommercialProposals() {
+      setIsLoadingCommercialProposals(true);
+      setCommercialProposalsError(null);
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        if (isActive) {
+          setIsLoadingCommercialProposals(false);
+          setCommercialProposalsError(
+            "Nao foi possivel carregar as propostas comerciais.",
+          );
+        }
+        return;
+      }
+
+      try {
+        const proposals = await fetchLeadCommercialProposals(
+          accessToken,
+          lead.id,
+        );
+
+        if (isActive) {
+          setCommercialProposalsState({
+            leadId: lead.id,
+            proposals,
+          });
+        }
+      } catch {
+        if (isActive) {
+          setCommercialProposalsError(
+            "Nao foi possivel carregar as propostas comerciais.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingCommercialProposals(false);
+        }
+      }
+    }
+
+    void loadCommercialProposals();
 
     return () => {
       isActive = false;
@@ -1818,6 +1889,18 @@ export function CrmLeadDetail({
                 error={simulationsError}
                 isLoading={isLoadingSimulations}
                 simulations={commercialSimulations}
+              />
+            </ExecutiveDossierCard>
+
+            <ExecutiveDossierCard
+              description="Propostas comerciais preservadas como snapshot historico do lead."
+              eyebrow="Propostas"
+              title="Propostas Comerciais"
+            >
+              <LeadCommercialProposalList
+                error={commercialProposalsError}
+                isLoading={isLoadingCommercialProposals}
+                proposals={commercialProposals}
               />
             </ExecutiveDossierCard>
 
@@ -3498,6 +3581,99 @@ function LeadSimulationHistoryList({
   );
 }
 
+function LeadCommercialProposalList({
+  error,
+  isLoading,
+  proposals,
+}: {
+  error: string | null;
+  isLoading: boolean;
+  proposals: CrmLeadCommercialProposal[];
+}) {
+  const orderedProposals = [...proposals].sort(
+    (first, second) =>
+      new Date(second.createdAt).getTime() -
+      new Date(first.createdAt).getTime(),
+  );
+
+  if (isLoading) {
+    return (
+      <p className="rounded-md border bg-background/70 p-4 text-sm text-muted-foreground">
+        Carregando propostas comerciais...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        {error}
+      </p>
+    );
+  }
+
+  if (!orderedProposals.length) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        Nenhuma proposta comercial salva neste lead.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {orderedProposals.map((proposal) => (
+        <article
+          className="rounded-md border bg-background/70 p-4 text-sm"
+          key={proposal.id}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">
+                {proposal.title}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {commercialProposalSourceLabels[proposal.sourceSuggestion]}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground">
+              {dateFormatter.format(new Date(proposal.createdAt))}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-2">
+            <LeadInfo
+              label="Credito"
+              value={formatCurrencyOrDash(
+                readProposalSummaryNumber(proposal.summary.commercialCredit),
+              )}
+            />
+            <LeadInfo
+              label="Parcela"
+              value={formatCurrencyOrDash(
+                readProposalSummaryNumber(proposal.summary.monthlyPayment),
+              )}
+            />
+            <LeadInfo
+              label="Parcela pos"
+              value={formatCurrencyOrDash(
+                readProposalSummaryNumber(
+                  proposal.summary.postContemplationPayment,
+                ),
+              )}
+            />
+            <LeadInfo
+              label="Contemplacao"
+              value={formatMonthOrDash(
+                readProposalSummaryNumber(proposal.summary.contemplationMonth),
+              )}
+            />
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function LeadSimulationHistoryItem({
   isSelected,
   onSelect,
@@ -4736,6 +4912,15 @@ const leadSimulationStatusLabels: Record<
   proposal_generated: "Proposta gerada",
 };
 
+const commercialProposalSourceLabels: Record<
+  CrmLeadCommercialProposal["sourceSuggestion"],
+  string
+> = {
+  conservative: "Conservadora",
+  patrimonial: "Patrimonial",
+  recommended: "Recomendada",
+};
+
 const simulationScenarioLabels: Record<string, string> = {
   full: "Parcela cheia",
   half: "50%",
@@ -4814,6 +4999,10 @@ function formatCurrencyOrDash(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value)
     ? currencyFormatter.format(value)
     : "-";
+}
+
+function readProposalSummaryNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function formatPercentOrDash(value: number | null | undefined) {

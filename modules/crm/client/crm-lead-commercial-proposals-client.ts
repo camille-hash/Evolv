@@ -1,0 +1,61 @@
+import type {
+  CreateCrmLeadCommercialProposalInput,
+  CrmLeadCommercialProposal,
+} from "@/modules/crm";
+
+type ProposalsListPayload = {
+  proposals?: CrmLeadCommercialProposal[];
+};
+
+type ProposalPayload = {
+  error?: string;
+  proposal?: CrmLeadCommercialProposal;
+};
+
+export async function fetchLeadCommercialProposals(
+  accessToken: string,
+  leadId: string,
+) {
+  const response = await fetch(
+    `/api/crm/lead-commercial-proposals?leadId=${encodeURIComponent(leadId)}`,
+    {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | ProposalsListPayload
+    | null;
+
+  if (!response.ok || !Array.isArray(payload?.proposals)) {
+    throw new Error("Nao foi possivel carregar as propostas comerciais.");
+  }
+
+  return payload.proposals;
+}
+
+export async function createLeadCommercialProposal(
+  accessToken: string,
+  input: CreateCrmLeadCommercialProposalInput,
+) {
+  const response = await fetch("/api/crm/lead-commercial-proposals", {
+    body: JSON.stringify(input),
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | ProposalPayload
+    | null;
+
+  if (!response.ok || !payload?.proposal) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel salvar a proposta comercial.",
+    );
+  }
+
+  return payload.proposal;
+}

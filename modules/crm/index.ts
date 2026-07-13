@@ -15,6 +15,7 @@ export * from "./crm-my-day";
 export * from "./crm-lead-notes";
 export * from "./crm-lead-knowledge";
 export * from "./crm-lead-profiles";
+export * from "./crm-lead-commercial-proposals";
 export * from "./crm-lead-simulations";
 export * from "./crm-pipeline-engine";
 export * from "./crm-pipeline-storage";
