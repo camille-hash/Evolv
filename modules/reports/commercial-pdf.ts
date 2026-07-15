@@ -11,10 +11,36 @@ type PdfMetric = {
   value: string;
 };
 
+export type PdfCommercialProposalContext = {
+  kind?: string;
+  proposalId?: string;
+  rationale?: string;
+  recommendation?: string;
+  title?: string;
+  variant?: string;
+};
+
+export type PdfCommercialConsultingConditions = {
+  installmentAmount: number;
+  installments: number;
+  totalAmount: number;
+};
+
+type ResolvedCommercialProposalContext = {
+  clientLabel: string;
+  hasCustomNarrative: boolean;
+  rationale: string;
+  recommendation: string;
+  source: "commercial_notes" | "commercial_proposal" | "fallback";
+  title: string;
+};
+
 type SimulatorCommercialPdfInput = {
   presentation: SimulatorCommercialPresentation;
   simulationName?: string;
   commercialData?: SimulatorCommercialData;
+  commercialConsultingConditions?: PdfCommercialConsultingConditions | null;
+  commercialProposal?: PdfCommercialProposalContext;
   intelligenceSummary?: IntelligenceSummary;
   wealthJourney?: WealthJourney;
   simulationDate?: string;
@@ -61,25 +87,34 @@ export function generateSimulatorCommercialPdf({
   presentation,
   simulationName,
   commercialData = createPdfCommercialData(),
+  commercialConsultingConditions,
+  commercialProposal,
   intelligenceSummary,
   wealthJourney,
   simulationDate,
 }: SimulatorCommercialPdfInput) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const reportDate = formatPdfDate(simulationDate ?? new Date().toISOString());
+  const proposalContext = resolveCommercialProposalContext({
+    commercialData,
+    commercialProposal,
+    simulationName,
+  });
 
   drawCover(doc, presentation, {
     commercialData,
+    proposalContext,
     reportDate,
-    simulationName,
   });
   doc.addPage();
   drawReportPage(doc, presentation, {
     commercialData,
     intelligenceSummary,
+    proposalContext,
     reportDate,
-    simulationName,
     wealthJourney,
+    commercialConsultingConditions:
+      normalizeCommercialConsultingConditions(commercialConsultingConditions),
   });
   doc.save(buildFileName(presentation, commercialData, simulationName));
 }
@@ -89,8 +124,8 @@ function drawCover(
   presentation: SimulatorCommercialPresentation,
   metadata: {
     commercialData: SimulatorCommercialData;
+    proposalContext: ResolvedCommercialProposalContext;
     reportDate: string;
-    simulationName?: string;
   },
 ) {
   doc.setFillColor(colors.deep);
@@ -113,46 +148,62 @@ function drawCover(
   doc.setTextColor(colors.white);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(28);
-  doc.text(normalizePdfText(metadata.simulationName) || "Estrategia comercial", page.margin + 4, 92, {
+  doc.text("Proposta Patrimonial", page.margin + 4, 88, {
     maxWidth: 150,
   });
+
+  let coverY = 103;
+
+  if (metadata.proposalContext.clientLabel) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(colors.soft);
+    doc.text("Preparada para", page.margin + 4, coverY);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(colors.white);
+    doc.text(
+      metadata.proposalContext.clientLabel,
+      page.margin + 4,
+      coverY + 11,
+      {
+        maxWidth: 150,
+      },
+    );
+    coverY += 21;
+  }
+
+  if (metadata.proposalContext.title) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(colors.soft);
+    doc.text(metadata.proposalContext.title, page.margin + 4, coverY, {
+      maxWidth: 150,
+    });
+    coverY += 12;
+  }
+
+  const coverPeople = [
+    metadata.commercialData.consultantName
+      ? `Consultor: ${metadata.commercialData.consultantName}`
+      : "",
+    `Data: ${metadata.reportDate}`,
+  ].filter(Boolean);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(12);
   doc.setTextColor(colors.soft);
-  doc.text(metadata.reportDate, page.margin + 4, 106);
-
-  const coverPeople = [
-    metadata.commercialData.clientName
-      ? `Cliente: ${metadata.commercialData.clientName}`
-      : "",
-    metadata.commercialData.consultantName
-      ? `Consultor: ${metadata.commercialData.consultantName}`
-      : "",
-  ].filter(Boolean);
-
   coverPeople.forEach((line, index) => {
-    doc.text(line, page.margin + 4, 116 + index * 7);
+    doc.text(line, page.margin + 4, coverY + index * 7);
   });
 
-  drawCoverMetric(doc, 130, {
-    label: "Credito",
-    value: currencyFormatter.format(presentation.commercialCredit),
-  });
-  drawCoverMetric(doc, 158, {
-    label: "Parcela antes da contemplacao",
-    value: currencyFormatter.format(
-      presentation.installmentBeforeContemplation,
-    ),
-  });
-  drawCoverMetric(doc, 186, {
-    label: "Parcela pos-contemplacao",
-    value: currencyFormatter.format(
-      presentation.installmentAfterContemplation,
-    ),
+  drawCoverMetric(doc, 164, {
+    label: "Credito contratado",
+    value: currencyFormatter.format(presentation.contractedCredit),
   });
 
-  drawCoverTags(doc, 222, [
+  drawCoverTags(doc, 205, [
     {
       label: "Cenario",
       value: presentation.selectedScenarioName,
@@ -166,7 +217,7 @@ function drawCover(
       value: presentation.bidLabel,
     },
     {
-      label: "Contemplacao",
+      label: "Contemplacao simulada",
       value: `Mes ${presentation.contemplationMonth}`,
     },
   ]);
@@ -179,36 +230,19 @@ function drawReportPage(
   presentation: SimulatorCommercialPresentation,
   metadata: {
     commercialData: SimulatorCommercialData;
+    commercialConsultingConditions: PdfCommercialConsultingConditions | null;
     intelligenceSummary?: IntelligenceSummary;
+    proposalContext: ResolvedCommercialProposalContext;
     reportDate: string;
-    simulationName?: string;
     wealthJourney?: WealthJourney;
   },
 ) {
-  drawHeader(doc, "Relatorio comercial");
+  drawHeader(doc, "Proposta patrimonial");
 
   let y = 42;
-  y = drawHighlight(doc, y, [
-    {
-      label: "Potencial patrimonial",
-      value: currencyFormatter.format(presentation.estimatedCardSaleProfit),
-    },
-    {
-      label: "Retorno estimado",
-      value: percentFormatter.format(presentation.estimatedCardSaleGainRate),
-    },
-    {
-      label: "Multiplo de alavancagem",
-      value: `${multipleFormatter.format(presentation.leverageMultiple)}x`,
-    },
-  ]);
-
-  y = drawSectionWithPageBreak(
-    doc,
-    y,
-    "Dados da proposta",
-    buildCommercialMetrics(metadata.commercialData, metadata.reportDate),
-  );
+  y = metadata.proposalContext.hasCustomNarrative
+    ? drawProposalNarrativeSection(doc, y, metadata.proposalContext)
+    : drawConsultativeOpening(doc, y, metadata.commercialData);
 
   y = drawSectionWithPageBreak(doc, y, "Resumo executivo", [
     {
@@ -236,6 +270,15 @@ function drawReportPage(
       value: presentation.insuranceLabel,
     },
   ]);
+
+  y = drawOperationTimeline(doc, y, presentation);
+
+  y = drawSectionWithPageBreak(
+    doc,
+    y,
+    "Dados da proposta",
+    buildCommercialMetrics(metadata.commercialData, metadata.reportDate),
+  );
 
   y = drawSectionWithPageBreak(doc, y, "Credito e contemplacao", [
     {
@@ -310,26 +353,42 @@ function drawReportPage(
     y = drawIntelligenceSummarySection(
       doc,
       y,
-      "Analise EVOLV",
+      "Leitura consultiva EVOLV",
       metadata.intelligenceSummary,
     );
   }
 
-  if (metadata.wealthJourney) {
+  if (metadata.wealthJourney && hasWealthJourneyContent(metadata.wealthJourney)) {
     y = drawWealthJourneySection(
       doc,
       y,
       "Jornada Patrimonial",
       metadata.wealthJourney,
     );
+  } else {
+    y = drawInstitutionalSection(doc, y);
   }
 
-  if (metadata.commercialData.commercialNotes.trim()) {
-    drawNotesSection(
+  if (
+    metadata.commercialData.commercialNotes.trim() &&
+    !isTextAlreadyRenderedAsProposalNarrative(
+      metadata.commercialData.commercialNotes,
+      metadata.proposalContext,
+    )
+  ) {
+    y = drawNotesSection(
       doc,
       y,
       "Observacoes comerciais",
       metadata.commercialData.commercialNotes,
+    );
+  }
+
+  if (metadata.commercialConsultingConditions) {
+    y = drawCommercialConsultingConditionsSection(
+      doc,
+      y,
+      metadata.commercialConsultingConditions,
     );
   }
 
@@ -366,6 +425,186 @@ function drawSection(
   drawMetricGrid(doc, y + 7, metrics);
 
   return y + 7 + Math.ceil(metrics.length / 2) * 22 + 9;
+}
+
+function resolveCommercialProposalContext({
+  commercialData,
+  commercialProposal,
+  simulationName,
+}: {
+  commercialData: SimulatorCommercialData;
+  commercialProposal?: PdfCommercialProposalContext;
+  simulationName?: string;
+}): ResolvedCommercialProposalContext {
+  const clientName = normalizePdfText(commercialData.clientName);
+  const proposalTitle =
+    normalizePdfText(commercialProposal?.title) ||
+    normalizePdfText(simulationName);
+  const proposalRecommendation = normalizePdfText(
+    commercialProposal?.recommendation,
+  );
+  const proposalRationale = normalizePdfText(commercialProposal?.rationale);
+
+  if (commercialProposal && (proposalRecommendation || proposalRationale)) {
+    return {
+      clientLabel: clientName,
+      hasCustomNarrative: true,
+      rationale: proposalRationale,
+      recommendation: proposalRecommendation || proposalRationale,
+      source: "commercial_proposal",
+      title: proposalTitle,
+    };
+  }
+
+  return {
+    clientLabel: clientName,
+    hasCustomNarrative: false,
+    rationale: "",
+    recommendation: "",
+    source: "fallback",
+    title: proposalTitle,
+  };
+}
+
+function drawProposalNarrativeSection(
+  doc: jsPDF,
+  y: number,
+  proposalContext: ResolvedCommercialProposalContext,
+) {
+  const paragraphs = [
+    proposalContext.recommendation,
+    proposalContext.rationale
+      ? `Justificativa do consultor: ${proposalContext.rationale}`
+      : "",
+  ].filter(Boolean);
+  const text = paragraphs.join("\n\n");
+  const lines = doc.splitTextToSize(text, page.width - page.margin * 2 - 10);
+  const textOffset = proposalContext.title ? 24 : 15;
+  const panelHeight = textOffset + 8 + lines.length * 4.8;
+  const panelY = ensureSpace(doc, y, panelHeight + 8);
+
+  doc.setFillColor(colors.panel);
+  doc.setDrawColor(colors.line);
+  doc.roundedRect(
+    page.margin,
+    panelY,
+    page.width - page.margin * 2,
+    panelHeight,
+    2,
+    2,
+    "FD",
+  );
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(colors.primary);
+  doc.text("Nossa recomendacao", page.margin + 5, panelY + 7);
+
+  if (proposalContext.title) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(colors.ink);
+    doc.text(proposalContext.title, page.margin + 5, panelY + 15, {
+      maxWidth: page.width - page.margin * 2 - 10,
+    });
+  }
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.2);
+  doc.setTextColor(colors.ink);
+  doc.text(lines, page.margin + 5, panelY + textOffset);
+
+  return panelY + panelHeight + 11;
+}
+
+function drawConsultativeOpening(
+  doc: jsPDF,
+  y: number,
+  commercialData: SimulatorCommercialData,
+) {
+  const clientName = normalizePdfText(commercialData.clientName);
+  const addressee = clientName ? `para ${clientName}` : "para este cliente";
+  const paragraph =
+    `Esta proposta organiza uma estrategia patrimonial ${addressee}, ` +
+    "com foco em acesso planejado ao credito, previsibilidade de parcelas " +
+    "e leitura clara do potencial economico da operacao. Os indicadores a " +
+    "seguir traduzem o cenario simulado em uma decisao comercial objetiva.";
+  const lines = doc.splitTextToSize(paragraph, page.width - page.margin * 2 - 10);
+  const panelHeight = 20 + lines.length * 4.6;
+  const panelY = ensureSpace(doc, y, panelHeight + 8);
+
+  doc.setFillColor(colors.panel);
+  doc.setDrawColor(colors.line);
+  doc.roundedRect(
+    page.margin,
+    panelY,
+    page.width - page.margin * 2,
+    panelHeight,
+    2,
+    2,
+    "FD",
+  );
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(colors.primary);
+  doc.text("Contexto da recomendacao", page.margin + 5, panelY + 7);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.2);
+  doc.setTextColor(colors.ink);
+  doc.text(lines, page.margin + 5, panelY + 15);
+
+  return panelY + panelHeight + 11;
+}
+
+function drawOperationTimeline(
+  doc: jsPDF,
+  y: number,
+  presentation: SimulatorCommercialPresentation,
+) {
+  const timelineY = ensureSpace(doc, y, 42);
+  const items = [
+    { label: "Hoje", note: "definicao da estrategia" },
+    { label: "Pagamento inicial", note: presentation.bidLabel },
+    {
+      label: "Contemplacao",
+      note: `mes ${presentation.contemplationMonth}`,
+    },
+    { label: "Uso do credito", note: "liquidez planejada" },
+    { label: "Continuidade", note: "gestao patrimonial" },
+  ];
+  const usableWidth = page.width - page.margin * 2;
+  const stepGap = usableWidth / (items.length - 1);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(colors.ink);
+  doc.text("Jornada da operacao", page.margin, timelineY);
+
+  const lineY = timelineY + 18;
+  doc.setDrawColor(colors.line);
+  doc.line(page.margin + 4, lineY, page.width - page.margin - 4, lineY);
+
+  items.forEach((item, index) => {
+    const x = page.margin + index * stepGap;
+    doc.setFillColor(index === 0 ? colors.primary : colors.white);
+    doc.setDrawColor(colors.primary);
+    doc.circle(x, lineY, 2.4, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(colors.ink);
+    doc.text(item.label, x, lineY + 9, {
+      align: "center",
+      maxWidth: 32,
+    });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.6);
+    doc.setTextColor(colors.muted);
+    doc.text(item.note, x, lineY + 16, {
+      align: "center",
+      maxWidth: 32,
+    });
+  });
+
+  return timelineY + 44;
 }
 
 function drawSectionWithPageBreak(
@@ -427,7 +666,7 @@ function ensureSpace(doc: jsPDF, y: number, neededHeight: number) {
   }
 
   doc.addPage();
-  drawHeader(doc, "Relatorio comercial");
+  drawHeader(doc, "Proposta patrimonial");
 
   return 42;
 }
@@ -529,6 +768,158 @@ function drawWealthJourneySection(
   ]);
 }
 
+function hasWealthJourneyContent(journey: WealthJourney) {
+  return (
+    journey.currentWealth > 0 ||
+    journey.targetWealth > 0 ||
+    journey.missingWealth > 0 ||
+    journey.requiredProperties > 0 ||
+    journey.requiredLetters > 0
+  );
+}
+
+function isTextAlreadyRenderedAsProposalNarrative(
+  text: string,
+  proposalContext: ResolvedCommercialProposalContext,
+) {
+  const normalizedText = normalizeComparableText(text);
+
+  if (!normalizedText || !proposalContext.hasCustomNarrative) {
+    return false;
+  }
+
+  return (
+    normalizedText === normalizeComparableText(proposalContext.recommendation) ||
+    normalizedText === normalizeComparableText(proposalContext.rationale)
+  );
+}
+
+function normalizeCommercialConsultingConditions(
+  conditions: PdfCommercialConsultingConditions | null | undefined,
+): PdfCommercialConsultingConditions | null {
+  if (
+    !conditions ||
+    !Number.isFinite(conditions.installments) ||
+    !Number.isFinite(conditions.installmentAmount) ||
+    !Number.isFinite(conditions.totalAmount) ||
+    conditions.installments <= 0 ||
+    conditions.installmentAmount <= 0 ||
+    conditions.totalAmount <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    installmentAmount: conditions.installmentAmount,
+    installments: Math.trunc(conditions.installments),
+    totalAmount: conditions.totalAmount,
+  };
+}
+
+function drawInstitutionalSection(doc: jsPDF, y: number) {
+  const text =
+    "A Patrion conduz esta leitura com foco em clareza, disciplina de " +
+    "execucao e alinhamento entre capacidade financeira, credito planejado " +
+    "e objetivos patrimoniais. Esta proposta deve orientar a conversa " +
+    "comercial e apoiar a tomada de decisao do cliente.";
+
+  return drawTextPanel(doc, y, "Orientacao consultiva", text);
+}
+
+function drawCommercialConsultingConditionsSection(
+  doc: jsPDF,
+  y: number,
+  conditions: PdfCommercialConsultingConditions,
+) {
+  const sectionY = ensureSpace(doc, y, 62);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(colors.ink);
+  doc.text("Condicoes Comerciais", page.margin, sectionY);
+
+  const panelY = sectionY + 7;
+  doc.setFillColor(colors.white);
+  doc.setDrawColor(colors.line);
+  doc.roundedRect(
+    page.margin,
+    panelY,
+    page.width - page.margin * 2,
+    47,
+    2,
+    2,
+    "FD",
+  );
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(colors.primary);
+  doc.text(
+    "Investimento em Consultoria Patrimonial",
+    page.margin + 5,
+    panelY + 8,
+  );
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(colors.muted);
+  doc.text("Parcelamento", page.margin + 5, panelY + 18);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(colors.ink);
+  doc.text(
+    `${conditions.installments} x ${currencyFormatter.format(
+      conditions.installmentAmount,
+    )}`,
+    page.margin + 5,
+    panelY + 26,
+  );
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(colors.muted);
+  doc.text("Total", page.width - page.margin - 5, panelY + 18, {
+    align: "right",
+  });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(colors.primary);
+  doc.text(
+    currencyFormatter.format(conditions.totalAmount),
+    page.width - page.margin - 5,
+    panelY + 27,
+    { align: "right" },
+  );
+
+  doc.setFillColor(colors.panelStrong);
+  doc.setDrawColor(colors.primary);
+  doc.roundedRect(
+    page.margin + 5,
+    panelY + 33,
+    page.width - page.margin * 2 - 10,
+    10,
+    2,
+    2,
+    "FD",
+  );
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(colors.primary);
+  doc.text("Condicao Especial Patrion", page.margin + 9, panelY + 39);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.2);
+  doc.setTextColor(colors.ink);
+  doc.text(
+    "Fechando esta proposta em ate 7 dias corridos, o investimento referente a consultoria patrimonial sera integralmente isentado.",
+    page.margin + 50,
+    panelY + 39,
+    { maxWidth: page.width - page.margin * 2 - 60 },
+  );
+
+  return sectionY + 62;
+}
+
 function drawIntelligenceSummarySection(
   doc: jsPDF,
   y: number,
@@ -552,7 +943,7 @@ function drawIntelligenceSummarySection(
   sectionY = drawTextListPanel(
     doc,
     sectionY + 4,
-    "Principais Insights",
+    "Beneficios",
     summary.insights,
   );
   sectionY = drawTextListPanel(
@@ -740,4 +1131,8 @@ function formatPdfDate(isoDate: string) {
 
 function normalizePdfText(value: string | undefined) {
   return value?.trim() ?? "";
+}
+
+function normalizeComparableText(value: string | undefined) {
+  return normalizePdfText(value).replace(/\s+/g, " ").toLowerCase();
 }

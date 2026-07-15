@@ -49,7 +49,11 @@ import {
   type SimulatorSavedSimulation,
   type SimulatorScenarioKey,
 } from "@/modules/simulator";
-import { generateSimulatorCommercialPdf } from "@/modules/reports";
+import {
+  generateSimulatorCommercialPdf,
+  type PdfCommercialConsultingConditions,
+  type PdfCommercialProposalContext,
+} from "@/modules/reports";
 import {
   buildIntelligenceSummary,
   type IntelligenceSummary,
@@ -104,8 +108,10 @@ type CommercialProposalSaveKind = AnchoredProposal["kind"];
 type CommercialProposalSaveVariant = "suggestion" | "customized";
 
 type CommercialProposalSaveRecord = {
+  commercialProposal?: PdfCommercialProposalContext;
   kind: CommercialProposalSaveKind;
   message: string;
+  proposal?: AnchoredProposal;
   proposalId: string | null;
   savedAt: string | null;
   status: Exclude<LeadSimulationSaveStatus, "idle">;
@@ -117,6 +123,16 @@ type CommercialProposalSaveState = {
   records: Partial<Record<CommercialProposalSaveKind, CommercialProposalSaveRecord>>;
   status: LeadSimulationSaveStatus;
 };
+
+type CommercialConsultingConditionsState = {
+  enabled: boolean;
+  installmentAmount: string;
+  installments: string;
+};
+
+type CommercialConsultingConditionsByKind = Partial<
+  Record<CommercialProposalSaveKind, CommercialConsultingConditionsState>
+>;
 
 type CommercialProposalEditorDraft = {
   bidType: BidType;
@@ -188,6 +204,13 @@ const initialFormState: SimulatorFormState = {
   embeddedBidPercent: "25",
   cashBidPercent: "25",
 };
+
+const initialCommercialConsultingConditions: CommercialConsultingConditionsState =
+  {
+    enabled: false,
+    installmentAmount: "500",
+    installments: "12",
+  };
 
 const emptyWealthInput: WealthEvolutionInput = {
   currentWealth: 0,
@@ -278,6 +301,10 @@ export function SimulatorPanel({
       records: {},
       status: "idle",
     });
+  const [
+    commercialConsultingConditionsByKind,
+    setCommercialConsultingConditionsByKind,
+  ] = useState<CommercialConsultingConditionsByKind>({});
   const [commercialProposalEditor, setCommercialProposalEditor] =
     useState<CommercialProposalEditorState | null>(null);
   const [anchoredProposals, setAnchoredProposals] = useState<
@@ -459,8 +486,20 @@ export function SimulatorPanel({
       return;
     }
 
+    const leadName = normalizeOptionalText(leadProposalContext.leadName);
     const desiredCredit = leadProposalContext.leadDesiredCredit;
     const contextSignature = `${leadProposalContext.leadId}:${leadProposalContext.createdAt}`;
+
+    if (leadName) {
+      setCommercialData((currentCommercialData) =>
+        currentCommercialData.clientName === leadName
+          ? currentCommercialData
+          : {
+              ...currentCommercialData,
+              clientName: leadName,
+            },
+      );
+    }
 
     if (
       appliedLeadCreditContextRef.current === contextSignature ||
@@ -582,6 +621,10 @@ export function SimulatorPanel({
           current.sourceProposal.kind === sourceProposalKind
             ? {
                 ...current,
+                draft: synchronizeCommercialProposalEditorDraftWithPreview(
+                  current.draft,
+                  preview,
+                ),
                 message: "Previa recalculada pelo simulador.",
                 preview,
                 status: "idle",
@@ -621,6 +664,9 @@ export function SimulatorPanel({
           activeSimulationId={activeSimulationId}
           bidType={bidType}
           commercialData={commercialData}
+          commercialConsultingConditionsByKind={
+            commercialConsultingConditionsByKind
+          }
           formState={formState}
           insuranceOption={insuranceOption}
           intelligenceSummary={intelligenceSummary}
@@ -636,13 +682,16 @@ export function SimulatorPanel({
           commercialProposalSaveState={commercialProposalSaveState}
           personalizationSource={personalizationSource}
           onCommercialDataChange={updateCommercialData}
+          onCommercialConsultingConditionsChange={
+            updateCommercialConsultingConditions
+          }
           onContemplationMonthChange={updateContemplationMonth}
           onFormStateChange={updateFormState}
           onCustomizeAnchoredProposal={handleCustomizeAnchoredProposal}
           onGenerateAnchoredProposals={handleGenerateAnchoredProposals}
+          onGenerateAnchoredProposalPdf={handleGenerateAnchoredProposalPdf}
           onGeneratePdf={handleGeneratePdf}
           onInsuranceOptionChange={handleSelectInsuranceOption}
-          onSaveAnchoredProposal={handleSaveAnchoredProposal}
           onSaveLeadSimulation={handleSaveLeadSimulation}
           onSaveSimulation={handleSaveSimulation}
           onScenarioChange={setSelectedScenarioKey}
@@ -726,6 +775,29 @@ export function SimulatorPanel({
     setCommercialData((current) => ({ ...current, ...partialState }));
   }
 
+  function updateCommercialConsultingConditions(
+    kind: CommercialProposalSaveKind,
+    partialState: Partial<CommercialConsultingConditionsState>,
+  ) {
+    setCommercialConsultingConditionsByKind((current) => ({
+      ...current,
+      [kind]: {
+        ...initialCommercialConsultingConditions,
+        ...(current[kind] ?? {}),
+        ...partialState,
+      },
+    }));
+  }
+
+  function getCommercialConsultingConditions(
+    kind: CommercialProposalSaveKind,
+  ): CommercialConsultingConditionsState {
+    return (
+      commercialConsultingConditionsByKind[kind] ??
+      initialCommercialConsultingConditions
+    );
+  }
+
   function updateAdministratorDraft(
     partialState: Partial<SimulatorAdministrator>,
   ) {
@@ -758,10 +830,23 @@ export function SimulatorPanel({
   }
 
   function handleGeneratePdf() {
+    const commercialProposal = resolveActivePdfCommercialProposal(
+      commercialProposalSaveState,
+    );
+    const activeProposalKind = commercialProposalSaveState.activeKind;
+    const commercialConsultingConditionsPayload =
+      activeProposalKind !== null
+        ? toPdfCommercialConsultingConditions(
+            getCommercialConsultingConditions(activeProposalKind),
+          )
+        : null;
+
     generateSimulatorCommercialPdf({
       presentation,
       simulationName,
       commercialData,
+      commercialConsultingConditions: commercialConsultingConditionsPayload,
+      commercialProposal,
       intelligenceSummary,
       wealthJourney: getCurrentWealthJourney(),
       simulationDate:
@@ -880,6 +965,12 @@ export function SimulatorPanel({
     const referenceInstallment = parseCurrencyNumber(comfortableInstallment);
 
     setPersonalizationSource(null);
+    setCommercialProposalSaveState({
+      activeKind: null,
+      records: {},
+      status: "idle",
+    });
+    setCommercialConsultingConditionsByKind({});
     setAnchoredProposals(
       buildAnchoredProposals({
         referenceInstallment,
@@ -893,21 +984,23 @@ export function SimulatorPanel({
     );
   }
 
-  async function handleSaveAnchoredProposal(proposal: AnchoredProposal) {
+  async function saveAnchoredProposalForPdf(
+    proposal: AnchoredProposal,
+  ): Promise<CommercialProposalSaveRecord | null> {
     if (!leadProposalContext?.leadId) {
       setCommercialProposalSaveRecord({
         kind: proposal.kind,
-        message: "Abra a proposta a partir de um lead antes de salvar.",
+        message: "Abra a proposta a partir de um lead antes de gerar o PDF.",
         proposalId: null,
         savedAt: null,
         status: "error",
         variant: "suggestion",
       });
-      return;
+      return null;
     }
 
     if (commercialProposalSaveState.status === "saving") {
-      return;
+      return null;
     }
 
     setCommercialProposalSaveRecord({
@@ -930,7 +1023,7 @@ export function SimulatorPanel({
         status: "error",
         variant: "suggestion",
       });
-      return;
+      return null;
     }
 
     try {
@@ -944,6 +1037,8 @@ export function SimulatorPanel({
         },
         originalSnapshot: buildAnchoredProposalSnapshot({
           bidType,
+          commercialConsultingConditions:
+            getCommercialConsultingConditions(proposal.kind),
           commercialData,
           formState,
           insuranceOption,
@@ -953,6 +1048,8 @@ export function SimulatorPanel({
         }),
         savedSnapshot: buildAnchoredProposalSnapshot({
           bidType,
+          commercialConsultingConditions:
+            getCommercialConsultingConditions(proposal.kind),
           commercialData,
           formState,
           insuranceOption,
@@ -970,14 +1067,24 @@ export function SimulatorPanel({
       setSavedSimulations(loadSavedSimulations());
       setSimulationName((currentName) => currentName || savedSimulation.name);
       linkSimulationToLeadContext(savedSimulation);
-      setCommercialProposalSaveRecord({
+      const saveRecord: CommercialProposalSaveRecord = {
+        commercialProposal: buildPdfCommercialProposalContext({
+          commercialData,
+          proposal,
+          proposalId: createdProposal.id,
+          title,
+          variant: "suggestion",
+        }),
         kind: proposal.kind,
-        message: "Proposta salva no Lead.",
+        message: "Proposta salva no Lead. PDF gerado.",
+        proposal,
         proposalId: createdProposal.id,
         savedAt: createdProposal.createdAt,
         status: "success",
         variant: "suggestion",
-      });
+      };
+      setCommercialProposalSaveRecord(saveRecord);
+      return saveRecord;
     } catch (error) {
       setCommercialProposalSaveRecord({
         kind: proposal.kind,
@@ -990,7 +1097,63 @@ export function SimulatorPanel({
         status: "error",
         variant: "suggestion",
       });
+      return null;
     }
+  }
+
+  async function handleGenerateAnchoredProposalPdf(proposal: AnchoredProposal) {
+    const existingRecord = commercialProposalSaveState.records[proposal.kind];
+    const saveRecord =
+      existingRecord?.status === "success"
+        ? existingRecord
+        : await saveAnchoredProposalForPdf(proposal);
+
+    if (!saveRecord || saveRecord.status !== "success") {
+      return;
+    }
+
+    const proposalForPdf = saveRecord.proposal ?? proposal;
+    const proposalCommercialData = {
+      ...commercialData,
+      commercialNotes:
+        saveRecord.commercialProposal?.recommendation ??
+        commercialData.commercialNotes,
+    };
+
+    generateSimulatorCommercialPdf({
+      presentation: proposalForPdf.presentation,
+      simulationName:
+        saveRecord.commercialProposal?.title ??
+        buildAnchoredProposalName(simulationName, proposalForPdf.label),
+      commercialData: proposalCommercialData,
+      commercialConsultingConditions: toPdfCommercialConsultingConditions(
+        getCommercialConsultingConditions(proposal.kind),
+      ),
+      commercialProposal:
+        saveRecord.commercialProposal ??
+        buildPdfCommercialProposalContext({
+          commercialData: proposalCommercialData,
+          proposal: proposalForPdf,
+          proposalId: saveRecord.proposalId ?? "",
+          title: buildAnchoredProposalName(
+            simulationName,
+            proposalForPdf.label,
+          ),
+          variant: saveRecord.variant,
+        }),
+      intelligenceSummary: buildIntelligenceSummary({
+        presentation: proposalForPdf.presentation,
+        selectedScenarioKey: proposalForPdf.scenarioKey,
+        administratorInsuranceRequired: Boolean(
+          selectedAdministrator?.insuranceRequired,
+        ),
+        bidType: proposalForPdf.presentation.bidType,
+        embeddedBidRate: proposalForPdf.input.embeddedBidRate ?? 0,
+        cashBidRate: proposalForPdf.input.cashBidRate ?? 0,
+      }),
+      wealthJourney: getCurrentWealthJourney(),
+      simulationDate: saveRecord.savedAt ?? new Date().toISOString(),
+    });
   }
 
   function setCommercialProposalSaveRecord(
@@ -1102,6 +1265,9 @@ export function SimulatorPanel({
         },
         originalSnapshot: buildAnchoredProposalSnapshot({
           bidType,
+          commercialConsultingConditions: getCommercialConsultingConditions(
+            sourceProposal.kind,
+          ),
           commercialData,
           formState,
           insuranceOption,
@@ -1111,6 +1277,9 @@ export function SimulatorPanel({
         }),
         savedSnapshot: buildAnchoredProposalSnapshot({
           bidType: savedProposal.presentation.bidType,
+          commercialConsultingConditions: getCommercialConsultingConditions(
+            sourceProposal.kind,
+          ),
           commercialData,
           formState,
           insuranceOption: commercialProposalEditor.draft.insuranceOption,
@@ -1124,8 +1293,16 @@ export function SimulatorPanel({
       });
 
       setCommercialProposalSaveRecord({
+        commercialProposal: buildPdfCommercialProposalContext({
+          commercialData,
+          proposal: savedProposal,
+          proposalId: createdProposal.id,
+          title,
+          variant: "customized",
+        }),
         kind: sourceProposal.kind,
         message: "Versao personalizada salva no Lead.",
+        proposal: savedProposal,
         proposalId: createdProposal.id,
         savedAt: createdProposal.createdAt,
         status: "success",
@@ -1325,6 +1502,7 @@ function SimulationOperationPanel({
   activeSimulationId,
   bidType,
   commercialData,
+  commercialConsultingConditionsByKind,
   formState,
   insuranceOption,
   intelligenceSummary,
@@ -1340,13 +1518,14 @@ function SimulationOperationPanel({
   commercialProposalSaveState,
   personalizationSource,
   onCommercialDataChange,
+  onCommercialConsultingConditionsChange,
   onContemplationMonthChange,
   onCustomizeAnchoredProposal,
   onFormStateChange,
   onGenerateAnchoredProposals,
+  onGenerateAnchoredProposalPdf,
   onGeneratePdf,
   onInsuranceOptionChange,
-  onSaveAnchoredProposal,
   onSaveLeadSimulation,
   onSaveSimulation,
   onScenarioChange,
@@ -1360,6 +1539,7 @@ function SimulationOperationPanel({
   activeSimulationId: string | null;
   bidType: BidType;
   commercialData: SimulatorCommercialData;
+  commercialConsultingConditionsByKind: CommercialConsultingConditionsByKind;
   formState: SimulatorFormState;
   insuranceOption: InsuranceOption;
   intelligenceSummary: IntelligenceSummary;
@@ -1375,13 +1555,17 @@ function SimulationOperationPanel({
   commercialProposalSaveState: CommercialProposalSaveState;
   personalizationSource: AnchoredPersonalizationSource | null;
   onCommercialDataChange: (state: Partial<SimulatorCommercialData>) => void;
+  onCommercialConsultingConditionsChange: (
+    kind: CommercialProposalSaveKind,
+    state: Partial<CommercialConsultingConditionsState>,
+  ) => void;
   onContemplationMonthChange: (month: number) => void;
   onCustomizeAnchoredProposal: (proposal: AnchoredProposal) => void;
   onFormStateChange: (state: Partial<SimulatorFormState>) => void;
   onGenerateAnchoredProposals: () => void;
+  onGenerateAnchoredProposalPdf: (proposal: AnchoredProposal) => void;
   onGeneratePdf: () => void;
   onInsuranceOptionChange: (option: InsuranceOption) => void;
-  onSaveAnchoredProposal: (proposal: AnchoredProposal) => void;
   onSaveLeadSimulation: () => void;
   onSaveSimulation: () => void;
   onScenarioChange: (scenario: SimulatorScenarioKey) => void;
@@ -1618,6 +1802,9 @@ function SimulationOperationPanel({
         />
 
         <AnchoredProposalsSection
+          commercialConsultingConditionsByKind={
+            commercialConsultingConditionsByKind
+          }
           commercialProposalSaveState={commercialProposalSaveState}
           comfortableInstallment={comfortableInstallment}
           isHighlighted={leadProposalContext?.intent === "proposal"}
@@ -1625,7 +1812,10 @@ function SimulationOperationPanel({
           onComfortableInstallmentChange={onSetComfortableInstallment}
           onCustomizeProposal={onCustomizeAnchoredProposal}
           onGenerate={onGenerateAnchoredProposals}
-          onSaveProposal={onSaveAnchoredProposal}
+          onGenerateProposalPdf={onGenerateAnchoredProposalPdf}
+          onProposalConsultingConditionsChange={
+            onCommercialConsultingConditionsChange
+          }
         />
 
         <section className="rounded-md border bg-primary/[0.03] p-5 text-card-foreground">
@@ -1665,6 +1855,7 @@ function SimulationOperationPanel({
 }
 
 function AnchoredProposalsSection({
+  commercialConsultingConditionsByKind,
   commercialProposalSaveState,
   comfortableInstallment,
   isHighlighted = false,
@@ -1672,8 +1863,10 @@ function AnchoredProposalsSection({
   onComfortableInstallmentChange,
   onCustomizeProposal,
   onGenerate,
-  onSaveProposal,
+  onGenerateProposalPdf,
+  onProposalConsultingConditionsChange,
 }: {
+  commercialConsultingConditionsByKind: CommercialConsultingConditionsByKind;
   commercialProposalSaveState: CommercialProposalSaveState;
   comfortableInstallment: string;
   isHighlighted?: boolean;
@@ -1681,7 +1874,11 @@ function AnchoredProposalsSection({
   onComfortableInstallmentChange: (value: string) => void;
   onCustomizeProposal: (proposal: AnchoredProposal) => void;
   onGenerate: () => void;
-  onSaveProposal: (proposal: AnchoredProposal) => void;
+  onGenerateProposalPdf: (proposal: AnchoredProposal) => void;
+  onProposalConsultingConditionsChange: (
+    kind: CommercialProposalSaveKind,
+    state: Partial<CommercialConsultingConditionsState>,
+  ) => void;
 }) {
   return (
     <section
@@ -1721,6 +1918,9 @@ function AnchoredProposalsSection({
       {proposals.length > 0 ? (
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
           {proposals.map((proposal) => {
+            const consultingConditions =
+              commercialConsultingConditionsByKind[proposal.kind] ??
+              initialCommercialConsultingConditions;
             const proposalSaveRecord =
               commercialProposalSaveState.records[proposal.kind];
             const isSavingProposal =
@@ -1781,12 +1981,18 @@ function AnchoredProposalsSection({
                   </SecondaryActionButton>
                   <SecondaryActionButton
                     disabled={commercialProposalSaveState.status === "saving"}
-                    onClick={() => onSaveProposal(proposal)}
+                    onClick={() => onGenerateProposalPdf(proposal)}
                   >
-                    <Save className="h-4 w-4" aria-hidden="true" />
-                    {isSavingProposal ? "Salvando..." : "Salvar proposta"}
+                    <FileDown className="h-4 w-4" aria-hidden="true" />
+                    {isSavingProposal ? "Preparando..." : "Gerar PDF"}
                   </SecondaryActionButton>
                 </div>
+                <CommercialConsultingConditionsSection
+                  conditions={consultingConditions}
+                  onChange={(state) =>
+                    onProposalConsultingConditionsChange(proposal.kind, state)
+                  }
+                />
                 {proposalSaveRecord?.message ? (
                   <p
                     className={cn(
@@ -1838,6 +2044,72 @@ function AnchoredProposalValue({
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+function CommercialConsultingConditionsSection({
+  conditions,
+  onChange,
+}: {
+  conditions: CommercialConsultingConditionsState;
+  onChange: (state: Partial<CommercialConsultingConditionsState>) => void;
+}) {
+  const totalAmount = calculateCommercialConsultingTotal(conditions);
+
+  return (
+    <div className="border-t pt-3">
+      <div className="flex flex-col gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Condicoes comerciais
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <input
+            checked={conditions.enabled}
+            className="h-4 w-4 accent-primary"
+            onChange={(event) => onChange({ enabled: event.target.checked })}
+            type="checkbox"
+          />
+          Incluir consultoria patrimonial
+        </label>
+      </div>
+
+      {conditions.enabled ? (
+        <div className="mt-4 grid gap-3">
+          <div className="grid gap-3">
+            <SimulatorInputField
+              label="Quantidade de parcelas"
+              onChange={(installments) => onChange({ installments })}
+              value={conditions.installments}
+            />
+            <SimulatorInputField
+              label="Valor da parcela"
+              onChange={(installmentAmount) => onChange({ installmentAmount })}
+              value={conditions.installmentAmount}
+            />
+            <div className="rounded-md border bg-card p-3">
+              <p className="text-xs text-muted-foreground">
+                Total da consultoria
+              </p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {currencyFormatter.format(totalAmount)}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-md border bg-primary/[0.04] p-3">
+            <p className="text-sm font-semibold text-foreground">
+              Condicao Especial Patrion
+            </p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Fechando esta proposta em ate 7 dias corridos, o investimento
+              referente a consultoria patrimonial sera integralmente isentado.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2942,6 +3214,34 @@ function buildCommercialProposalEditorRequest(
   };
 }
 
+function synchronizeCommercialProposalEditorDraftWithPreview(
+  draft: CommercialProposalEditorDraft,
+  preview: CommercialProposalEditorCalculationResult,
+): CommercialProposalEditorDraft {
+  if (draft.lastEditedAmountField === "targetInstallment") {
+    const nextCredit = formatEditorCurrencyValue(preview.input.credit);
+
+    return draft.credit === nextCredit ? draft : { ...draft, credit: nextCredit };
+  }
+
+  const nextTargetInstallment = formatEditorCurrencyValue(
+    preview.presentation.installmentBeforeContemplation,
+  );
+
+  return draft.targetInstallment === nextTargetInstallment
+    ? draft
+    : { ...draft, targetInstallment: nextTargetInstallment };
+}
+
+function formatEditorCurrencyValue(value: number) {
+  return Number.isFinite(value) && value > 0
+    ? value.toLocaleString("pt-BR", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      })
+    : "";
+}
+
 function parsePositiveIntegerOrNull(value: string) {
   const parsedValue = Number(value.replace(",", "."));
 
@@ -3064,6 +3364,7 @@ function buildLeadSimulationApiPayload({
 
 function buildAnchoredProposalSnapshot({
   bidType,
+  commercialConsultingConditions,
   commercialData,
   formState,
   insuranceOption,
@@ -3072,6 +3373,7 @@ function buildAnchoredProposalSnapshot({
   selectedAdministrator,
 }: {
   bidType: BidType;
+  commercialConsultingConditions: CommercialConsultingConditionsState;
   commercialData: SimulatorCommercialData;
   formState: SimulatorFormState;
   insuranceOption: InsuranceOption;
@@ -3083,6 +3385,9 @@ function buildAnchoredProposalSnapshot({
     input: proposal.input,
     metadata: {
       bidType,
+      commercialConsultingConditions: toPdfCommercialConsultingConditions(
+        commercialConsultingConditions,
+      ),
       comfortableInstallment: proposal.referenceInstallment,
       distanceFromReference: proposal.distanceFromReference,
       insuranceOption,
@@ -3190,6 +3495,86 @@ function buildAnchoredProposalName(baseName: string, proposalLabel: string) {
   }
 
   return `Proposta ${proposalLabel}`;
+}
+
+function resolveActivePdfCommercialProposal(
+  saveState: CommercialProposalSaveState,
+): PdfCommercialProposalContext | undefined {
+  if (!saveState.activeKind) {
+    return undefined;
+  }
+
+  const activeRecord = saveState.records[saveState.activeKind];
+
+  if (activeRecord?.status !== "success") {
+    return undefined;
+  }
+
+  return activeRecord.commercialProposal;
+}
+
+function toPdfCommercialConsultingConditions(
+  conditions: CommercialConsultingConditionsState,
+): PdfCommercialConsultingConditions | null {
+  if (!conditions.enabled) {
+    return null;
+  }
+
+  const installments = parsePositiveInteger(conditions.installments);
+  const installmentAmount = parseCurrencyNumber(conditions.installmentAmount);
+
+  if (!installments || installmentAmount <= 0) {
+    return null;
+  }
+
+  return {
+    installmentAmount,
+    installments,
+    totalAmount: installments * installmentAmount,
+  };
+}
+
+function calculateCommercialConsultingTotal(
+  conditions: CommercialConsultingConditionsState,
+) {
+  const installments = parsePositiveInteger(conditions.installments) ?? 0;
+  const installmentAmount = parseCurrencyNumber(conditions.installmentAmount);
+
+  return installments * installmentAmount;
+}
+
+function parsePositiveInteger(value: string) {
+  const parsedValue = Number(value.replace(",", "."));
+
+  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
+}
+
+function buildPdfCommercialProposalContext({
+  commercialData,
+  proposal,
+  proposalId,
+  title,
+  variant,
+}: {
+  commercialData: SimulatorCommercialData;
+  proposal: AnchoredProposal;
+  proposalId: string;
+  title: string;
+  variant: CommercialProposalSaveVariant;
+}): PdfCommercialProposalContext {
+  return {
+    kind: proposal.kind,
+    proposalId,
+    recommendation:
+      normalizeOptionalText(commercialData.commercialNotes) ||
+      normalizeOptionalText(proposal.objective),
+    title,
+    variant,
+  };
+}
+
+function normalizeOptionalText(value: string | undefined) {
+  return value?.trim() ?? "";
 }
 
 function percentToRate(value: string) {
