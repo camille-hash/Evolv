@@ -53,67 +53,80 @@ export function CrmExecutiveDashboard({
       ) : null}
       {operationalDataError ? <DashboardNotice text={operationalDataError} /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <DistributionPanel
-          items={data.temperatures}
-          title="Distribuicao de Temperaturas"
-          total={data.leads.total}
-        />
-        <DistributionPanel
-          emptyText="Nenhuma etapa encontrada na base atual."
-          items={data.stages}
-          title="Distribuicao por Etapa"
-          total={data.leads.total}
-        />
-      </div>
+      <div className="columns-1 gap-4 lg:columns-2 2xl:columns-3">
+        <div className="mb-4 break-inside-avoid">
+          <DistributionPanel
+            density="compact"
+            items={data.temperatures}
+            title="Distribuicao de Temperaturas"
+            total={data.leads.total}
+          />
+        </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <ExecutiveGroup title="Check Points">
-          <GroupMetric
-            label="Leads com Check Points"
-            value={operationalValue(data.checkpoints.leadsWithCheckpoints)}
+        <div className="mb-4 break-inside-avoid">
+          <DistributionPanel
+            emptyText="Nenhuma etapa encontrada na base atual."
+            emphasis
+            items={data.stages}
+            title="Distribuicao por Etapa"
+            total={data.leads.total}
           />
-          <GroupMetric
-            label="Leads sem Check Points"
-            value={operationalValue(data.checkpoints.leadsWithoutCheckpoints)}
-          />
-          <GroupMetric
-            label="Total de Check Points encontrados"
-            value={operationalValue(data.checkpoints.totalCheckpoints)}
-          />
-        </ExecutiveGroup>
+        </div>
 
-        <ExecutiveGroup title="Simulacoes">
-          {isSimulationDataLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando simulacoes...</p>
-          ) : null}
-          {simulationDataError ? (
-            <p className="text-sm text-muted-foreground">{simulationDataError}</p>
-          ) : null}
-          <GroupMetric
-            label="Leads simulados"
-            value={simulationValue(data.simulations.leadsSimulated)}
-          />
-          <GroupMetric
-            label="Total de simulacoes"
-            value={simulationValue(data.simulations.totalSimulations)}
-          />
-          <GroupMetric
-            label="Leads com Multi-Cotas"
-            value={simulationValue(data.simulations.leadsWithMultiCotas)}
-          />
-        </ExecutiveGroup>
+        <div className="mb-4 break-inside-avoid">
+          <ExecutiveGroup title="Check Points">
+            <GroupMetric
+              label="Leads com Check Points"
+              value={operationalValue(data.checkpoints.leadsWithCheckpoints)}
+            />
+            <GroupMetric
+              label="Leads sem Check Points"
+              value={operationalValue(data.checkpoints.leadsWithoutCheckpoints)}
+            />
+            <GroupMetric
+              label="Total de Check Points encontrados"
+              value={operationalValue(data.checkpoints.totalCheckpoints)}
+            />
+          </ExecutiveGroup>
+        </div>
 
-        <ExecutiveGroup title="Atividade Recente">
-          <GroupMetric
-            label="Atualizados nos ultimos 30 dias"
-            value={String(data.activity.recentlyUpdated)}
-          />
-          <GroupMetric
-            label="Sem atualizacao nos ultimos 30 dias"
-            value={String(data.activity.withoutRecentUpdate)}
-          />
-        </ExecutiveGroup>
+        <div className="mb-4 break-inside-avoid">
+          <ExecutiveGroup title="Simulacoes">
+            {isSimulationDataLoading ? (
+              <p className="text-sm text-muted-foreground">
+                Carregando simulacoes...
+              </p>
+            ) : null}
+            {simulationDataError ? (
+              <p className="text-sm text-muted-foreground">{simulationDataError}</p>
+            ) : null}
+            <GroupMetric
+              label="Leads simulados"
+              value={simulationValue(data.simulations.leadsSimulated)}
+            />
+            <GroupMetric
+              label="Total de simulacoes"
+              value={simulationValue(data.simulations.totalSimulations)}
+            />
+            <GroupMetric
+              label="Leads com Multi-Cotas"
+              value={simulationValue(data.simulations.leadsWithMultiCotas)}
+            />
+          </ExecutiveGroup>
+        </div>
+
+        <div className="mb-4 break-inside-avoid">
+          <ExecutiveGroup title="Atividade Recente">
+            <GroupMetric
+              label="Atualizados nos ultimos 30 dias"
+              value={String(data.activity.recentlyUpdated)}
+            />
+            <GroupMetric
+              label="Sem atualizacao nos ultimos 30 dias"
+              value={String(data.activity.withoutRecentUpdate)}
+            />
+          </ExecutiveGroup>
+        </div>
       </div>
     </section>
   );
@@ -142,21 +155,37 @@ function ExecutiveMetricCard({
 }
 
 function DistributionPanel({
+  density = "standard",
   emptyText = "Nenhum dado encontrado.",
+  emphasis = false,
   items,
   title,
   total,
 }: {
+  density?: "compact" | "standard";
   emptyText?: string;
-  items: CrmExecutiveDashboardReadModel["temperatures"];
+  emphasis?: boolean;
+  items: Array<{ count: number; key: string; label: string }>;
   title: string;
   total: number;
 }) {
+  const isCompact = density === "compact";
+
   return (
-    <section className="executive-surface rounded-md p-5 sm:p-6">
-      <h3 className="text-base font-semibold text-foreground">{title}</h3>
+    <section
+      className={`executive-surface rounded-md ${
+        isCompact ? "p-4 sm:p-5" : "p-5 sm:p-6"
+      } ${emphasis ? "ring-1 ring-primary/10" : ""}`}
+    >
+      <h3
+        className={`font-semibold text-foreground ${
+          isCompact ? "text-sm" : "text-base"
+        }`}
+      >
+        {title}
+      </h3>
       {items.length > 0 ? (
-        <div className="mt-5 grid gap-4">
+        <div className={`${isCompact ? "mt-3 grid gap-3" : "mt-5 grid gap-4"}`}>
           {items.map((item) => {
             const width = total > 0 ? (item.count / total) * 100 : 0;
 
@@ -166,7 +195,11 @@ function DistributionPanel({
                   <span className="text-foreground">{item.label}</span>
                   <span className="font-semibold text-foreground">{item.count}</span>
                 </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`mt-2 overflow-hidden rounded-full bg-muted ${
+                    isCompact ? "h-1.5" : "h-2"
+                  }`}
+                >
                   <div
                     className="h-full rounded-full bg-primary"
                     style={{ width: `${width}%` }}
