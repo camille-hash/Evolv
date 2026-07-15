@@ -1721,33 +1721,61 @@ function SimulationOperationPanel({
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <CommercialMetric
-            label="Credito"
-            value={currencyFormatter.format(presentation.commercialCredit)}
-            featured
-          />
-          <CommercialMetric
-            label="Parcela antes"
-            value={currencyFormatter.format(
-              presentation.installmentBeforeContemplation,
-            )}
-            featured
-          />
-          <CommercialMetric
-            label="Parcela pos"
-            value={currencyFormatter.format(
-              presentation.installmentAfterContemplation,
-            )}
-            featured
-          />
-          <CommercialMetric
-            label="Lucro estimado"
-            value={currencyFormatter.format(
-              presentation.estimatedCardSaleProfit,
-            )}
-            featured
-          />
+        <section className="grid gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Estrutura da operacao
+            </p>
+            <div className="mt-3 grid gap-4 md:grid-cols-3">
+              <CommercialMetric
+                label="Credito"
+                value={currencyFormatter.format(presentation.commercialCredit)}
+                featured
+              />
+              <CommercialMetric
+                label="Parcela antes"
+                value={currencyFormatter.format(
+                  presentation.installmentBeforeContemplation,
+                )}
+                featured
+              />
+              <CommercialMetric
+                label="Parcela pos"
+                value={currencyFormatter.format(
+                  presentation.installmentAfterContemplation,
+                )}
+                featured
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Resultado da estrategia
+            </p>
+            <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <CommercialMetric
+                label="Valor investido"
+                value={currencyFormatter.format(presentation.realInvestment)}
+              />
+              <CommercialMetric
+                label="Valor de venda estimado da carta"
+                value={currencyFormatter.format(
+                  presentation.estimatedCardSaleValue,
+                )}
+              />
+              <CommercialMetric
+                label="Lucro estimado na venda da carta"
+                value={currencyFormatter.format(
+                  presentation.estimatedCardSaleProfit,
+                )}
+              />
+              <CommercialMetric
+                label="Percentual de lucro na venda da carta"
+                value={formatEstimatedCardSaleProfitRate(presentation)}
+              />
+            </div>
+          </div>
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -2572,13 +2600,13 @@ function SimulationResults({
           featured
         />
         <CommercialMetric
-          label="Lucro"
+          label="Lucro estimado na venda da carta"
           value={currencyFormatter.format(presentation.estimatedCardSaleProfit)}
           featured
         />
         <CommercialMetric
-          label="Percentual de ganho"
-          value={percentFormatter.format(presentation.estimatedCardSaleGainRate)}
+          label="Percentual de lucro na venda da carta"
+          value={formatEstimatedCardSaleProfitRate(presentation)}
         />
         <CommercialMetric
           label="Multiplo de alavancagem"
@@ -3151,6 +3179,20 @@ function parseCurrencyNumber(value: string) {
   const parsedValue = Number(normalized);
 
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+}
+
+function formatEstimatedCardSaleProfitRate(
+  presentation: SimulatorCommercialPresentation,
+) {
+  if (
+    !Number.isFinite(presentation.realInvestment) ||
+    presentation.realInvestment <= 0 ||
+    !Number.isFinite(presentation.estimatedCardSaleGainRate)
+  ) {
+    return "—";
+  }
+
+  return percentFormatter.format(presentation.estimatedCardSaleGainRate);
 }
 
 function buildCommercialProposalEditorRequest(
