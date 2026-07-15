@@ -38,6 +38,12 @@ export type AnchoredProposalInput = {
   selectedScenarioKey: SimulatorScenarioKey;
 };
 
+export type AnchoredProposalCreditAdjustmentInput = {
+  baseInstallment: number;
+  input: SimulatorInput;
+  targetInstallment: number;
+};
+
 const proposalDefinitions: Array<{
   kind: AnchoredProposalKind;
   label: string;
@@ -127,11 +133,19 @@ function buildAnchoredProposalInput({
   baseInstallment,
   input,
   targetInstallment,
-}: {
-  baseInstallment: number;
-  input: SimulatorInput;
-  targetInstallment: number;
-}): SimulatorInput {
+}: AnchoredProposalCreditAdjustmentInput): SimulatorInput {
+  return adjustSimulatorInputCreditForTargetInstallment({
+    baseInstallment,
+    input,
+    targetInstallment,
+  });
+}
+
+export function adjustSimulatorInputCreditForTargetInstallment({
+  baseInstallment,
+  input,
+  targetInstallment,
+}: AnchoredProposalCreditAdjustmentInput): SimulatorInput {
   if (baseInstallment <= 0 || targetInstallment <= 0) {
     return input;
   }

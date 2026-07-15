@@ -39,6 +39,7 @@ import {
   type BidType,
   type AnchoredProposal,
   type InsuranceOption,
+  type CommercialProposalEditorCalculationResult,
   type SimulatorAdministrator,
   type SimulatorCommercialPresentation,
   type SimulatorCommercialData,
@@ -98,10 +99,42 @@ type LeadSimulationSaveState = {
   status: LeadSimulationSaveStatus;
 };
 
-type CommercialProposalSaveState = {
-  kind: AnchoredProposal["kind"] | null;
+type CommercialProposalSaveKind = AnchoredProposal["kind"];
+
+type CommercialProposalSaveVariant = "suggestion" | "customized";
+
+type CommercialProposalSaveRecord = {
+  kind: CommercialProposalSaveKind;
   message: string;
+  proposalId: string | null;
+  savedAt: string | null;
+  status: Exclude<LeadSimulationSaveStatus, "idle">;
+  variant: CommercialProposalSaveVariant;
+};
+
+type CommercialProposalSaveState = {
+  activeKind: CommercialProposalSaveKind | null;
+  records: Partial<Record<CommercialProposalSaveKind, CommercialProposalSaveRecord>>;
   status: LeadSimulationSaveStatus;
+};
+
+type CommercialProposalEditorDraft = {
+  bidType: BidType;
+  contemplationMonth: string;
+  credit: string;
+  insuranceOption: InsuranceOption;
+  lastEditedAmountField: "credit" | "targetInstallment" | null;
+  scenarioKey: SimulatorScenarioKey;
+  targetInstallment: string;
+  termMonths: string;
+};
+
+type CommercialProposalEditorState = {
+  draft: CommercialProposalEditorDraft;
+  message: string;
+  preview: CommercialProposalEditorCalculationResult;
+  sourceProposal: AnchoredProposal;
+  status: "idle" | "calculating" | "saving" | "error" | "success";
 };
 
 export type SimulatorPanelPage =
@@ -241,10 +274,12 @@ export function SimulatorPanel({
     });
   const [commercialProposalSaveState, setCommercialProposalSaveState] =
     useState<CommercialProposalSaveState>({
-      kind: null,
-      message: "",
+      activeKind: null,
+      records: {},
       status: "idle",
     });
+  const [commercialProposalEditor, setCommercialProposalEditor] =
+    useState<CommercialProposalEditorState | null>(null);
   const [anchoredProposals, setAnchoredProposals] = useState<
     AnchoredProposal[]
   >([]);
@@ -510,6 +545,75 @@ export function SimulatorPanel({
     simulationName,
   ]);
 
+  useEffect(() => {
+    if (!commercialProposalEditor) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    const requestedDraft = commercialProposalEditor.draft;
+    const sourceProposalKind = commercialProposalEditor.sourceProposal.kind;
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const editorRequest = buildCommercialProposalEditorRequest(
+          commercialProposalEditor,
+        );
+
+        if (!editorRequest.ok) {
+          setCommercialProposalEditor((current) =>
+            current?.draft === requestedDraft
+              ? {
+                  ...current,
+                  message: editorRequest.message,
+                  status: "error",
+                }
+              : current,
+          );
+          return;
+        }
+
+        const preview = await fetchCommercialProposalPreview(
+          editorRequest.input,
+          abortController.signal,
+        );
+
+        setCommercialProposalEditor((current) =>
+          current?.draft === requestedDraft &&
+          current.sourceProposal.kind === sourceProposalKind
+            ? {
+                ...current,
+                message: "Previa recalculada pelo simulador.",
+                preview,
+                status: "idle",
+              }
+            : current,
+        );
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setCommercialProposalEditor((current) =>
+          current?.draft === requestedDraft
+            ? {
+                ...current,
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "Nao foi possivel recalcular a proposta.",
+                status: "error",
+              }
+            : current,
+        );
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      abortController.abort();
+    };
+  }, [commercialProposalEditor?.draft]);
+
   return (
     <section className="flex flex-col gap-6">
       {activePage === "simulation" ? (
@@ -599,6 +703,15 @@ export function SimulatorPanel({
           onToggleAdministratorEditor={() =>
             setIsAdministratorEditorOpen((current) => !current)
           }
+        />
+      ) : null}
+
+      {commercialProposalEditor ? (
+        <CommercialProposalEditorDrawer
+          editor={commercialProposalEditor}
+          onChangeDraft={updateCommercialProposalEditorDraft}
+          onClose={() => setCommercialProposalEditor(null)}
+          onSave={handleSaveEditedCommercialProposal}
         />
       ) : null}
     </section>
@@ -782,10 +895,13 @@ export function SimulatorPanel({
 
   async function handleSaveAnchoredProposal(proposal: AnchoredProposal) {
     if (!leadProposalContext?.leadId) {
-      setCommercialProposalSaveState({
+      setCommercialProposalSaveRecord({
         kind: proposal.kind,
         message: "Abra a proposta a partir de um lead antes de salvar.",
+        proposalId: null,
+        savedAt: null,
         status: "error",
+        variant: "suggestion",
       });
       return;
     }
@@ -794,19 +910,25 @@ export function SimulatorPanel({
       return;
     }
 
-    setCommercialProposalSaveState({
+    setCommercialProposalSaveRecord({
       kind: proposal.kind,
       message: "Salvando proposta no lead...",
+      proposalId: null,
+      savedAt: null,
       status: "saving",
+      variant: "suggestion",
     });
 
     const accessToken = await readSupabaseAccessToken();
 
     if (!accessToken) {
-      setCommercialProposalSaveState({
+      setCommercialProposalSaveRecord({
         kind: proposal.kind,
         message: "Sessao Supabase indisponivel. Faca login novamente.",
+        proposalId: null,
+        savedAt: null,
         status: "error",
+        variant: "suggestion",
       });
       return;
     }
@@ -814,7 +936,7 @@ export function SimulatorPanel({
     try {
       const title = buildAnchoredProposalName(simulationName, proposal.label);
 
-      await createLeadCommercialProposal(accessToken, {
+      const createdProposal = await createLeadCommercialProposal(accessToken, {
         leadId: leadProposalContext.leadId,
         metadata: {
           savedFrom: "simulator_anchored_proposal",
@@ -848,40 +970,182 @@ export function SimulatorPanel({
       setSavedSimulations(loadSavedSimulations());
       setSimulationName((currentName) => currentName || savedSimulation.name);
       linkSimulationToLeadContext(savedSimulation);
-      setCommercialProposalSaveState({
+      setCommercialProposalSaveRecord({
         kind: proposal.kind,
-        message: "Proposta salva no lead.",
+        message: "Proposta salva no Lead.",
+        proposalId: createdProposal.id,
+        savedAt: createdProposal.createdAt,
         status: "success",
+        variant: "suggestion",
       });
     } catch (error) {
-      setCommercialProposalSaveState({
+      setCommercialProposalSaveRecord({
         kind: proposal.kind,
         message:
           error instanceof Error
             ? error.message
             : "Nao foi possivel salvar a proposta comercial.",
+        proposalId: null,
+        savedAt: null,
         status: "error",
+        variant: "suggestion",
       });
     }
   }
 
-  function handleCustomizeAnchoredProposal(proposal: AnchoredProposal) {
-    const sourceSimulation = persistAnchoredProposal(proposal);
-
-    setActiveSimulationId(null);
-    setSimulationName(`${sourceSimulation.name} - Ajuste Comercial`);
-    setFormState((currentFormState) => ({
-      ...currentFormState,
-      credit: String(proposal.input.credit),
+  function setCommercialProposalSaveRecord(
+    record: CommercialProposalSaveRecord,
+  ) {
+    setCommercialProposalSaveState((currentState) => ({
+      activeKind: record.kind,
+      records: {
+        ...currentState.records,
+        [record.kind]: record,
+      },
+      status: record.status,
     }));
-    setSelectedScenarioKey(proposal.scenarioKey);
-    setContemplationMonth(proposal.presentation.contemplationMonth);
-    setPersonalizationSource({
-      proposalLabel: proposal.label,
-      sourceName: sourceSimulation.name,
-      sourceSimulationId: sourceSimulation.id,
-    });
-    setSavedSimulations(loadSavedSimulations());
+  }
+
+  function handleCustomizeAnchoredProposal(proposal: AnchoredProposal) {
+    setCommercialProposalEditor(createCommercialProposalEditorState(proposal));
+  }
+
+  function updateCommercialProposalEditorDraft(
+    partialDraft: Partial<CommercialProposalEditorDraft>,
+  ) {
+    setCommercialProposalEditor((current) =>
+      current
+        ? {
+            ...current,
+            message: "Recalculando pelo simulador...",
+            draft: {
+              ...current.draft,
+              ...partialDraft,
+            },
+            status: "calculating",
+          }
+        : current,
+    );
+  }
+
+  async function handleSaveEditedCommercialProposal() {
+    if (!commercialProposalEditor || !leadProposalContext?.leadId) {
+      if (commercialProposalEditor) {
+        setCommercialProposalSaveRecord({
+          kind: commercialProposalEditor.sourceProposal.kind,
+          message: "Abra a proposta a partir de um lead antes de salvar.",
+          proposalId: null,
+          savedAt: null,
+          status: "error",
+          variant: "customized",
+        });
+      }
+      return;
+    }
+
+    if (commercialProposalEditor.status !== "idle") {
+      setCommercialProposalEditor((current) =>
+        current
+          ? {
+              ...current,
+              message:
+                current.status === "error"
+                  ? "Corrija os parametros antes de salvar."
+                  : "Aguarde a previa recalculada antes de salvar.",
+            }
+          : current,
+      );
+      return;
+    }
+
+    setCommercialProposalEditor((current) =>
+      current
+        ? {
+            ...current,
+            message: "Salvando proposta personalizada...",
+            status: "saving",
+          }
+        : current,
+    );
+
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      setCommercialProposalEditor((current) =>
+        current
+          ? {
+              ...current,
+              message: "Sessao Supabase indisponivel. Faca login novamente.",
+              status: "error",
+            }
+          : current,
+      );
+      return;
+    }
+
+    try {
+      const sourceProposal = commercialProposalEditor.sourceProposal;
+      const savedProposal = buildEditedAnchoredProposal({
+        preview: commercialProposalEditor.preview,
+        sourceProposal,
+      });
+      const title = `${buildAnchoredProposalName(
+        simulationName,
+        sourceProposal.label,
+      )} - Personalizada`;
+
+      const createdProposal = await createLeadCommercialProposal(accessToken, {
+        leadId: leadProposalContext.leadId,
+        metadata: {
+          savedFrom: "commercial_proposal_editor",
+          simulatorContextIntent: leadProposalContext.intent,
+        },
+        originalSnapshot: buildAnchoredProposalSnapshot({
+          bidType,
+          commercialData,
+          formState,
+          insuranceOption,
+          leadProposalContext,
+          proposal: sourceProposal,
+          selectedAdministrator,
+        }),
+        savedSnapshot: buildAnchoredProposalSnapshot({
+          bidType: savedProposal.presentation.bidType,
+          commercialData,
+          formState,
+          insuranceOption: commercialProposalEditor.draft.insuranceOption,
+          leadProposalContext,
+          proposal: savedProposal,
+          selectedAdministrator,
+        }),
+        sourceSuggestion: sourceProposal.kind,
+        summary: buildAnchoredProposalSummary(savedProposal),
+        title,
+      });
+
+      setCommercialProposalSaveRecord({
+        kind: sourceProposal.kind,
+        message: "Versao personalizada salva no Lead.",
+        proposalId: createdProposal.id,
+        savedAt: createdProposal.createdAt,
+        status: "success",
+        variant: "customized",
+      });
+      setCommercialProposalEditor(null);
+    } catch (error) {
+      setCommercialProposalEditor((current) =>
+        current
+          ? {
+              ...current,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Nao foi possivel salvar a proposta personalizada.",
+              status: "error",
+            }
+          : current,
+      );
+    }
   }
 
   function persistAnchoredProposal(proposal: AnchoredProposal) {
@@ -1456,84 +1720,94 @@ function AnchoredProposalsSection({
 
       {proposals.length > 0 ? (
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {proposals.map((proposal) => (
-            <article
-              className="grid gap-4 rounded-md border bg-background p-4"
-              key={proposal.kind}
-            >
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                  {proposal.label}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {proposal.objective}
-                </p>
-              </div>
+          {proposals.map((proposal) => {
+            const proposalSaveRecord =
+              commercialProposalSaveState.records[proposal.kind];
+            const isSavingProposal =
+              commercialProposalSaveState.status === "saving" &&
+              commercialProposalSaveState.activeKind === proposal.kind;
 
-              <div className="grid gap-3 text-sm">
-                <AnchoredProposalValue
-                  label="Credito"
-                  value={currencyFormatter.format(
-                    proposal.presentation.commercialCredit,
-                  )}
-                />
-                <AnchoredProposalValue
-                  label="Parcela"
-                  value={currencyFormatter.format(
-                    proposal.presentation.installmentBeforeContemplation,
-                  )}
-                  featured
-                />
-                <AnchoredProposalValue
-                  label="Cenario"
-                  value={proposal.presentation.selectedScenarioName}
-                />
-                <AnchoredProposalValue
-                  label="Parcela pos"
-                  value={currencyFormatter.format(
-                    proposal.presentation.installmentAfterContemplation,
-                  )}
-                />
-                <AnchoredProposalValue
-                  label="Venda estimada"
-                  value={currencyFormatter.format(
-                    proposal.presentation.estimatedCardSaleValue,
-                  )}
-                />
-              </div>
+            return (
+              <article
+                className="grid gap-4 rounded-md border bg-background p-4"
+                key={proposal.kind}
+              >
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                    {proposal.label}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {proposal.objective}
+                  </p>
+                </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                <SecondaryActionButton onClick={() => onCustomizeProposal(proposal)}>
-                  Personalizar
-                </SecondaryActionButton>
-                <SecondaryActionButton
-                  disabled={
-                    commercialProposalSaveState.status === "saving"
-                  }
-                  onClick={() => onSaveProposal(proposal)}
-                >
-                  <Save className="h-4 w-4" aria-hidden="true" />
-                  {commercialProposalSaveState.status === "saving" &&
-                  commercialProposalSaveState.kind === proposal.kind
-                    ? "Salvando..."
-                    : "Salvar proposta"}
-                </SecondaryActionButton>
-              </div>
-              {commercialProposalSaveState.kind === proposal.kind &&
-              commercialProposalSaveState.message ? (
-                <p
-                  className={cn(
-                    "text-xs leading-5",
-                    commercialProposalSaveState.status === "error"
-                      ? "text-destructive"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {commercialProposalSaveState.message}
-                </p>
-              ) : null}
-            </article>
-          ))}
+                <div className="grid gap-3 text-sm">
+                  <AnchoredProposalValue
+                    label="Credito"
+                    value={currencyFormatter.format(
+                      proposal.presentation.commercialCredit,
+                    )}
+                  />
+                  <AnchoredProposalValue
+                    label="Parcela"
+                    value={currencyFormatter.format(
+                      proposal.presentation.installmentBeforeContemplation,
+                    )}
+                    featured
+                  />
+                  <AnchoredProposalValue
+                    label="Cenario"
+                    value={proposal.presentation.selectedScenarioName}
+                  />
+                  <AnchoredProposalValue
+                    label="Parcela pos"
+                    value={currencyFormatter.format(
+                      proposal.presentation.installmentAfterContemplation,
+                    )}
+                  />
+                  <AnchoredProposalValue
+                    label="Venda estimada"
+                    value={currencyFormatter.format(
+                      proposal.presentation.estimatedCardSaleValue,
+                    )}
+                  />
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <SecondaryActionButton
+                    onClick={() => onCustomizeProposal(proposal)}
+                  >
+                    Personalizar
+                  </SecondaryActionButton>
+                  <SecondaryActionButton
+                    disabled={commercialProposalSaveState.status === "saving"}
+                    onClick={() => onSaveProposal(proposal)}
+                  >
+                    <Save className="h-4 w-4" aria-hidden="true" />
+                    {isSavingProposal ? "Salvando..." : "Salvar proposta"}
+                  </SecondaryActionButton>
+                </div>
+                {proposalSaveRecord?.message ? (
+                  <p
+                    className={cn(
+                      "text-xs leading-5",
+                      proposalSaveRecord.status === "error"
+                        ? "text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {proposalSaveRecord.message}
+                    {proposalSaveRecord.status === "success" &&
+                    proposalSaveRecord.variant === "customized" ? (
+                      <span className="mt-1 block">
+                        Registro personalizado preservado no Lead.
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="mt-5 rounded-md border border-dashed bg-background p-4 text-sm text-muted-foreground">
@@ -1565,6 +1839,216 @@ function AnchoredProposalValue({
         {value}
       </p>
     </div>
+  );
+}
+
+function CommercialProposalEditorDrawer({
+  editor,
+  onChangeDraft,
+  onClose,
+  onSave,
+}: {
+  editor: CommercialProposalEditorState;
+  onChangeDraft: (draft: Partial<CommercialProposalEditorDraft>) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const isBusy = editor.status === "calculating" || editor.status === "saving";
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30 p-3 sm:p-6">
+      <aside className="flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-md border bg-card text-card-foreground shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b p-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Editor de Propostas Comerciais
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-foreground">
+              {editor.sourceProposal.label}
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Ajuste parametros suportados pelo simulador. A sugestao original
+              permanece preservada.
+            </p>
+          </div>
+          <button
+            aria-label="Fechar editor"
+            className="rounded-md border bg-background px-3 py-2 text-sm transition hover:bg-accent"
+            onClick={onClose}
+            type="button"
+          >
+            Fechar
+          </button>
+        </div>
+
+        <div className="grid flex-1 gap-5 overflow-y-auto p-5">
+          <div className="grid gap-3 md:grid-cols-2">
+            <SimulatorInputField
+              label="Credito"
+              onChange={(value) =>
+                onChangeDraft({
+                  credit: value,
+                  lastEditedAmountField: "credit",
+                })
+              }
+              value={editor.draft.credit}
+            />
+            <SimulatorInputField
+              label="Parcela alvo"
+              onChange={(value) =>
+                onChangeDraft({
+                  lastEditedAmountField: "targetInstallment",
+                  targetInstallment: value,
+                })
+              }
+              value={editor.draft.targetInstallment}
+            />
+            <SimulatorInputField
+              label="Prazo"
+              onChange={(value) => onChangeDraft({ termMonths: value })}
+              value={editor.draft.termMonths}
+            />
+            <SimulatorInputField
+              label="Mes de contemplacao"
+              onChange={(value) => onChangeDraft({ contemplationMonth: value })}
+              value={editor.draft.contemplationMonth}
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <EditorSelect
+              label="Cenario"
+              onChange={(value) =>
+                onChangeDraft({ scenarioKey: value as SimulatorScenarioKey })
+              }
+              options={scenarioOptions.map((option) => ({
+                label: option.label,
+                value: option.key,
+              }))}
+              value={editor.draft.scenarioKey}
+            />
+            <EditorSelect
+              label="Seguro"
+              onChange={(value) =>
+                onChangeDraft({ insuranceOption: value as InsuranceOption })
+              }
+              options={insuranceOptions.map((option) => ({
+                label: option.label,
+                value: option.key,
+              }))}
+              value={editor.draft.insuranceOption}
+            />
+            <EditorSelect
+              label="Lance"
+              onChange={(value) => onChangeDraft({ bidType: value as BidType })}
+              options={bidOptions.map((option) => ({
+                label: option.label,
+                value: option.key,
+              }))}
+              value={editor.draft.bidType}
+            />
+          </div>
+
+          <section className="rounded-md border bg-background/70 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Previa recalculada
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {editor.message}
+                </p>
+              </div>
+              <span className="rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+                {editor.status === "calculating"
+                  ? "Recalculando"
+                  : editor.status === "saving"
+                    ? "Salvando"
+                    : "Pronta"}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <AnchoredProposalValue
+                featured
+                label="Credito"
+                value={currencyFormatter.format(
+                  editor.preview.presentation.commercialCredit,
+                )}
+              />
+              <AnchoredProposalValue
+                featured
+                label="Parcela"
+                value={currencyFormatter.format(
+                  editor.preview.presentation.installmentBeforeContemplation,
+                )}
+              />
+              <AnchoredProposalValue
+                label="Parcela pos"
+                value={currencyFormatter.format(
+                  editor.preview.presentation.installmentAfterContemplation,
+                )}
+              />
+              <AnchoredProposalValue
+                label="Venda estimada"
+                value={currencyFormatter.format(
+                  editor.preview.presentation.estimatedCardSaleValue,
+                )}
+              />
+              <AnchoredProposalValue
+                label="Investimento"
+                value={currencyFormatter.format(
+                  editor.preview.presentation.realInvestment,
+                )}
+              />
+              <AnchoredProposalValue
+                label="Lucro"
+                value={currencyFormatter.format(
+                  editor.preview.presentation.estimatedCardSaleProfit,
+                )}
+              />
+            </div>
+          </section>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t p-5 sm:flex-row sm:justify-end">
+          <SecondaryActionButton onClick={onClose}>Cancelar</SecondaryActionButton>
+          <PrimaryActionButton disabled={isBusy} onClick={onSave}>
+            <Save className="h-4 w-4" aria-hidden="true" />
+            {editor.status === "saving" ? "Salvando..." : "Salvar proposta"}
+          </PrimaryActionButton>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function EditorSelect({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-medium">
+      {label}
+      <select
+        className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -2397,6 +2881,108 @@ function parseCurrencyNumber(value: string) {
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
 }
 
+function buildCommercialProposalEditorRequest(
+  editor: CommercialProposalEditorState,
+):
+  | {
+      input: {
+        baseInput: SimulatorInput;
+        bidType: BidType;
+        contemplationMonth: number;
+        credit: number | null;
+        insuranceOption: InsuranceOption;
+        scenarioKey: SimulatorScenarioKey;
+        targetInstallment: number | null;
+        termMonths: number | null;
+      };
+      ok: true;
+    }
+  | { message: string; ok: false } {
+  const credit = parseCurrencyNumber(editor.draft.credit);
+  const targetInstallment = parseCurrencyNumber(editor.draft.targetInstallment);
+  const termMonths = parsePositiveIntegerOrNull(editor.draft.termMonths);
+  const contemplationMonth = parsePositiveIntegerOrNull(
+    editor.draft.contemplationMonth,
+  );
+
+  if (editor.draft.lastEditedAmountField === "credit" && credit <= 0) {
+    return { message: "Informe um credito valido.", ok: false };
+  }
+
+  if (
+    editor.draft.lastEditedAmountField === "targetInstallment" &&
+    targetInstallment <= 0
+  ) {
+    return { message: "Informe uma parcela alvo valida.", ok: false };
+  }
+
+  if (!termMonths) {
+    return { message: "Informe um prazo valido.", ok: false };
+  }
+
+  if (!contemplationMonth) {
+    return { message: "Informe um mes de contemplacao valido.", ok: false };
+  }
+
+  return {
+    input: {
+      baseInput: editor.sourceProposal.input,
+      bidType: editor.draft.bidType,
+      contemplationMonth,
+      credit: credit > 0 ? credit : null,
+      insuranceOption: editor.draft.insuranceOption,
+      scenarioKey: editor.draft.scenarioKey,
+      targetInstallment:
+        editor.draft.lastEditedAmountField === "targetInstallment"
+          ? targetInstallment
+          : null,
+      termMonths,
+    },
+    ok: true,
+  };
+}
+
+function parsePositiveIntegerOrNull(value: string) {
+  const parsedValue = Number(value.replace(",", "."));
+
+  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
+}
+
+async function fetchCommercialProposalPreview(
+  input: {
+    baseInput: SimulatorInput;
+    bidType: BidType;
+    contemplationMonth: number;
+    credit: number | null;
+    insuranceOption: InsuranceOption;
+    scenarioKey: SimulatorScenarioKey;
+    targetInstallment: number | null;
+    termMonths: number | null;
+  },
+  signal: AbortSignal,
+) {
+  const response = await fetch("/api/simulator/commercial-proposal-preview", {
+    body: JSON.stringify(input),
+    headers: {
+      "content-type": "application/json",
+    },
+    method: "POST",
+    signal,
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        error?: string;
+        preview?: CommercialProposalEditorCalculationResult;
+      }
+    | null;
+
+  if (!response.ok || !payload?.preview) {
+    throw new Error(payload?.error ?? "Nao foi possivel recalcular a proposta.");
+  }
+
+  return payload.preview;
+}
+
 function buildLeadSimulationApiPayload({
   bidType,
   calculation,
@@ -2531,6 +3117,55 @@ function buildAnchoredProposalSnapshot({
       },
       objective: proposal.objective,
     },
+  };
+}
+
+function createCommercialProposalEditorState(
+  proposal: AnchoredProposal,
+): CommercialProposalEditorState {
+  return {
+    draft: {
+      bidType: proposal.presentation.bidType,
+      contemplationMonth: String(proposal.presentation.contemplationMonth),
+      credit: String(proposal.input.credit),
+      insuranceOption:
+        proposal.presentation.insuranceLabel === "Sem seguro"
+          ? "without-insurance"
+          : "with-insurance",
+      lastEditedAmountField: null,
+      scenarioKey: proposal.scenarioKey,
+      targetInstallment: String(
+        proposal.presentation.installmentBeforeContemplation,
+      ),
+      termMonths: String(proposal.input.termMonths),
+    },
+    message: "Editor aberto com os valores salvos da sugestao.",
+    preview: {
+      input: proposal.input,
+      presentation: proposal.presentation,
+      scenarioKey: proposal.scenarioKey,
+    },
+    sourceProposal: proposal,
+    status: "idle",
+  };
+}
+
+function buildEditedAnchoredProposal({
+  preview,
+  sourceProposal,
+}: {
+  preview: CommercialProposalEditorCalculationResult;
+  sourceProposal: AnchoredProposal;
+}): AnchoredProposal {
+  return {
+    ...sourceProposal,
+    distanceFromReference:
+      preview.presentation.installmentBeforeContemplation -
+      sourceProposal.referenceInstallment,
+    input: preview.input,
+    presentation: preview.presentation,
+    scenarioKey: preview.scenarioKey,
+    targetInstallment: preview.presentation.installmentBeforeContemplation,
   };
 }
 

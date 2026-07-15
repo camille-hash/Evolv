@@ -1,9 +1,16 @@
 export {
   buildAnchoredProposals,
+  adjustSimulatorInputCreditForTargetInstallment,
   type AnchoredProposal,
+  type AnchoredProposalCreditAdjustmentInput,
   type AnchoredProposalInput,
   type AnchoredProposalKind,
 } from "@/modules/simulator/anchoring";
+export {
+  calculateCommercialProposalEditorPreview,
+  type CommercialProposalEditorCalculationInput,
+  type CommercialProposalEditorCalculationResult,
+} from "@/modules/simulator/commercial-proposal-editor";
 export {
   ADMINISTRATORS_STORAGE_KEY,
   applyAdministratorToSimulationForm,

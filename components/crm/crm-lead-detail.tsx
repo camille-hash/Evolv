@@ -3590,6 +3590,9 @@ function LeadCommercialProposalList({
   isLoading: boolean;
   proposals: CrmLeadCommercialProposal[];
 }) {
+  const [selectedProposalId, setSelectedProposalId] = useState<string | null>(
+    null,
+  );
   const orderedProposals = [...proposals].sort(
     (first, second) =>
       new Date(second.createdAt).getTime() -
@@ -3668,8 +3671,93 @@ function LeadCommercialProposalList({
               )}
             />
           </div>
+          <div className="mt-4">
+            <Button
+              onClick={() =>
+                setSelectedProposalId((current) =>
+                  current === proposal.id ? null : proposal.id,
+                )
+              }
+              type="button"
+              variant="secondary"
+            >
+              {selectedProposalId === proposal.id
+                ? "Fechar proposta"
+                : "Abrir proposta"}
+            </Button>
+          </div>
+          {selectedProposalId === proposal.id ? (
+            <LeadCommercialProposalSnapshotDetail proposal={proposal} />
+          ) : null}
         </article>
       ))}
+    </div>
+  );
+}
+
+function LeadCommercialProposalSnapshotDetail({
+  proposal,
+}: {
+  proposal: CrmLeadCommercialProposal;
+}) {
+  return (
+    <div className="mt-4 rounded-md border border-dashed bg-card p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        Snapshot persistido
+      </p>
+      <div className="mt-3 grid gap-3">
+        <LeadProposalSnapshotColumn
+          label="Sugestao original"
+          snapshot={proposal.originalSnapshot}
+        />
+        <LeadProposalSnapshotColumn
+          label="Proposta salva"
+          snapshot={proposal.savedSnapshot}
+        />
+      </div>
+    </div>
+  );
+}
+
+function LeadProposalSnapshotColumn({
+  label,
+  snapshot,
+}: {
+  label: string;
+  snapshot: Record<string, unknown>;
+}) {
+  return (
+    <div className="rounded-md border bg-background/60 p-3">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="mt-2 grid gap-2">
+        <LeadInfo
+          label="Credito"
+          value={formatCurrencyOrDash(
+            readProposalSnapshotNumber(snapshot, "commercialCredit"),
+          )}
+        />
+        <LeadInfo
+          label="Parcela"
+          value={formatCurrencyOrDash(
+            readProposalSnapshotNumber(
+              snapshot,
+              "installmentBeforeContemplation",
+            ),
+          )}
+        />
+        <LeadInfo
+          label="Venda estimada"
+          value={formatCurrencyOrDash(
+            readProposalSnapshotNumber(snapshot, "estimatedCardSaleValue"),
+          )}
+        />
+        <LeadInfo
+          label="Lucro"
+          value={formatCurrencyOrDash(
+            readProposalSnapshotNumber(snapshot, "estimatedCardSaleProfit"),
+          )}
+        />
+      </div>
     </div>
   );
 }
@@ -5002,6 +5090,21 @@ function formatCurrencyOrDash(value: number | null | undefined) {
 }
 
 function readProposalSummaryNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readProposalSnapshotNumber(
+  snapshot: Record<string, unknown>,
+  key: string,
+) {
+  const presentation =
+    snapshot.presentation &&
+    typeof snapshot.presentation === "object" &&
+    !Array.isArray(snapshot.presentation)
+      ? (snapshot.presentation as Record<string, unknown>)
+      : null;
+  const value = presentation?.[key];
+
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
