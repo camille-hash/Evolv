@@ -178,6 +178,7 @@ type CrmLeadDetailProps = {
   onClearFeedbackMessage?: () => void;
   onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
   onDraftChange: (draft: CrmLeadInput) => void;
+  onGenerateMultiCotas?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   proposals: GeneratedProposalRecord[];
@@ -191,6 +192,7 @@ export function CrmLeadDetail({
   onClearFeedbackMessage,
   onConvertToClient,
   onDraftChange,
+  onGenerateMultiCotas,
   onGenerateSimulation,
   onSave,
   proposals,
@@ -915,6 +917,10 @@ export function CrmLeadDetail({
     onGenerateSimulation?.(lead);
   }
 
+  function handleGenerateLeadMultiCotas() {
+    onGenerateMultiCotas?.(lead);
+  }
+
   function updateStrategicProfileDraft(
     patch: Partial<StrategicProfileDraft>,
   ) {
@@ -1338,8 +1344,11 @@ export function CrmLeadDetail({
 
   return (
     <section className="grid gap-4">
-      {onGenerateSimulation ? (
-        <PrimaryJourneyAction onClick={handleGenerateLeadSimulation} />
+      {onGenerateSimulation || onGenerateMultiCotas ? (
+        <PrimaryJourneyAction
+          onSelectCommercialSimulation={handleGenerateLeadSimulation}
+          onSelectMultiCotas={handleGenerateLeadMultiCotas}
+        />
       ) : null}
 
       <section className="executive-surface rounded-md p-5 sm:p-6">
@@ -1856,10 +1865,21 @@ export function CrmLeadDetail({
         {activeDossierTab === "simulations" ? (
           <div className="grid gap-4">
             <DossierAreaHeader
-              description="Historico comercial do lead com simulacoes e Multi-Cotas."
+              description="Historico comercial do lead com estudos patrimoniais contextualizados."
               id="dossie-simulacoes"
-              title="Simulacoes"
+              title="Estudos Patrimoniais"
             />
+            <ExecutiveDossierCard
+              description="Linha do tempo consolidada de simulacoes comerciais e estrategias Multi-Cotas vinculadas a este lead."
+              eyebrow="Estudos"
+              title="Estudos Patrimoniais"
+            >
+              <LeadPatrimonialStudiesHistory
+                isLoading={isLoadingSimulations}
+                simulations={leadSimulations}
+              />
+            </ExecutiveDossierCard>
+
             <ExecutiveDossierCard
               description="Simulacoes comerciais vinculadas a este lead."
               eyebrow="Simulacoes"
@@ -1907,8 +1927,28 @@ export function CrmLeadDetail({
             <ExecutiveDossierCard
               description="Historico de estudos Multi-Cotas vinculados a este lead."
               eyebrow="Estrategia"
-              title="Multi-Cotas"
+              title="Estrategia Multi-Cotas"
             >
+              {onGenerateMultiCotas ? (
+                <div className="mb-4 flex flex-col gap-3 rounded-md border bg-background/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Criar Estrategia Multi-Cotas
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Abre o Multi-Cotas com este lead como contexto obrigatorio.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleGenerateLeadMultiCotas}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Criar Estrategia Multi-Cotas
+                  </Button>
+                </div>
+              ) : null}
               <LeadMultiCotasSummary
                 error={simulationsError}
                 isLoading={isLoadingSimulations}
@@ -4451,6 +4491,71 @@ function LeadExecutiveSimulationSummary({
   );
 }
 
+function LeadPatrimonialStudiesHistory({
+  isLoading,
+  simulations,
+}: {
+  isLoading: boolean;
+  simulations: CrmLeadSimulation[];
+}) {
+  const studies = [...simulations].sort(sortLeadSimulationsByCreatedAtDesc);
+
+  if (isLoading) {
+    return <p className="text-sm text-muted-foreground">Carregando estudos...</p>;
+  }
+
+  if (!studies.length) {
+    return (
+      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        Nenhum estudo patrimonial vinculado a este lead.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {studies.map((study) => (
+        <article
+          className="flex flex-col gap-3 rounded-md border bg-background/70 p-4 sm:flex-row sm:items-start sm:justify-between"
+          key={study.id}
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border bg-card px-2 py-1 text-xs font-medium text-muted-foreground">
+                {resolvePatrimonialStudyTypeLabel(study.simulationType)}
+              </span>
+              <span className="rounded-full border bg-card px-2 py-1 text-xs font-medium text-muted-foreground">
+                {resolveSimulationStatusLabel(study.status)}
+              </span>
+              {study.pdfGeneratedAt ? (
+                <span className="rounded-full border border-primary/20 bg-primary/5 px-2 py-1 text-xs font-medium text-primary">
+                  PDF associado
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-3 text-sm font-medium text-foreground">
+              {study.title}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Responsavel: {study.createdBy ?? "Nao informado"}
+            </p>
+          </div>
+          <div className="shrink-0 text-xs text-muted-foreground sm:text-right">
+            <time dateTime={study.createdAt}>
+              {dateFormatter.format(new Date(study.createdAt))}
+            </time>
+            {study.pdfGeneratedAt ? (
+              <p className="mt-1">
+                PDF em {dateFormatter.format(new Date(study.pdfGeneratedAt))}
+              </p>
+            ) : null}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function LeadMultiCotasSummary({
   error,
   isLoading,
@@ -5068,6 +5173,23 @@ function resolveMultiCotasHistorySummary(simulation: CrmLeadSimulation) {
     financialSummary,
     quotaCount,
   };
+}
+
+function resolvePatrimonialStudyTypeLabel(type: CrmLeadSimulation["simulationType"]) {
+  return type === "multi_cotas" ? "Estrategia Multi-Cotas" : "Simulacao Comercial";
+}
+
+function resolveSimulationStatusLabel(status: CrmLeadSimulation["status"]) {
+  const labels: Record<CrmLeadSimulation["status"], string> = {
+    archived: "Arquivado",
+    draft: "Rascunho",
+    pdf_generated: "PDF gerado",
+    pdf_sent: "PDF enviado",
+    presented: "Apresentado",
+    proposal_generated: "Proposta gerada",
+  };
+
+  return labels[status] ?? status;
 }
 
 function sortLeadSimulationsByCreatedAtDesc(

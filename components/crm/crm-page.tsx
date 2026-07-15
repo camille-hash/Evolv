@@ -211,9 +211,11 @@ const dateWindowWithNoSimulationOptions = [
 
 export function CrmPage({
   onConvertToClient,
+  onGenerateMultiCotas,
   onGenerateSimulation,
 }: {
   onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
+  onGenerateMultiCotas?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
 }) {
@@ -518,6 +520,7 @@ export function CrmPage({
         onClearFeedbackMessage={() => setSuccessMessage(null)}
         onConvertToClient={onConvertToClient}
         onDraftChange={setDraft}
+        onGenerateMultiCotas={onGenerateMultiCotas}
         onGenerateSimulation={onGenerateSimulation}
         onSave={handleSaveSelectedLead}
         proposals={[]}

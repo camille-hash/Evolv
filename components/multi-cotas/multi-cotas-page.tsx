@@ -1,7 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { FileText, Minus, Plus } from "lucide-react";
 import {
   calculateMultiCotas,
   loadMultiCotasInput,
@@ -14,7 +15,14 @@ import {
   type MultiCotasResult,
 } from "@/modules/multi-cotas";
 import { Button } from "@/components/ui/button";
+import {
+  ConsultingConditionsEditor,
+  initialCommercialConsultingConditions,
+  toCommercialConsultingConditionsSnapshot,
+  type CommercialConsultingConditionsState,
+} from "@/components/commercial/consulting-conditions-editor";
 import type { CrmLeadProposalContext } from "@/modules/crm";
+import { generateMultiCotasCommercialPdf } from "@/modules/reports";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
@@ -35,9 +43,11 @@ type MultiCotasSaveState = {
 export function MultiCotasPage({
   leadProposalContext,
   onClearLeadProposalContext,
+  onOpenCrm,
 }: {
   leadProposalContext?: CrmLeadProposalContext | null;
   onClearLeadProposalContext?: () => void;
+  onOpenCrm?: () => void;
 }) {
   const [input, setInput] = useState<MultiCotasInput>(() =>
     loadMultiCotasInput(),
@@ -47,6 +57,10 @@ export function MultiCotasPage({
     "Simulacao atualizada",
   );
   const [studyTitle, setStudyTitle] = useState("");
+  const [consultingConditions, setConsultingConditions] =
+    useState<CommercialConsultingConditionsState>(
+      initialCommercialConsultingConditions,
+    );
   const [saveState, setSaveState] = useState<MultiCotasSaveState>({
     message: "",
     status: "idle",
@@ -114,6 +128,28 @@ export function MultiCotasPage({
     setSimulationStatus("Simulacao atualizada");
   }
 
+  function handleGeneratePdf() {
+    const title =
+      studyTitle.trim() ||
+      (leadProposalContext?.leadName
+        ? `Estudo Multi-Cotas - ${leadProposalContext.leadName}`
+        : "Estrategia Patrimonial Multi-Cotas");
+
+    generateMultiCotasCommercialPdf({
+      consultantName: leadProposalContext?.responsibleName,
+      leadName: leadProposalContext?.leadName,
+      simulationCreatedAt: new Date().toISOString(),
+      simulationTitle: title,
+      snapshot: buildMultiCotasSnapshot({
+        consultingConditions,
+        input,
+        leadProposalContext,
+        result,
+      }),
+    });
+    setSimulationStatus("PDF da estrategia gerado");
+  }
+
   async function handleSaveLeadMultiCotas() {
     if (!leadProposalContext?.leadId) {
       setSaveState({
@@ -143,6 +179,7 @@ export function MultiCotasPage({
 
     const payload = buildMultiCotasLeadSimulationPayload({
       input,
+      consultingConditions,
       leadProposalContext,
       result,
       title,
@@ -198,13 +235,23 @@ export function MultiCotasPage({
               Simulacao de multiplas cartas com contemplacoes escalonadas.
             </p>
           </div>
-          <div className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 px-5 py-4">
-            <p className="text-xs font-medium uppercase tracking-[0.1em] text-primary-foreground/58">
-              Cartas simuladas
-            </p>
-            <p className="mt-2 text-3xl font-semibold">
-              {result.summary.cardCount}
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row lg:items-end">
+            <div className="rounded-md border border-primary-foreground/14 bg-primary-foreground/8 px-5 py-4">
+              <p className="text-xs font-medium uppercase tracking-[0.1em] text-primary-foreground/58">
+                Cartas simuladas
+              </p>
+              <p className="mt-2 text-3xl font-semibold">
+                {result.summary.cardCount}
+              </p>
+            </div>
+            <Button
+              className="border-primary-foreground/20 bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+              onClick={handleGeneratePdf}
+              type="button"
+            >
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Gerar PDF
+            </Button>
           </div>
         </div>
       </section>
@@ -214,13 +261,16 @@ export function MultiCotasPage({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Lead vinculado
+                Gerando estrategia para
               </p>
               <h2 className="mt-2 text-lg font-semibold text-foreground">
                 {leadProposalContext.leadName}
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 Este estudo sera salvo apenas para este lead.
+                {leadProposalContext.responsibleName
+                  ? ` Responsavel: ${leadProposalContext.responsibleName}.`
+                  : ""}
               </p>
             </div>
             <div className="grid w-full gap-3 lg:max-w-md">
@@ -241,7 +291,7 @@ export function MultiCotasPage({
                 >
                   {saveState.status === "saving"
                     ? "Salvando..."
-                    : "Salvar estudo no lead"}
+                    : "Salvar estrategia no lead"}
                 </Button>
                 {onClearLeadProposalContext ? (
                   <Button
@@ -249,7 +299,7 @@ export function MultiCotasPage({
                     type="button"
                     variant="secondary"
                   >
-                    Encerrar contexto do lead
+                    Encerrar contexto
                   </Button>
                 ) : null}
               </div>
@@ -267,7 +317,29 @@ export function MultiCotasPage({
             </div>
           </div>
         </section>
-      ) : null}
+      ) : (
+        <section className="executive-surface rounded-md border-dashed p-5 text-card-foreground">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Modo avulso
+              </p>
+              <h2 className="mt-2 text-lg font-semibold text-foreground">
+                Estrategia nao vinculada a um lead.
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Para salvar no Dossie, inicie a estrategia pelo botao de novo
+                estudo patrimonial dentro do lead.
+              </p>
+            </div>
+            {onOpenCrm ? (
+              <Button onClick={onOpenCrm} type="button" variant="secondary">
+                Iniciar pelo Dossie
+              </Button>
+            ) : null}
+          </div>
+        </section>
+      )}
 
       <section className="executive-surface rounded-md p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -289,15 +361,28 @@ export function MultiCotasPage({
         </div>
 
         {technicalOpen ? (
-          <TechnicalSettings
-            input={input}
-            onApplySharedSettingsToAllCards={applySharedSettingsToAllCards}
-            onCardChange={updateCard}
-            onConfirmSimulation={handleConfirmSimulation}
-            onInputChange={updateInput}
-            resultCards={result.cards}
-            simulationStatus={simulationStatus}
-          />
+          <>
+            <TechnicalSettings
+              input={input}
+              onApplySharedSettingsToAllCards={applySharedSettingsToAllCards}
+              onCardChange={updateCard}
+              onConfirmSimulation={handleConfirmSimulation}
+              onInputChange={updateInput}
+              resultCards={result.cards}
+              simulationStatus={simulationStatus}
+            >
+              <ConsultingConditionsEditor
+                conditions={consultingConditions}
+                onChange={(partialConditions) =>
+                  setConsultingConditions((current) => ({
+                    ...current,
+                    ...partialConditions,
+                  }))
+                }
+                specialConditionText="Fechando esta estrategia patrimonial em ate 7 dias corridos, o investimento referente a consultoria patrimonial sera integralmente isentado."
+              />
+            </TechnicalSettings>
+          </>
         ) : null}
       </section>
 
@@ -459,6 +544,7 @@ export function MultiCotasPage({
 }
 
 function TechnicalSettings({
+  children,
   input,
   onApplySharedSettingsToAllCards,
   onCardChange,
@@ -467,6 +553,7 @@ function TechnicalSettings({
   resultCards,
   simulationStatus,
 }: {
+  children?: ReactNode;
   input: MultiCotasInput;
   onApplySharedSettingsToAllCards: () => void;
   onCardChange: (
@@ -540,6 +627,8 @@ function TechnicalSettings({
           </Button>
         </div>
       </div>
+
+      {children ? <div className="mt-6">{children}</div> : null}
 
       <div className="mt-6 grid gap-3">
         {input.cards.map((card) => {
@@ -743,11 +832,13 @@ function NumberField({
 }
 
 function buildMultiCotasLeadSimulationPayload({
+  consultingConditions,
   input,
   leadProposalContext,
   result,
   title,
 }: {
+  consultingConditions: CommercialConsultingConditionsState;
   input: MultiCotasInput;
   leadProposalContext: CrmLeadProposalContext;
   result: MultiCotasResult;
@@ -755,17 +846,12 @@ function buildMultiCotasLeadSimulationPayload({
 }) {
   const totalEstimatedGain =
     result.summary.totalInccGain + result.summary.totalIdleAppreciationGain;
-  const snapshot = {
+  const snapshot = buildMultiCotasSnapshot({
+    consultingConditions,
     input,
-    metadata: {
-      source: "multi_cotas",
-      version: "103A.41-R1",
-    },
-    result: {
-      cards: result.cards,
-      summary: result.summary,
-    },
-  };
+    leadProposalContext,
+    result,
+  });
 
   return {
     calculationSnapshot: snapshot,
@@ -799,6 +885,46 @@ function buildMultiCotasLeadSimulationPayload({
     },
     technicalInput: snapshot,
     title,
+  };
+}
+
+function buildMultiCotasSnapshot({
+  consultingConditions,
+  input,
+  leadProposalContext,
+  result,
+}: {
+  consultingConditions: CommercialConsultingConditionsState;
+  input: MultiCotasInput;
+  leadProposalContext?: CrmLeadProposalContext | null;
+  result: MultiCotasResult;
+}) {
+  const totalEstimatedGain =
+    result.summary.totalInccGain + result.summary.totalIdleAppreciationGain;
+
+  return {
+    input,
+    leadContext: leadProposalContext
+      ? {
+          commercialContext: leadProposalContext.commercialContext ?? null,
+          leadId: leadProposalContext.leadId,
+          leadName: leadProposalContext.leadName,
+          responsibleName: leadProposalContext.responsibleName ?? null,
+        }
+      : null,
+    metadata: {
+      consultingConditions:
+        toCommercialConsultingConditionsSnapshot(consultingConditions),
+      source: "multi_cotas",
+      version: "103A.41-R1",
+    },
+    result: {
+      cards: result.cards,
+      summary: {
+        ...result.summary,
+        totalEstimatedGain,
+      },
+    },
   };
 }
 

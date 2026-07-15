@@ -55,6 +55,11 @@ import {
   type PdfCommercialProposalContext,
 } from "@/modules/reports";
 import {
+  ConsultingConditionsEditor,
+  initialCommercialConsultingConditions,
+  type CommercialConsultingConditionsState,
+} from "@/components/commercial/consulting-conditions-editor";
+import {
   buildIntelligenceSummary,
   type IntelligenceSummary,
 } from "@/modules/intelligence";
@@ -122,12 +127,6 @@ type CommercialProposalSaveState = {
   activeKind: CommercialProposalSaveKind | null;
   records: Partial<Record<CommercialProposalSaveKind, CommercialProposalSaveRecord>>;
   status: LeadSimulationSaveStatus;
-};
-
-type CommercialConsultingConditionsState = {
-  enabled: boolean;
-  installmentAmount: string;
-  installments: string;
 };
 
 type CommercialConsultingConditionsByKind = Partial<
@@ -204,13 +203,6 @@ const initialFormState: SimulatorFormState = {
   embeddedBidPercent: "25",
   cashBidPercent: "25",
 };
-
-const initialCommercialConsultingConditions: CommercialConsultingConditionsState =
-  {
-    enabled: false,
-    installmentAmount: "500",
-    installments: "12",
-  };
 
 const emptyWealthInput: WealthEvolutionInput = {
   currentWealth: 0,
@@ -2015,7 +2007,7 @@ function AnchoredProposalsSection({
                     {isSavingProposal ? "Preparando..." : "Gerar PDF"}
                   </SecondaryActionButton>
                 </div>
-                <CommercialConsultingConditionsSection
+                <ConsultingConditionsEditor
                   conditions={consultingConditions}
                   onChange={(state) =>
                     onProposalConsultingConditionsChange(proposal.kind, state)
@@ -2072,72 +2064,6 @@ function AnchoredProposalValue({
       >
         {value}
       </p>
-    </div>
-  );
-}
-
-function CommercialConsultingConditionsSection({
-  conditions,
-  onChange,
-}: {
-  conditions: CommercialConsultingConditionsState;
-  onChange: (state: Partial<CommercialConsultingConditionsState>) => void;
-}) {
-  const totalAmount = calculateCommercialConsultingTotal(conditions);
-
-  return (
-    <div className="border-t pt-3">
-      <div className="flex flex-col gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Condicoes comerciais
-          </p>
-        </div>
-        <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <input
-            checked={conditions.enabled}
-            className="h-4 w-4 accent-primary"
-            onChange={(event) => onChange({ enabled: event.target.checked })}
-            type="checkbox"
-          />
-          Incluir consultoria patrimonial
-        </label>
-      </div>
-
-      {conditions.enabled ? (
-        <div className="mt-4 grid gap-3">
-          <div className="grid gap-3">
-            <SimulatorInputField
-              label="Quantidade de parcelas"
-              onChange={(installments) => onChange({ installments })}
-              value={conditions.installments}
-            />
-            <SimulatorInputField
-              label="Valor da parcela"
-              onChange={(installmentAmount) => onChange({ installmentAmount })}
-              value={conditions.installmentAmount}
-            />
-            <div className="rounded-md border bg-card p-3">
-              <p className="text-xs text-muted-foreground">
-                Total da consultoria
-              </p>
-              <p className="mt-1 text-sm font-semibold text-foreground">
-                {currencyFormatter.format(totalAmount)}
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-md border bg-primary/[0.04] p-3">
-            <p className="text-sm font-semibold text-foreground">
-              Condicao Especial Patrion
-            </p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Fechando esta proposta em ate 7 dias corridos, o investimento
-              referente a consultoria patrimonial sera integralmente isentado.
-            </p>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -3562,7 +3488,7 @@ function toPdfCommercialConsultingConditions(
     return null;
   }
 
-  const installments = parsePositiveInteger(conditions.installments);
+  const installments = parsePositiveInteger(conditions.installmentCount);
   const installmentAmount = parseCurrencyNumber(conditions.installmentAmount);
 
   if (!installments || installmentAmount <= 0) {
@@ -3574,15 +3500,6 @@ function toPdfCommercialConsultingConditions(
     installments,
     totalAmount: installments * installmentAmount,
   };
-}
-
-function calculateCommercialConsultingTotal(
-  conditions: CommercialConsultingConditionsState,
-) {
-  const installments = parsePositiveInteger(conditions.installments) ?? 0;
-  const installmentAmount = parseCurrencyNumber(conditions.installmentAmount);
-
-  return installments * installmentAmount;
 }
 
 function parsePositiveInteger(value: string) {

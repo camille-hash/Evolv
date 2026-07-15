@@ -273,6 +273,13 @@ export default function Home() {
       leadId: lead.id,
       leadName: lead.nome,
       leadDesiredCredit: lead.valorPretendido,
+      responsibleName: lead.consultor,
+      commercialContext: {
+        pipeline: lead.pipeline,
+        stage: lead.etapa,
+        status: lead.status,
+        temperature: lead.temperatura,
+      },
     });
 
     setLeadProposalContext(nextContext);
@@ -396,6 +403,11 @@ export default function Home() {
             ) : null}
             <CrmPage
               onConvertToClient={handleConvertLeadToClient}
+              onGenerateMultiCotas={
+                canCurrentUserUseSimulationTools
+                  ? (lead) => handleGenerateSimulationFromLead(lead, "multi_cotas")
+                  : undefined
+              }
               onGenerateSimulation={
                 canCurrentUserGenerateLeadBoundCommercialSimulation
                   ? (lead) => handleGenerateSimulationFromLead(lead, "simulation")
@@ -430,6 +442,7 @@ export default function Home() {
                 : null
             }
             onClearLeadProposalContext={handleClearLeadProposalContext}
+            onOpenCrm={() => handleNavigate("crm")}
           />
         ) : null}
 

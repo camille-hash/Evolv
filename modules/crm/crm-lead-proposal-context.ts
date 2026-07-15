@@ -5,6 +5,13 @@ export type CrmLeadProposalContext = {
   leadId: string;
   leadName: string;
   leadDesiredCredit?: number;
+  responsibleName?: string;
+  commercialContext?: {
+    pipeline?: string;
+    stage?: string;
+    status?: string;
+    temperature?: string;
+  };
   createdAt: string;
 };
 
@@ -13,6 +20,8 @@ export function saveCrmLeadProposalContext(input: {
   leadId: string;
   leadName: string;
   leadDesiredCredit?: number;
+  responsibleName?: string;
+  commercialContext?: CrmLeadProposalContext["commercialContext"];
 }): CrmLeadProposalContext {
   const context: CrmLeadProposalContext = {
     intent: input.intent,
@@ -24,6 +33,11 @@ export function saveCrmLeadProposalContext(input: {
       input.leadDesiredCredit > 0
         ? input.leadDesiredCredit
         : undefined,
+    responsibleName:
+      typeof input.responsibleName === "string" && input.responsibleName.trim()
+        ? input.responsibleName.trim()
+        : undefined,
+    commercialContext: normalizeCommercialContext(input.commercialContext),
     createdAt: new Date().toISOString(),
   };
 
@@ -95,6 +109,34 @@ function normalizeCrmLeadProposalContext(
       candidate.leadDesiredCredit > 0
         ? candidate.leadDesiredCredit
         : undefined,
+    responsibleName:
+      typeof candidate.responsibleName === "string" &&
+      candidate.responsibleName.trim()
+        ? candidate.responsibleName.trim()
+        : undefined,
+    commercialContext: normalizeCommercialContext(candidate.commercialContext),
     createdAt: candidate.createdAt ?? new Date().toISOString(),
   };
+}
+
+function normalizeCommercialContext(
+  value: unknown,
+): CrmLeadProposalContext["commercialContext"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as CrmLeadProposalContext["commercialContext"];
+  const context = {
+    pipeline: normalizeOptionalText(candidate?.pipeline),
+    stage: normalizeOptionalText(candidate?.stage),
+    status: normalizeOptionalText(candidate?.status),
+    temperature: normalizeOptionalText(candidate?.temperature),
+  };
+
+  return Object.values(context).some(Boolean) ? context : undefined;
+}
+
+function normalizeOptionalText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
