@@ -230,6 +230,9 @@ export function CrmPage({
   const [draft, setDraft] = useState<CrmLeadInput>(emptyCrmLeadInput);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
+  const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  const [leadFormError, setLeadFormError] = useState<string | null>(null);
   const [baseSearch, setBaseSearch] = useState("");
   const [leadNameSearch, setLeadNameSearch] = useState("");
   const [newStageNames, setNewStageNames] = useState<Record<string, string>>({});
@@ -502,7 +505,7 @@ export function CrmPage({
   const hasOperationalFilterNoResults =
     hasOperationalHistoryFilters && filteredLeads.length === 0;
 
-  if (selectedLead && activeTab !== "settings") {
+  if (selectedLead && activeTab !== "settings" && !isLeadFormOpen) {
     return (
       <CrmLeadDetail
         draft={draft}
@@ -525,32 +528,67 @@ export function CrmPage({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (editingLeadId) {
-      const existingLead = leads.find((lead) => lead.id === editingLeadId);
-
-      if (!existingLead) {
-        return;
-      }
-
-      const nextLead = updateCrmLead(existingLead, draft);
-      console.info("[EVOLV CRM] Salvando edicao principal do lead.", {
-        externalId: nextLead.externalId,
-        id: editingLeadId,
-      });
-      const savedLead =
-        (await updateCrmLeadInRepository(editingLeadId, nextLead)) ?? nextLead;
-
-      setLeads((currentLeads) =>
-        currentLeads.map((lead) =>
-          lead.id === editingLeadId ? savedLead : lead,
-        ),
-      );
-    } else {
-      setLeads(saveCrmLead(draft));
+    if (isSubmittingLead) {
+      return;
     }
 
-    setDraft(emptyCrmLeadInput);
-    setEditingLeadId(null);
+    setIsSubmittingLead(true);
+    setLeadFormError(null);
+
+    try {
+      if (editingLeadId) {
+        const existingLead = leads.find((lead) => lead.id === editingLeadId);
+
+        if (!existingLead) {
+          setLeadFormError("Lead em edicao nao encontrado.");
+          return;
+        }
+
+        const nextLead = updateCrmLead(existingLead, draft);
+        console.info("[EVOLV CRM] Salvando edicao principal do lead.", {
+          externalId: nextLead.externalId,
+          id: editingLeadId,
+        });
+        const savedLead =
+          (await updateCrmLeadInRepository(editingLeadId, nextLead)) ?? nextLead;
+
+        setLeads((currentLeads) =>
+          currentLeads.map((lead) =>
+            lead.id === editingLeadId ? savedLead : lead,
+          ),
+        );
+      } else {
+        const existingLeadIds = new Set(leads.map((lead) => lead.id));
+        const nextLeads = saveCrmLead(draft);
+        const createdLead =
+          nextLeads.find((lead) => !existingLeadIds.has(lead.id)) ??
+          nextLeads[0] ??
+          null;
+
+        if (!createdLead?.id) {
+          setLeadFormError(
+            "Lead criado sem identificador. Recarregue a lista e tente novamente.",
+          );
+          return;
+        }
+
+        setLeads(nextLeads);
+        setSelectedLeadId(createdLead.id);
+        setSuccessMessage("Lead criado com sucesso.");
+        setIsLeadFormOpen(false);
+      }
+
+      setDraft(emptyCrmLeadInput);
+      setEditingLeadId(null);
+    } catch (error) {
+      setLeadFormError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar o lead.",
+      );
+    } finally {
+      setIsSubmittingLead(false);
+    }
   }
 
   async function handleSaveSelectedLead(event: FormEvent<HTMLFormElement>) {
@@ -589,7 +627,17 @@ export function CrmPage({
   function handleCancelEdit() {
     setEditingLeadId(null);
     setSelectedLeadId(null);
+    setIsLeadFormOpen(false);
+    setLeadFormError(null);
     setDraft(emptyCrmLeadInput);
+  }
+
+  function handleOpenCreateLeadForm() {
+    setSelectedLeadId(null);
+    setEditingLeadId(null);
+    setDraft(emptyCrmLeadInput);
+    setLeadFormError(null);
+    setIsLeadFormOpen(true);
   }
 
   function handlePipelineChange(pipeline: CrmPipeline) {
@@ -723,7 +771,13 @@ export function CrmPage({
               excesso de informacao visual.
             </p>
           </div>
-          <CrmSourceIndicator />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Button onClick={handleOpenCreateLeadForm} type="button">
+              <Plus className="h-4 w-4" aria-hidden />
+              Criar lead
+            </Button>
+            <CrmSourceIndicator />
+          </div>
         </div>
 
         <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-10">
@@ -795,6 +849,8 @@ export function CrmPage({
               key={tab.key}
               onClick={() => {
                 setActiveTab(tab.key);
+                setIsLeadFormOpen(false);
+                setLeadFormError(null);
 
                 if (tab.key === "settings") {
                   setEditingLeadId(null);
@@ -812,7 +868,22 @@ export function CrmPage({
 
       {successMessage ? <SuccessFeedback message={successMessage} /> : null}
 
+      {isLeadFormOpen ? (
+        <LeadForm
+          draft={draft}
+          editingLeadId={editingLeadId}
+          errorMessage={leadFormError}
+          isSubmitting={isSubmittingLead}
+          kanbanPipelineDefinitions={kanbanPipelineDefinitions}
+          onCancel={handleCancelEdit}
+          onChange={setDraft}
+          onPipelineChange={handlePipelineChange}
+          onSubmit={handleSubmit}
+        />
+      ) : null}
+
       {(hasLeadSearchNoResults || hasOperationalFilterNoResults) &&
+      !isLeadFormOpen &&
       activeTab !== "executive-dashboard" &&
       activeTab !== "settings" ? (
         <section className="executive-surface rounded-md border-dashed p-5 text-sm text-muted-foreground">
@@ -822,7 +893,7 @@ export function CrmPage({
         </section>
       ) : null}
 
-      {activeTab === "executive-dashboard" ? (
+      {activeTab === "executive-dashboard" && !isLeadFormOpen ? (
         <CrmExecutiveDashboard
           data={executiveDashboard}
           isOperationalDataAvailable={myDayView !== null}
@@ -834,6 +905,7 @@ export function CrmPage({
       ) : null}
 
       {activePipelineGroup &&
+      !isLeadFormOpen &&
       !hasLeadSearchNoResults &&
       !hasOperationalFilterNoResults ? (
         <div className="grid min-w-0 gap-4 overflow-x-hidden">
@@ -868,6 +940,7 @@ export function CrmPage({
       ) : null}
 
       {shouldShowOperationalSupport &&
+      !isLeadFormOpen &&
       !hasLeadSearchNoResults &&
       !hasOperationalFilterNoResults ? (
         <MyDayPanel
@@ -879,6 +952,7 @@ export function CrmPage({
       ) : null}
 
       {activeTab === "lost" &&
+      !isLeadFormOpen &&
       !hasLeadSearchNoResults &&
       !hasOperationalFilterNoResults ? (
         <LostLeadsPanel
@@ -888,6 +962,7 @@ export function CrmPage({
       ) : null}
 
       {activeTab === "base" &&
+      !isLeadFormOpen &&
       !hasLeadSearchNoResults &&
       !hasOperationalFilterNoResults ? (
         <BasePanel
@@ -899,7 +974,7 @@ export function CrmPage({
         />
       ) : null}
 
-      {activeTab === "settings" ? (
+      {activeTab === "settings" && !isLeadFormOpen ? (
         <section className="grid min-w-0 gap-6">
           <PipelineSettingsPanel
             newStageNames={newStageNames}
@@ -2243,6 +2318,8 @@ function mapLeadToInput(lead: CrmLead): CrmLeadInput {
 function LeadForm({
   draft,
   editingLeadId,
+  errorMessage,
+  isSubmitting,
   kanbanPipelineDefinitions,
   onCancel,
   onChange,
@@ -2251,6 +2328,8 @@ function LeadForm({
 }: {
   draft: CrmLeadInput;
   editingLeadId: string | null;
+  errorMessage?: string | null;
+  isSubmitting: boolean;
   kanbanPipelineDefinitions: Array<{
     key: CrmPipeline;
     label: string;
@@ -2273,11 +2352,9 @@ function LeadForm({
             diaria compacta.
           </p>
         </div>
-        {editingLeadId ? (
-          <Button onClick={onCancel} type="button" variant="ghost">
-            Cancelar
-          </Button>
-        ) : null}
+        <Button onClick={onCancel} type="button" variant="ghost">
+          Cancelar
+        </Button>
       </div>
       <form className="mt-5 grid gap-4" onSubmit={onSubmit}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -2460,10 +2537,19 @@ function LeadForm({
             value={draft.observacoes}
           />
         </Field>
+        {errorMessage ? (
+          <div className="rounded-md border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+            {errorMessage}
+          </div>
+        ) : null}
         <div>
-          <Button type="submit">
+          <Button disabled={isSubmitting} type="submit">
             <Plus className="h-4 w-4" aria-hidden />
-            {editingLeadId ? "Salvar lead" : "Criar lead"}
+            {isSubmitting
+              ? "Salvando..."
+              : editingLeadId
+                ? "Salvar lead"
+                : "Criar lead"}
           </Button>
         </div>
       </form>

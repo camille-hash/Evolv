@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { PortfolioIntelligencePanel } from "@/components/portfolio-intelligence/portfolio-intelligence-panel";
 import { RecommendationsPanel } from "@/components/recommendations/recommendations-panel";
 import { WealthMilestoneTimeline } from "@/components/wealth/wealth-milestone-timeline";
@@ -102,10 +102,8 @@ const emptyPortfolioSnapshot: PortfolioSnapshot = {
 
 export function ExecutiveDashboard({
   clientContext,
-  onCreateSimulation,
 }: {
   clientContext: ClientContext;
-  onCreateSimulation: () => void;
 }) {
   const [savedSimulations, setSavedSimulations] = useState<
     SimulatorSavedSimulation[]
@@ -255,14 +253,6 @@ export function ExecutiveDashboard({
             </p>
           </div>
 
-          <button
-            className="inline-flex h-11 w-fit items-center justify-center gap-2 rounded-md border border-brand-gold/50 bg-brand-gold px-4 text-sm font-medium text-brand-ink transition hover:bg-brand-gold/90"
-            onClick={onCreateSimulation}
-            type="button"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            Criar lead para simular
-          </button>
           <button
             className="inline-flex h-11 w-fit items-center justify-center rounded-md border border-primary-foreground/18 bg-primary-foreground/8 px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-foreground/14"
             onClick={() => generateEvolvMasterReport(clientContext)}

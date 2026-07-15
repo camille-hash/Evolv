@@ -375,10 +375,7 @@ export default function Home() {
         </section>
 
         {visibleActiveSection === "dashboard" ? (
-          <ExecutiveDashboard
-            clientContext={clientContext}
-            onCreateSimulation={() => handleNavigate("crm")}
-          />
+          <ExecutiveDashboard clientContext={clientContext} />
         ) : null}
 
         {visibleActiveSection === "client" ? (
