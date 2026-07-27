@@ -7,6 +7,7 @@ type OperationsContractsListProps = {
   highlightedContractId?: string | null;
   onChangeStatus?: (contract: OperationsContractRow) => void;
   onResolveMissingContractNumber?: (contract: OperationsContractRow) => void;
+  operationalTimelineContractId?: string | null;
 };
 
 export function OperationsContractsList({
@@ -14,6 +15,7 @@ export function OperationsContractsList({
   highlightedContractId,
   onChangeStatus,
   onResolveMissingContractNumber,
+  operationalTimelineContractId,
 }: OperationsContractsListProps) {
   if (!contracts.length) {
     return <OperationsContractsEmptyState />;
@@ -26,6 +28,7 @@ export function OperationsContractsList({
           contract={contract}
           isHighlighted={highlightedContractId === contract.id}
           key={contract.id}
+          showOperationalTimeline={operationalTimelineContractId === contract.id}
           onChangeStatus={
             onChangeStatus ? () => onChangeStatus(contract) : undefined
           }

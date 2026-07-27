@@ -240,6 +240,11 @@ export function OperationsContractsPage() {
             setSelectedEditContract(contract);
             setFeedbackMessage(null);
           }}
+          operationalTimelineContractId={
+            pageContext.contractId && visibleContracts.length === 1
+              ? pageContext.contractId
+              : null
+          }
         />
       )}
 

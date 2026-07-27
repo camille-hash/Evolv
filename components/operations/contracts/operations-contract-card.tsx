@@ -5,12 +5,14 @@ import type {
 import type { ContractStatus } from "@/modules/contracts/types";
 import { OperationsContextLink } from "../operations-context-link";
 import { ContractCommissionSummaryCard } from "./contract-commission-summary-card";
+import { ContractOperationalTimeline } from "./contract-operational-timeline";
 
 type OperationsContractCardProps = {
   contract: OperationsContractRow;
   isHighlighted?: boolean;
   onChangeStatus?: () => void;
   onResolveMissingContractNumber?: () => void;
+  showOperationalTimeline?: boolean;
 };
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -44,6 +46,7 @@ export function OperationsContractCard({
   isHighlighted = false,
   onChangeStatus,
   onResolveMissingContractNumber,
+  showOperationalTimeline = false,
 }: OperationsContractCardProps) {
   const currentContractStatus = normalizeContractStatus(contract.sourceStatus);
 
@@ -154,6 +157,14 @@ export function OperationsContractCard({
             ))}
           </ul>
         </div>
+      ) : null}
+
+      {showOperationalTimeline ? (
+        <ContractOperationalTimeline
+          contractId={contract.id}
+          creditValue={contract.creditValue}
+          key={contract.id}
+        />
       ) : null}
     </article>
   );
