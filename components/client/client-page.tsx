@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { readSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import {
@@ -1027,6 +1028,7 @@ function ClientPersistedDetail({
             {detail.contracts.map((contract) => (
               <ClientContractItem
                 contract={contract}
+                clientId={detail.client.id}
                 key={contract.id}
                 onChangeStatus={() => onChangeContractStatus(contract)}
               />
@@ -1090,9 +1092,11 @@ function ContractFormInput({
 
 function ClientContractItem({
   contract,
+  clientId,
   onChangeStatus,
 }: {
   contract: ClientContract;
+  clientId: string;
   onChangeStatus: () => void;
 }) {
   return (
@@ -1157,6 +1161,12 @@ function ClientContractItem({
       </div>
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Link
+          className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary/35 hover:bg-muted/60"
+          href={`/operations/contracts/${encodeURIComponent(contract.id)}?origin=client&clientId=${encodeURIComponent(clientId)}`}
+        >
+          Abrir contrato
+        </Link>
         <button
           className="inline-flex items-center justify-center rounded-md border border-primary/25 bg-primary/[0.06] px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary/45 hover:bg-primary/[0.1]"
           onClick={onChangeStatus}

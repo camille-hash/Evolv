@@ -160,7 +160,11 @@ async function resolveContext(
   accessToken: string | null,
 ): Promise<Result<RequestContext>> {
   if (!accessToken) {
-    return { error: "Sessão inválida.", ok: false, status: 401 };
+    return {
+      error: "Sua sessão expirou. Entre novamente para continuar.",
+      ok: false,
+      status: 401,
+    };
   }
 
   try {
@@ -168,7 +172,12 @@ async function resolveContext(
     const { data: userData, error: userError } =
       await supabase.auth.getUser(accessToken);
     if (userError || !userData.user) {
-      return { error: "Sessão inválida.", ok: false, status: 401 };
+      logTechnicalError("resolveContractTimelineUser", userError);
+      return {
+        error: "Sua sessão expirou. Entre novamente para continuar.",
+        ok: false,
+        status: 401,
+      };
     }
 
     const { data, error } = await supabase
@@ -176,7 +185,32 @@ async function resolveContext(
       .select("id,organization_id,role,is_active")
       .eq("id", userData.user.id)
       .maybeSingle<ProfileRow>();
-    if (error || !isValidProfile(data)) {
+    if (error) {
+      logTechnicalError("resolveContractTimelineProfile", error);
+      return {
+        error: "Não foi possível consultar o perfil autenticado.",
+        ok: false,
+        status: 500,
+      };
+    }
+    if (!data) {
+      return {
+        error: "Não existe perfil vinculado à sua conta.",
+        ok: false,
+        status: 403,
+      };
+    }
+    if (data.is_active !== true) {
+      return { error: "Seu perfil está inativo.", ok: false, status: 403 };
+    }
+    if (!data.organization_id) {
+      return {
+        error: "Seu perfil não possui uma organização vinculada.",
+        ok: false,
+        status: 403,
+      };
+    }
+    if (!isSupportedRole(data.role)) {
       return { error: accessError, ok: false, status: 403 };
     }
 
@@ -207,7 +241,11 @@ async function findContract(context: RequestContext, contractId: string) {
     };
   }
   if (!data) {
-    return { error: "Contrato não encontrado.", ok: false as const, status: 404 };
+    return {
+      error: "O contrato não está disponível na sua organização.",
+      ok: false as const,
+      status: 404,
+    };
   }
   return { ok: true as const };
 }
@@ -294,8 +332,29 @@ function validateBidResult(input: RegisterBidResultInput) {
 function mapWriteError(operation: string, error: unknown) {
   logTechnicalError(operation, error);
   const code = readErrorCode(error);
+  const message = readErrorMessage(error);
   if (code === "42501") {
-    return { error: accessError, ok: false as const, status: 403 };
+    return {
+      error: message.includes("contract_timeline_events")
+        ? "A Timeline não está autorizada para concluir esta gravação."
+        : "Você não tem permissão para operar este contrato.",
+      ok: false as const,
+      status: 403,
+    };
+  }
+  if (code === "PGRST202" || code === "42883") {
+    return {
+      error: "A operação da Timeline ainda não está disponível.",
+      ok: false as const,
+      status: 503,
+    };
+  }
+  if (code === "42P01" || code === "42703") {
+    return {
+      error: "A estrutura da Timeline precisa ser atualizada.",
+      ok: false as const,
+      status: 503,
+    };
   }
   if (code === "23503" || code === "P0002") {
     return {
@@ -304,7 +363,13 @@ function mapWriteError(operation: string, error: unknown) {
       status: 400,
     };
   }
-  if (code === "22023" || code === "23514") {
+  if (
+    code === "22023" ||
+    code === "23502" ||
+    code === "23505" ||
+    code === "23514" ||
+    code === "22P02"
+  ) {
     return {
       error: "Revise os dados informados para concluir o registro.",
       ok: false as const,
@@ -372,16 +437,8 @@ function mapEvent(row: Record<string, unknown>): ContractTimelineEvent {
   };
 }
 
-function isValidProfile(profile: ProfileRow | null): profile is ProfileRow & {
-  is_active: true;
-  organization_id: string;
-} {
-  return Boolean(
-    profile?.id &&
-      profile.organization_id &&
-      profile.is_active === true &&
-      ["admin", "master", "sdr"].includes(profile.role ?? ""),
-  );
+function isSupportedRole(role: string | null) {
+  return ["admin", "master", "sdr"].includes(role ?? "");
 }
 
 function isValidDate(value: string) {
@@ -404,6 +461,11 @@ function optionalNumber(value: unknown) {
 }
 function readErrorCode(value: unknown) {
   return isRecord(value) && typeof value.code === "string" ? value.code : null;
+}
+function readErrorMessage(value: unknown) {
+  return isRecord(value) && typeof value.message === "string"
+    ? value.message
+    : "";
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));

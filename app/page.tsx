@@ -168,6 +168,18 @@ export default function Home() {
           : loadCurrentUser();
 
         setCurrentUser(storedUser);
+        const requestedView = new URLSearchParams(window.location.search);
+        const requestedClientId = requestedView.get("clientId");
+
+        if (
+          storedUser &&
+          requestedView.get("section") === "client" &&
+          requestedClientId
+        ) {
+          setConvertedClientId(requestedClientId);
+          setActiveSection("client");
+        }
+
         setClientContext(loadClientContext());
         setLeadProposalContext(loadCrmLeadProposalContext());
         setAccessReady(true);

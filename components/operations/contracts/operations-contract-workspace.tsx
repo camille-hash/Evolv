@@ -30,10 +30,21 @@ const currency = new Intl.NumberFormat("pt-BR", {
 });
 
 export function OperationsContractWorkspace({
+  clientId,
   contractId,
+  origin,
 }: {
+  clientId?: string;
   contractId: string;
+  origin?: string;
 }) {
+  const returnToClient = origin === "client" && Boolean(clientId);
+  const returnHref = returnToClient
+    ? `/?section=client&clientId=${encodeURIComponent(clientId!)}`
+    : "/operations/contracts";
+  const returnLabel = returnToClient
+    ? "Voltar para cliente"
+    : "Voltar para contratos";
   const [contract, setContract] = useState<OperationsContractRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,8 +102,8 @@ export function OperationsContractWorkspace({
           title="Contrato não encontrado"
         />
         <div>
-          <OperationsContextLink href="/operations/contracts">
-            Voltar para contratos
+          <OperationsContextLink href={returnHref}>
+            {returnLabel}
           </OperationsContextLink>
         </div>
       </div>
@@ -137,8 +148,8 @@ export function OperationsContractWorkspace({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <OperationsContextLink href="/operations/contracts">
-              Voltar para contratos
+            <OperationsContextLink href={returnHref}>
+              {returnLabel}
             </OperationsContextLink>
             <OperationsContextLink
               href={`/operations/integrity/${encodeURIComponent(contract.id)}`}
