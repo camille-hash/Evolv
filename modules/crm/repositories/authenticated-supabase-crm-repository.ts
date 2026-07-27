@@ -4,7 +4,10 @@ import type {
   CrmOpportunityStatus,
   CrmTemperature,
 } from "../crm-types";
-import type { CrmRepository } from "./crm-repository";
+import {
+  CrmRepositoryError,
+  type CrmRepository,
+} from "./crm-repository";
 
 type AuthenticatedSupabaseCrmLeadRow = {
   id: string;
@@ -97,8 +100,29 @@ export class AuthenticatedSupabaseCrmRepository implements CrmRepository {
       .eq("id", session.user.id)
       .maybeSingle<AuthenticatedCrmProfile>();
 
-    if (profileError || !profile?.organization_id || profile.is_active !== true) {
-      throw profileError ?? new Error("Perfil ativo do CRM nao encontrado.");
+    if (profileError) {
+      throw profileError;
+    }
+
+    if (!profile) {
+      throw new CrmRepositoryError(
+        "CRM_PROFILE_NOT_FOUND",
+        "Authenticated CRM profile was not found.",
+      );
+    }
+
+    if (profile.is_active !== true) {
+      throw new CrmRepositoryError(
+        "CRM_PROFILE_INACTIVE",
+        "Authenticated CRM profile is inactive.",
+      );
+    }
+
+    if (!profile.organization_id) {
+      throw new CrmRepositoryError(
+        "CRM_PROFILE_ORGANIZATION_MISSING",
+        "Authenticated CRM profile has no organization.",
+      );
     }
 
     const { insertPayload } = mapCrmLeadToAuthenticatedSupabaseInsert(lead);
@@ -397,7 +421,6 @@ function mapCrmLeadToAuthenticatedSupabaseInsert(lead: CrmLead) {
     insertPayload: {
       ...updatePayload,
       id: lead.id,
-      source_system: "evolv",
     },
   };
 }

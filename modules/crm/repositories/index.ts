@@ -16,6 +16,14 @@ import {
   canUseSupabaseCrmRepository,
   createSupabaseCrmRepository,
 } from "./supabase-crm-repository";
+import { CrmRepositoryError } from "./crm-repository";
+
+type SupabaseTechnicalError = {
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+  message?: string;
+};
 
 const localCrmRepository = new LocalCrmRepository();
 const shouldUseAuthenticatedCrmShadow =
@@ -49,13 +57,10 @@ export async function createCrmLeadInRepository(
       setCrmRepositorySource("authenticated");
       return createdLead;
     } catch (error) {
-      console.warn("[EVOLV CRM] Create authenticated falhou.", error);
+      logCrmLeadCreationError("authenticated", error);
 
       if (shouldUseSupabaseAuth) {
-        throw new Error(
-          "Nao foi possivel criar o lead. Verifique sua conexao e tente novamente.",
-          { cause: error },
-        );
+        throw mapCrmLeadCreationError(error);
       }
     }
   }
@@ -67,12 +72,121 @@ export async function createCrmLeadInRepository(
     setCrmRepositorySource("anon");
     return createdLead;
   } catch (error) {
-    console.error("[EVOLV CRM] Nao foi possivel persistir o novo lead.", error);
-    throw new Error(
-      "Nao foi possivel criar o lead. Verifique sua conexao e tente novamente.",
+    logCrmLeadCreationError("anon", error);
+    throw mapCrmLeadCreationError(error);
+  }
+}
+
+function mapCrmLeadCreationError(error: unknown) {
+  if (error instanceof CrmRepositoryError) {
+    const messageByCode: Record<CrmRepositoryError["code"], string> = {
+      CRM_PROFILE_INACTIVE:
+        "Seu perfil de acesso ao CRM esta inativo. Entre em contato com o administrador.",
+      CRM_PROFILE_NOT_FOUND:
+        "Seu perfil de acesso ao CRM nao foi encontrado. Entre em contato com o administrador.",
+      CRM_PROFILE_ORGANIZATION_MISSING:
+        "Seu perfil nao esta vinculado a uma organizacao. Entre em contato com o administrador.",
+    };
+
+    return new Error(messageByCode[error.code], { cause: error });
+  }
+
+  const technicalError = readSupabaseTechnicalError(error);
+  const normalizedMessage = technicalError.message?.toLowerCase() ?? "";
+
+  if (
+    technicalError.code === "42501" ||
+    normalizedMessage.includes("row-level security")
+  ) {
+    return new Error(
+      "Voce nao tem permissao para criar leads nesta organizacao.",
       { cause: error },
     );
   }
+
+  if (technicalError.code === "23502") {
+    return new Error(
+      "Um campo obrigatorio do lead nao foi preenchido. Revise o formulario.",
+      { cause: error },
+    );
+  }
+
+  if (
+    technicalError.code === "22P02" ||
+    technicalError.code === "22007" ||
+    technicalError.code === "22008" ||
+    technicalError.code === "23514" ||
+    technicalError.code === "PGRST102"
+  ) {
+    return new Error(
+      "Um ou mais campos do lead possuem valores invalidos. Revise o formulario.",
+      { cause: error },
+    );
+  }
+
+  if (technicalError.code === "23503") {
+    return new Error(
+      "O lead referencia um perfil ou organizacao invalida. Atualize a pagina e tente novamente.",
+      { cause: error },
+    );
+  }
+
+  if (technicalError.code === "PGRST204") {
+    return new Error(
+      "O cadastro de leads esta temporariamente indisponivel por uma incompatibilidade de dados.",
+      { cause: error },
+    );
+  }
+
+  return new Error(
+    "Nao foi possivel criar o lead. Tente novamente ou contate o suporte.",
+    { cause: error },
+  );
+}
+
+function logCrmLeadCreationError(
+  source: "anon" | "authenticated",
+  error: unknown,
+) {
+  if (process.env.NODE_ENV !== "development") {
+    return;
+  }
+
+  const technicalError = readSupabaseTechnicalError(error);
+
+  console.error("[EVOLV CRM] Falha tecnica ao criar lead.", {
+    code: technicalError.code ?? null,
+    details: technicalError.details ?? null,
+    hint: technicalError.hint ?? null,
+    message:
+      technicalError.message ??
+      (error instanceof Error ? error.message : "Unknown CRM creation error."),
+    source,
+  });
+}
+
+function readSupabaseTechnicalError(
+  error: unknown,
+): SupabaseTechnicalError {
+  if (!error || typeof error !== "object") {
+    return {};
+  }
+
+  const candidate = error as SupabaseTechnicalError;
+
+  return {
+    code: typeof candidate.code === "string" ? candidate.code : undefined,
+    details:
+      typeof candidate.details === "string" || candidate.details === null
+        ? candidate.details
+        : undefined,
+    hint:
+      typeof candidate.hint === "string" || candidate.hint === null
+        ? candidate.hint
+        : undefined,
+    message:
+      typeof candidate.message === "string" ? candidate.message : undefined,
+  };
 }
 
 export async function listCrmLeadsFromRepository(): Promise<CrmLead[]> {

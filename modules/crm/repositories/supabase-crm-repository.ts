@@ -316,7 +316,6 @@ function mapCrmLeadToSupabaseInsert(lead: CrmLead) {
     insertPayload: {
       ...updatePayload,
       id: lead.id,
-      source_system: "evolv",
     },
   };
 }
