@@ -108,6 +108,11 @@ export function OperationsContractCard({
       <ContractCommissionSummaryCard summary={contract.commissionSummary} />
 
       <div className="mt-4 flex flex-wrap gap-2">
+        <OperationsContextLink
+          href={`/operations/contracts/${encodeURIComponent(contract.id)}`}
+        >
+          Abrir contrato
+        </OperationsContextLink>
         <OperationsContextLink href="/operations/clients">
           Ver cliente
         </OperationsContextLink>

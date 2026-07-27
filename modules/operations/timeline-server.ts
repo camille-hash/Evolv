@@ -466,7 +466,7 @@ function readOperationalHistory(metadata: unknown) {
 }
 
 function buildContractHref(contractId: string) {
-  return `/operations/contracts?contractId=${encodeURIComponent(contractId)}&origem=atividade`;
+  return `/operations/contracts/${encodeURIComponent(contractId)}?origem=atividade`;
 }
 
 function buildRevenueHref(contractId: string, entryId: string | null) {

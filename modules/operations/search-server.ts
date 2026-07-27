@@ -546,7 +546,7 @@ function buildContractSearchItem(input: {
     : "Contrato sem numero";
 
   return {
-    href: `/operations/contracts?contractId=${encodeURIComponent(input.contract.id)}&origem=busca`,
+    href: `/operations/contracts/${encodeURIComponent(input.contract.id)}?origem=busca`,
     id: input.contract.id,
     identifier: input.contract.contract_number ?? undefined,
     subtitle: [

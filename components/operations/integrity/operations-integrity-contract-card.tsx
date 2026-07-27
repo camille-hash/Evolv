@@ -16,7 +16,7 @@ export function OperationsIntegrityContractCard({
     errorCount > 0
       ? "border-rose-200 bg-rose-100 text-rose-800"
       : "border-amber-200 bg-amber-100 text-amber-800";
-  const contractHref = `/operations/contracts?contractId=${encodeURIComponent(contract.contractId)}&origem=integridade`;
+  const contractHref = `/operations/contracts/${encodeURIComponent(contract.contractId)}?origem=integridade`;
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
