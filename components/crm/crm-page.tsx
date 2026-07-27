@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
   type FormEvent,
@@ -30,6 +31,7 @@ import {
   buildCrmExecutiveDashboardReadModel,
   buildCrmOperationalPrioritySummary,
   buildCrmAdvancedSearchOptions,
+  createCrmLeadInRepository,
   crmStageLabels,
   crmTemperatureLabels,
   emptyCrmLeadInput,
@@ -49,7 +51,6 @@ import {
   resolveCrmLeadOperationalPriority,
   resolveCrmTaskTemporalStatus,
   resolveNextPendingCrmTask,
-  saveCrmLead,
   summarizeCrmAdvancedSearch,
   toCrmPipelineDefinitions,
   updateCrmLead,
@@ -235,6 +236,7 @@ export function CrmPage({
   const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
   const [leadFormError, setLeadFormError] = useState<string | null>(null);
+  const pendingCreateIdRef = useRef<string | null>(null);
   const [baseSearch, setBaseSearch] = useState("");
   const [leadNameSearch, setLeadNameSearch] = useState("");
   const [newStageNames, setNewStageNames] = useState<Record<string, string>>({});
@@ -561,21 +563,18 @@ export function CrmPage({
           ),
         );
       } else {
-        const existingLeadIds = new Set(leads.map((lead) => lead.id));
-        const nextLeads = saveCrmLead(draft);
-        const createdLead =
-          nextLeads.find((lead) => !existingLeadIds.has(lead.id)) ??
-          nextLeads[0] ??
-          null;
+        pendingCreateIdRef.current ??= crypto.randomUUID();
+        const createdLead = await createCrmLeadInRepository(
+          draft,
+          pendingCreateIdRef.current,
+        );
 
-        if (!createdLead?.id) {
-          setLeadFormError(
-            "Lead criado sem identificador. Recarregue a lista e tente novamente.",
-          );
-          return;
-        }
-
-        setLeads(nextLeads);
+        setLeads((currentLeads) =>
+          currentLeads.some((lead) => lead.id === createdLead.id)
+            ? currentLeads
+            : [createdLead, ...currentLeads],
+        );
+        pendingCreateIdRef.current = null;
         setSelectedLeadId(createdLead.id);
         setSuccessMessage("Lead criado com sucesso.");
         setIsLeadFormOpen(false);
@@ -628,6 +627,7 @@ export function CrmPage({
   }
 
   function handleCancelEdit() {
+    pendingCreateIdRef.current = null;
     setEditingLeadId(null);
     setSelectedLeadId(null);
     setIsLeadFormOpen(false);
@@ -636,6 +636,7 @@ export function CrmPage({
   }
 
   function handleOpenCreateLeadForm() {
+    pendingCreateIdRef.current = null;
     setSelectedLeadId(null);
     setEditingLeadId(null);
     setDraft(emptyCrmLeadInput);
@@ -851,6 +852,7 @@ export function CrmPage({
               )}
               key={tab.key}
               onClick={() => {
+                pendingCreateIdRef.current = null;
                 setActiveTab(tab.key);
                 setIsLeadFormOpen(false);
                 setLeadFormError(null);

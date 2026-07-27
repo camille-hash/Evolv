@@ -4,7 +4,8 @@ export * from "./crm-lead-notes-repository";
 export * from "./local-crm-repository";
 export * from "./supabase-crm-repository";
 
-import type { CrmLead } from "../crm-types";
+import { createCrmLead } from "../crm-engine";
+import type { CrmLead, CrmLeadInput } from "../crm-types";
 import { setCrmRepositorySource } from "../crm-source-observability";
 import {
   canCreateAuthenticatedSupabaseCrmRepository,
@@ -19,6 +20,60 @@ import {
 const localCrmRepository = new LocalCrmRepository();
 const shouldUseAuthenticatedCrmShadow =
   process.env.NEXT_PUBLIC_USE_SUPABASE_CRM_AUTH_SHADOW === "true";
+const shouldUseSupabaseAuth =
+  process.env.NEXT_PUBLIC_USE_SUPABASE_AUTH === "true";
+
+export async function createCrmLeadInRepository(
+  input: CrmLeadInput,
+  idempotencyKey?: string,
+): Promise<CrmLead> {
+  const lead = {
+    ...createCrmLead(input),
+    id: idempotencyKey ?? crypto.randomUUID(),
+  };
+
+  if (!canUseSupabaseCrmRepository()) {
+    console.info("[EVOLV CRM] Create usando localStorage.", { id: lead.id });
+    setCrmRepositorySource("localStorage");
+    return localCrmRepository.createLead(lead);
+  }
+
+  if (canCreateAuthenticatedSupabaseCrmRepository()) {
+    try {
+      console.info("[EVOLV CRM] Create usando Supabase authenticated.", {
+        id: lead.id,
+      });
+      const createdLead =
+        await createAuthenticatedSupabaseCrmRepository().createLead(lead);
+
+      setCrmRepositorySource("authenticated");
+      return createdLead;
+    } catch (error) {
+      console.warn("[EVOLV CRM] Create authenticated falhou.", error);
+
+      if (shouldUseSupabaseAuth) {
+        throw new Error(
+          "Nao foi possivel criar o lead. Verifique sua conexao e tente novamente.",
+          { cause: error },
+        );
+      }
+    }
+  }
+
+  try {
+    console.info("[EVOLV CRM] Create usando Supabase anon.", { id: lead.id });
+    const createdLead = await createSupabaseCrmRepository().createLead(lead);
+
+    setCrmRepositorySource("anon");
+    return createdLead;
+  } catch (error) {
+    console.error("[EVOLV CRM] Nao foi possivel persistir o novo lead.", error);
+    throw new Error(
+      "Nao foi possivel criar o lead. Verifique sua conexao e tente novamente.",
+      { cause: error },
+    );
+  }
+}
 
 export async function listCrmLeadsFromRepository(): Promise<CrmLead[]> {
   if (!canUseSupabaseCrmRepository()) {

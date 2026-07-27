@@ -3,6 +3,19 @@ import type { CrmLead } from "../crm-types";
 import type { CrmRepository } from "./crm-repository";
 
 export class LocalCrmRepository implements CrmRepository {
+  async createLead(lead: CrmLead): Promise<CrmLead> {
+    const leads = loadCrmLeads();
+    const existingLead = leads.find((item) => item.id === lead.id);
+
+    if (existingLead) {
+      return existingLead;
+    }
+
+    saveCrmLeads([lead, ...leads]);
+
+    return lead;
+  }
+
   async list(): Promise<CrmLead[]> {
     return loadCrmLeads();
   }

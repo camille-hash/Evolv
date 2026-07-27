@@ -37,6 +37,12 @@ type DateNormalizationLog = {
   to: string | null | undefined;
 };
 
+type AuthenticatedCrmProfile = {
+  id: string;
+  organization_id: string | null;
+  is_active: boolean | null;
+};
+
 const authenticatedCrmLeadColumns = [
   "id",
   "external_id",
@@ -82,6 +88,45 @@ export class AuthenticatedSupabaseCrmRepository implements CrmRepository {
     private readonly supabaseUrl: string,
     private readonly publishableKey: string,
   ) {}
+
+  async createLead(lead: CrmLead): Promise<CrmLead> {
+    const session = await this.requireAuthenticatedSession("createLead");
+    const { data: profile, error: profileError } = await this.supabase
+      .from("profiles")
+      .select("id, organization_id, is_active")
+      .eq("id", session.user.id)
+      .maybeSingle<AuthenticatedCrmProfile>();
+
+    if (profileError || !profile?.organization_id || profile.is_active !== true) {
+      throw profileError ?? new Error("Perfil ativo do CRM nao encontrado.");
+    }
+
+    const { insertPayload } = mapCrmLeadToAuthenticatedSupabaseInsert(lead);
+    const { data, error } = await this.supabase
+      .from("crm_leads")
+      .insert({
+        ...insertPayload,
+        organization_id: profile.organization_id,
+      })
+      .select(authenticatedCrmLeadColumns)
+      .single();
+
+    if (error) {
+      if (error.code === "23505") {
+        const existingLead = await this.getById(lead.id);
+
+        if (existingLead) {
+          return existingLead;
+        }
+      }
+
+      throw error;
+    }
+
+    return mapAuthenticatedSupabaseCrmLead(
+      data as unknown as AuthenticatedSupabaseCrmLeadRow,
+    );
+  }
 
   async list(): Promise<CrmLead[]> {
     await this.requireAuthenticatedSession("list");
@@ -233,6 +278,8 @@ export class AuthenticatedSupabaseCrmRepository implements CrmRepository {
       operation,
       userId: data.session.user.id,
     });
+
+    return data.session;
   }
 }
 
@@ -340,6 +387,19 @@ function mapCrmLeadPatchToAuthenticatedSupabaseRow(patch: Partial<CrmLead>) {
   );
 
   return { normalizedDates, updatePayload: row };
+}
+
+function mapCrmLeadToAuthenticatedSupabaseInsert(lead: CrmLead) {
+  const { updatePayload } =
+    mapCrmLeadPatchToAuthenticatedSupabaseRow(lead);
+
+  return {
+    insertPayload: {
+      ...updatePayload,
+      id: lead.id,
+      source_system: "evolv",
+    },
+  };
 }
 
 function setIfPresent(

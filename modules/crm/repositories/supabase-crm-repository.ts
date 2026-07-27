@@ -78,6 +78,29 @@ export class SupabaseCrmRepository implements CrmRepository {
     private readonly publishableKey: string,
   ) {}
 
+  async createLead(lead: CrmLead): Promise<CrmLead> {
+    const { insertPayload } = mapCrmLeadToSupabaseInsert(lead);
+    const { data, error } = await this.supabase
+      .from("crm_leads")
+      .insert(insertPayload)
+      .select(crmLeadColumns)
+      .single();
+
+    if (error) {
+      if (error.code === "23505") {
+        const existingLead = await this.getById(lead.id);
+
+        if (existingLead) {
+          return existingLead;
+        }
+      }
+
+      throw error;
+    }
+
+    return mapSupabaseCrmLead(data as unknown as SupabaseCrmLeadRow);
+  }
+
   async list(): Promise<CrmLead[]> {
     const { data, error } = await this.supabase
       .from("crm_leads")
@@ -284,6 +307,18 @@ function mapCrmLeadPatchToSupabaseRow(patch: Partial<CrmLead>) {
   );
 
   return { normalizedDates, updatePayload: row };
+}
+
+function mapCrmLeadToSupabaseInsert(lead: CrmLead) {
+  const { updatePayload } = mapCrmLeadPatchToSupabaseRow(lead);
+
+  return {
+    insertPayload: {
+      ...updatePayload,
+      id: lead.id,
+      source_system: "evolv",
+    },
+  };
 }
 
 function setIfPresent(
