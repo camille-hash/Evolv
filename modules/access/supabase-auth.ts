@@ -3,6 +3,18 @@ import type { User, UserRole } from "./access-types";
 
 const profileAccessErrorMessage =
   "Nao foi possivel concluir seu acesso. Entre em contato com o administrador.";
+const localConfigurationErrorMessage =
+  "A autenticacao local nao esta configurada. Verifique o ambiente da aplicacao.";
+const networkErrorMessage =
+  "Nao foi possivel conectar ao servico de autenticacao.";
+
+type SupabaseLoginFailure =
+  | "configuration"
+  | "invalid_credentials"
+  | "network"
+  | "profile"
+  | "unauthorized"
+  | "unexpected";
 
 type SupabaseAccessProfile = {
   id: string;
@@ -26,14 +38,20 @@ export async function loadSupabaseCurrentUser(): Promise<User | null> {
       return null;
     }
 
-    const profile = await loadValidatedProfile(supabase, data.session.user);
+    const profileResult = await loadValidatedProfile(
+      supabase,
+      data.session.user,
+    );
 
-    if (!profile) {
+    if (!profileResult.ok) {
       await supabase.auth.signOut();
       return null;
     }
 
-    return mapSupabaseUserToAccessUser(data.session.user, profile);
+    return mapSupabaseUserToAccessUser(
+      data.session.user,
+      profileResult.profile,
+    );
   } catch {
     return null;
   }
@@ -42,34 +60,89 @@ export async function loadSupabaseCurrentUser(): Promise<User | null> {
 export async function signInWithSupabaseAuth(
   email: string,
   password: string,
-): Promise<{ user: User | null; error: string | null }> {
-  const supabase = createSupabaseAuthClient();
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password,
-  });
+): Promise<{
+  user: User | null;
+  error: string | null;
+  failure?: SupabaseLoginFailure;
+}> {
+  logSupabaseAuthDevelopment("signIn:start", null);
 
-  if (error || !data.user) {
+  let supabase: ReturnType<typeof createSupabaseAuthClient>;
+
+  try {
+    supabase = createSupabaseAuthClient();
+  } catch (error) {
+    logSupabaseAuthDevelopment("signIn:create-client", error);
     return {
-      error: "E-mail ou senha invalidos.",
+      error: localConfigurationErrorMessage,
+      failure: "configuration",
       user: null,
     };
   }
 
-  const profile = await loadValidatedProfile(supabase, data.user);
+  let authResult: Awaited<
+    ReturnType<typeof supabase.auth.signInWithPassword>
+  >;
 
-  if (!profile) {
+  try {
+    authResult = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+  } catch (error) {
+    logSupabaseAuthDevelopment("signIn:request", error);
+    return {
+      error: isNetworkError(error)
+        ? networkErrorMessage
+        : "Nao foi possivel concluir a autenticacao.",
+      failure: isNetworkError(error) ? "network" : "unexpected",
+      user: null,
+    };
+  }
+
+  const { data, error } = authResult;
+
+  if (error || !data.user) {
+    logSupabaseAuthDevelopment("signIn:response", error);
+    const failure = classifySupabaseAuthError(error);
+    return {
+      error:
+        failure === "invalid_credentials"
+          ? "E-mail ou senha invalidos."
+          : failure === "unauthorized"
+            ? "Este usuario nao esta autorizado a acessar a plataforma."
+            : failure === "network"
+              ? networkErrorMessage
+              : "Nao foi possivel concluir a autenticacao.",
+      failure,
+      user: null,
+    };
+  }
+
+  logSupabaseAuthDevelopment("signIn:session", null, {
+    sessionPersisted: Boolean(data.session),
+  });
+  const profileResult = await loadValidatedProfile(supabase, data.user);
+
+  if (!profileResult.ok) {
+    logSupabaseAuthDevelopment("signIn:profile", profileResult.error);
     await supabase.auth.signOut();
 
     return {
-      error: profileAccessErrorMessage,
+      error:
+        profileResult.reason === "missing"
+          ? "Perfil de acesso nao encontrado."
+          : profileAccessErrorMessage,
+      failure:
+        profileResult.reason === "missing" ? "profile" : "unauthorized",
       user: null,
     };
   }
 
+  logSupabaseAuthDevelopment("signIn:complete", null);
   return {
     error: null,
-    user: mapSupabaseUserToAccessUser(data.user, profile),
+    user: mapSupabaseUserToAccessUser(data.user, profileResult.profile),
   };
 }
 
@@ -157,17 +230,26 @@ function createSupabaseAuthClient() {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseKey) {
+  logSupabaseAuthDevelopment("createClient:configuration", null);
+
+  if (!supabaseUrl?.trim() || !supabaseKey?.trim()) {
     throw new Error("Supabase Auth public environment variables are not configured.");
   }
 
-  return createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
+  try {
+    const client = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+    logSupabaseAuthDevelopment("createClient:complete", null);
+    return client;
+  } catch (error) {
+    logSupabaseAuthDevelopment("createClient:error", error);
+    throw error;
+  }
 }
 
 async function loadValidatedProfile(
@@ -180,11 +262,19 @@ async function loadValidatedProfile(
     .eq("id", user.id)
     .maybeSingle<SupabaseAccessProfile>();
 
-  if (error || !isValidProfile(data)) {
-    return null;
+  if (error) {
+    return { error, ok: false as const, reason: "query" as const };
   }
 
-  return data;
+  if (!data) {
+    return { error: null, ok: false as const, reason: "missing" as const };
+  }
+
+  if (!isValidProfile(data)) {
+    return { error: null, ok: false as const, reason: "unauthorized" as const };
+  }
+
+  return { ok: true as const, profile: data };
 }
 
 function isValidProfile(
@@ -237,6 +327,73 @@ function mapSupabaseUserToAccessUser(
 
 function readMetadataText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function classifySupabaseAuthError(error: unknown): SupabaseLoginFailure {
+  const code = readErrorText(error, "code");
+  const message = readErrorText(error, "message").toLowerCase();
+
+  if (
+    code === "invalid_credentials" ||
+    message.includes("invalid login credentials")
+  ) {
+    return "invalid_credentials";
+  }
+
+  if (
+    code === "email_not_confirmed" ||
+    code === "user_banned" ||
+    message.includes("not authorized")
+  ) {
+    return "unauthorized";
+  }
+
+  return isNetworkError(error) ? "network" : "unexpected";
+}
+
+function isNetworkError(error: unknown) {
+  const name = readErrorText(error, "name");
+  const message = readErrorText(error, "message").toLowerCase();
+  return (
+    name === "AuthRetryableFetchError" ||
+    name === "TypeError" ||
+    message.includes("fetch failed") ||
+    message.includes("failed to fetch") ||
+    message.includes("network")
+  );
+}
+
+function readErrorText(error: unknown, field: "code" | "message" | "name") {
+  if (!error || typeof error !== "object") return "";
+  const record = error as Record<string, unknown>;
+  return typeof record[field] === "string" ? record[field] : "";
+}
+
+function logSupabaseAuthDevelopment(
+  stage: string,
+  error: unknown,
+  extra: Record<string, boolean> = {},
+) {
+  if (process.env.NODE_ENV === "production") return;
+
+  const technicalError =
+    error instanceof Error
+      ? { message: error.message, name: error.name, stack: error.stack }
+      : error;
+
+  console.error("[STAB-007] Supabase Auth", {
+    environment: {
+      hasAnonKey: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()),
+      hasPublishableKey: Boolean(
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim(),
+      ),
+      hasUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
+      useSupabaseAuth: isSupabaseAuthEnabled(),
+    },
+    error: technicalError,
+    stage,
+    ...extra,
+  });
 }
 
 

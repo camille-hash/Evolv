@@ -49,7 +49,20 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
 
         setError("");
         onLogin(result.user);
-      } catch {
+      } catch (cause) {
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[STAB-007] LoginPage.handleSubmit", {
+            error:
+              cause instanceof Error
+                ? {
+                    message: cause.message,
+                    name: cause.name,
+                    stack: cause.stack,
+                  }
+                : cause,
+            stage: "signInWithSupabaseAuth",
+          });
+        }
         setError("Nao foi possivel acessar agora. Tente novamente em instantes.");
       } finally {
         setIsSubmitting(false);
