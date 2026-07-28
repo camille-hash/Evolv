@@ -77,6 +77,13 @@ type OpportunityBidRow = {
   result: string;
 };
 
+type OpportunityOfferRow = {
+  assembly_id: string;
+  id: string;
+  status: string;
+  version: number;
+};
+
 type OpportunityNameRow = {
   id: string;
   name: string | null;
@@ -235,13 +242,21 @@ async function loadAssemblyOpportunities(
     contract.administrator_id ? [contract.administrator_id] : [],
   );
 
-  const [bidsResult, clientsResult, administratorsResult] = await Promise.all([
+  const [bidsResult, offersResult, clientsResult, administratorsResult] = await Promise.all([
     assemblyIds.length
       ? context.supabase
           .from("contract_bids")
           .select("assembly_id,result")
           .eq("organization_id", context.profile.organization_id)
           .in("assembly_id", assemblyIds)
+      : Promise.resolve({ data: [], error: null }),
+    assemblyIds.length
+      ? context.supabase
+          .from("contract_bid_offers")
+          .select("id,assembly_id,status,version")
+          .eq("organization_id", context.profile.organization_id)
+          .in("assembly_id", assemblyIds)
+          .order("version", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     clientIds.length
       ? context.supabase
@@ -260,7 +275,10 @@ async function loadAssemblyOpportunities(
   ]);
 
   const readError =
-    bidsResult.error ?? clientsResult.error ?? administratorsResult.error;
+    bidsResult.error ??
+    offersResult.error ??
+    clientsResult.error ??
+    administratorsResult.error;
   if (readError) {
     logMyDayError("loadAssemblyOpportunities.references", readError);
     return {
@@ -294,12 +312,21 @@ async function loadAssemblyOpportunities(
     ]);
     return results;
   }, new Map());
+  const currentOfferByAssemblyId = new Map<string, OpportunityOfferRow>();
+  for (const offer of (
+    (offersResult.data ?? []) as unknown as OpportunityOfferRow[]
+  )) {
+    if (!currentOfferByAssemblyId.has(offer.assembly_id)) {
+      currentOfferByAssemblyId.set(offer.assembly_id, offer);
+    }
+  }
 
   const candidates = assemblies.flatMap<AssemblyOpportunityCandidate>(
     (assembly) => {
       const contract = contractsById.get(assembly.contract_id);
       if (!contract) return [];
       const contractNumber = contract.contract_number?.trim();
+      const currentOffer = currentOfferByAssemblyId.get(assembly.id);
 
       return [{
         administratorName: contract.administrator_id
@@ -321,6 +348,8 @@ async function loadAssemblyOpportunities(
         contractStatus: contract.status,
         creditAmount: normalizeOpportunityNumber(contract.credit_amount),
         groupNumber: contract.contract_group?.trim() || undefined,
+        offerId: currentOffer?.id,
+        offerStatus: currentOffer?.status,
         quotaNumber: contract.contract_quota?.trim() || undefined,
       }];
     },

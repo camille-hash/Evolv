@@ -58,6 +58,11 @@ export type ContractTimelineEventType =
   | "bid_created"
   | "bid_submitted"
   | "bid_result_recorded"
+  | "bid_offer_created"
+  | "bid_offer_generated"
+  | "bid_offer_sent"
+  | "bid_offer_approved"
+  | "bid_offer_rejected"
   | "contemplated"
   | "note_added";
 
@@ -68,7 +73,7 @@ export type ContractTimelineEvent = {
   id: string;
   metadata: Record<string, unknown>;
   sourceEntityId?: string;
-  sourceEntityType?: "contract" | "assembly" | "bid";
+  sourceEntityType?: "contract" | "assembly" | "bid" | "bid_offer";
   title: string;
 };
 

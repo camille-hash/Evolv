@@ -16,6 +16,8 @@ export type AssemblyOpportunity = {
   description: string;
   groupNumber?: string;
   id: string;
+  offerId?: string;
+  offerStatus?: string;
   priority: AssemblyOpportunityPriority;
   quotaNumber?: string;
   recommendedAction: string;
@@ -37,6 +39,8 @@ export type AssemblyOpportunityCandidate = {
   contractStatus: string;
   creditAmount: number;
   groupNumber?: string;
+  offerId?: string;
+  offerStatus?: string;
   quotaNumber?: string;
 };
 
@@ -93,9 +97,11 @@ export function buildAssemblyOpportunity(
       "Nenhuma estratégia de lance foi registrada para esta assembleia.",
     groupNumber: candidate.groupNumber,
     id: `${assemblyOpportunityRuleCode}:${candidate.assemblyId}`,
+    offerId: candidate.offerId,
+    offerStatus: candidate.offerStatus,
     priority: resolveAssemblyOpportunityPriority(daysUntilAssembly),
     quotaNumber: candidate.quotaNumber,
-    recommendedAction: "Preparar estratégia de lance.",
+    recommendedAction: resolveRecommendedAction(candidate.offerStatus),
     ruleCode: assemblyOpportunityRuleCode,
     title:
       daysUntilAssembly === 0
@@ -103,6 +109,14 @@ export function buildAssemblyOpportunity(
         : `Assembleia em ${daysUntilAssembly} dias`,
     workspaceHref: `/operations/contracts/${encodeURIComponent(candidate.contractId)}?origin=my-day`,
   };
+}
+
+function resolveRecommendedAction(status?: string) {
+  if (status === "draft") return "Continuar oferta.";
+  if (status === "generated") return "Enviar ao cliente.";
+  if (status === "sent") return "Aguardando cliente.";
+  if (status === "approved") return "Registrar envio do lance.";
+  return "Preparar estratégia de lance.";
 }
 
 export function calculateDaysUntilAssembly(

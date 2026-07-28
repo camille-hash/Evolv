@@ -1688,6 +1688,9 @@ function AssemblyOpportunityCard({
   opportunity: AssemblyOpportunity;
 }) {
   const prepareHref = `${opportunity.workspaceHref}&assemblyId=${encodeURIComponent(opportunity.assemblyId)}&action=prepare-bid`;
+  const contextualHref = opportunity.offerId
+    ? `${opportunity.workspaceHref}&assemblyId=${encodeURIComponent(opportunity.assemblyId)}&offerId=${encodeURIComponent(opportunity.offerId)}&action=offers`
+    : prepareHref;
   const priorityLabels = {
     critical: "Critica",
     high: "Alta",
@@ -1748,9 +1751,17 @@ function AssemblyOpportunityCard({
         </Link>
         <Link
           className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-          href={prepareHref}
+          href={contextualHref}
         >
-          Preparar estrategia
+          {opportunity.offerStatus === "draft"
+            ? "Continuar oferta"
+            : opportunity.offerStatus === "generated"
+              ? "Enviar ao cliente"
+              : opportunity.offerStatus === "sent"
+                ? "Aguardando cliente"
+                : opportunity.offerStatus === "approved"
+                  ? "Registrar envio do lance"
+                  : "Preparar estrategia"}
         </Link>
       </div>
     </article>

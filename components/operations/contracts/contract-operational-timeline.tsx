@@ -15,6 +15,7 @@ import type {
   RegisterBidResultInput,
 } from "@/modules/operations/contract-timeline-types";
 import { calculateBidSnapshot } from "@/modules/operations/contract-timeline-calculations";
+import { ContractBidOffersPanel } from "./contract-bid-offers-panel";
 
 type Action = "assembly" | "bid" | "result" | null;
 
@@ -184,6 +185,9 @@ export function ContractOperationalTimeline({
           </p>
         </div>
       )}
+      {!isLoading ? (
+        <ContractBidOffersPanel contractId={contractId} timeline={timeline} />
+      ) : null}
     </section>
   );
 }
@@ -678,6 +682,7 @@ function formatDate(value: string) {
 function sourceLabel(value?: string) {
   if (value === "assembly") return "Assembleia";
   if (value === "bid") return "Lance";
+  if (value === "bid_offer") return "Oferta de lance";
   if (value === "contract") return "Contrato";
   return "Operação";
 }
@@ -689,6 +694,11 @@ function eventTypeLabel(value: string) {
       assembly_updated: "Assembleia atualizada",
       bid_created: "Lance",
       bid_result_recorded: "Resultado",
+      bid_offer_approved: "Oferta aprovada",
+      bid_offer_created: "Oferta criada",
+      bid_offer_generated: "Oferta gerada",
+      bid_offer_rejected: "Oferta rejeitada",
+      bid_offer_sent: "Oferta compartilhada",
       bid_submitted: "Lance enviado",
       contemplated: "Contemplação",
       contract_created: "Contrato",
