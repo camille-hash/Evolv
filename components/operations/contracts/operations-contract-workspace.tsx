@@ -32,23 +32,34 @@ const currency = new Intl.NumberFormat("pt-BR", {
 export function OperationsContractWorkspace({
   clientId,
   contractId,
+  initialAssemblyId,
   origin,
+  prepareBid = false,
 }: {
   clientId?: string;
   contractId: string;
+  initialAssemblyId?: string;
   origin?: string;
+  prepareBid?: boolean;
 }) {
   const returnToClient = origin === "client" && Boolean(clientId);
-  const returnHref = returnToClient
-    ? `/?section=client&clientId=${encodeURIComponent(clientId!)}`
-    : "/operations/contracts";
-  const returnLabel = returnToClient
-    ? "Voltar para cliente"
-    : "Voltar para contratos";
+  const returnToMyDay = origin === "my-day";
+  const returnHref = returnToMyDay
+    ? "/?section=crm&crmTab=my-day"
+    : returnToClient
+      ? `/?section=client&clientId=${encodeURIComponent(clientId!)}`
+      : "/operations/contracts";
+  const returnLabel = returnToMyDay
+    ? "Voltar para Meu Dia"
+    : returnToClient
+      ? "Voltar para cliente"
+      : "Voltar para contratos";
   const [contract, setContract] = useState<OperationsContractRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("summary");
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(
+    prepareBid || initialAssemblyId ? "timeline" : "summary",
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -185,6 +196,8 @@ export function OperationsContractWorkspace({
           <ContractOperationalTimeline
             contractId={contract.id}
             creditValue={contract.creditValue}
+            initialAssemblyId={initialAssemblyId}
+            prepareBid={prepareBid}
           />
         </section>
       )}

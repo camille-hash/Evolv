@@ -35,9 +35,13 @@ const dateTime = new Intl.DateTimeFormat("pt-BR", {
 export function ContractOperationalTimeline({
   contractId,
   creditValue,
+  initialAssemblyId,
+  prepareBid = false,
 }: {
   contractId: string;
   creditValue: number;
+  initialAssemblyId?: string;
+  prepareBid?: boolean;
 }) {
   const [timeline, setTimeline] = useState(emptyTimeline);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,7 +52,17 @@ export function ContractOperationalTimeline({
     let active = true;
     fetchContractOperationalTimeline(contractId)
       .then((result) => {
-        if (active) setTimeline(result);
+        if (active) {
+          setTimeline(result);
+          if (
+            prepareBid &&
+            result.assemblies.some(
+              (assembly) => assembly.id === initialAssemblyId,
+            )
+          ) {
+            setAction("bid");
+          }
+        }
       })
       .catch((cause: unknown) => {
         if (active) setError(readMessage(cause));
@@ -59,7 +73,7 @@ export function ContractOperationalTimeline({
     return () => {
       active = false;
     };
-  }, [contractId]);
+  }, [contractId, initialAssemblyId, prepareBid]);
 
   function complete(nextTimeline: ContractOperationalTimeline) {
     setTimeline(nextTimeline);
@@ -114,6 +128,7 @@ export function ContractOperationalTimeline({
           assemblies={timeline.assemblies}
           contractId={contractId}
           creditValue={creditValue}
+          initialAssemblyId={initialAssemblyId}
           onCancel={() => setAction(null)}
           onComplete={complete}
         />
@@ -242,14 +257,19 @@ function BidForm({
   assemblies,
   contractId,
   creditValue,
+  initialAssemblyId,
   onCancel,
   onComplete,
 }: FormProps & {
   assemblies: ContractOperationalTimeline["assemblies"];
   creditValue: number;
+  initialAssemblyId?: string;
 }) {
   const [input, setInput] = useState<RegisterBidInput>(() => ({
-    assemblyId: assemblies[0]?.id ?? "",
+    assemblyId:
+      assemblies.find((assembly) => assembly.id === initialAssemblyId)?.id ??
+      assemblies[0]?.id ??
+      "",
     bidComposition: "cash",
     bidModality: "free",
     cashAmount: 0,

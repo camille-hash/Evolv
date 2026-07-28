@@ -2,7 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 import {
   isCrmTaskStatus,
   isCrmTaskType,
+  buildAssemblyOpportunities,
   resolveCrmLeadGreenFlags,
+  type AssemblyOpportunityCandidate,
   type CrmLeadGreenFlag,
   type CrmMyDayView,
   type CrmOperationalTimelineEvent,
@@ -52,6 +54,34 @@ type CrmMyDaySimulationRow = {
   status: string | null;
 };
 
+type AssemblyRow = {
+  assembly_date: string;
+  contract_id: string;
+  id: string;
+  status: string;
+};
+
+type OpportunityContractRow = {
+  administrator_id: string | null;
+  client_id: string | null;
+  contract_group: string | null;
+  contract_number: string | null;
+  contract_quota: string | null;
+  credit_amount: number | string | null;
+  id: string;
+  status: string;
+};
+
+type OpportunityBidRow = {
+  assembly_id: string;
+  result: string;
+};
+
+type OpportunityNameRow = {
+  id: string;
+  name: string | null;
+};
+
 export type GetCrmMyDayResult =
   | { myDay: CrmMyDayView; ok: true }
   | { error: string; ok: false; status: number };
@@ -89,7 +119,8 @@ export async function getCrmMyDay(
     return context;
   }
 
-  const [tasksResult, notesResult, simulationsResult] = await Promise.all([
+  const [tasksResult, notesResult, simulationsResult, opportunitiesResult] =
+    await Promise.all([
     context.supabase
       .from("crm_tasks")
       .select(taskColumns)
@@ -103,15 +134,20 @@ export async function getCrmMyDay(
       .from("crm_lead_simulations")
       .select("id,lead_id,simulation_type,status,created_at,proposal_generated_at")
       .eq("organization_id", context.profile.organization_id),
+    loadAssemblyOpportunities(context),
   ]);
 
-  if (tasksResult.error || notesResult.error || simulationsResult.error) {
+  if (tasksResult.error) {
     return {
-      error: genericAccessError,
+      error: "Nao foi possivel carregar as tarefas do Meu Dia.",
       ok: false,
       status: 500,
     };
   }
+  if (notesResult.error || simulationsResult.error) {
+    return { error: genericAccessError, ok: false, status: 500 };
+  }
+  if (!opportunitiesResult.ok) return opportunitiesResult;
 
   const tasks = (tasksResult.data ?? []).map((row) =>
     mapTask(row as unknown as CrmMyDayTaskRow),
@@ -122,6 +158,7 @@ export async function getCrmMyDay(
 
   return {
     myDay: {
+      assemblyOpportunities: opportunitiesResult.opportunities,
       greenFlagsByLeadId: buildGreenFlagsByLeadId({
         notes,
         simulations,
@@ -142,6 +179,156 @@ export async function getCrmMyDay(
         .sort(sortTasksByDueDate),
     },
     ok: true,
+  };
+}
+
+async function loadAssemblyOpportunities(
+  context: Awaited<ReturnType<typeof resolveRequestContext>> & { ok: true },
+) {
+  const now = new Date();
+  const lowerBound = new Date(now.getTime() - 86_400_000).toISOString();
+  const upperBound = new Date(now.getTime() + 12 * 86_400_000).toISOString();
+
+  const [assembliesResult, contractsResult] = await Promise.all([
+    context.supabase
+      .from("contract_assemblies")
+      .select("id,contract_id,assembly_date,status")
+      .eq("organization_id", context.profile.organization_id)
+      .in("status", ["scheduled", "postponed"])
+      .gte("assembly_date", lowerBound)
+      .lte("assembly_date", upperBound),
+    context.supabase
+      .from("contracts")
+      .select(
+        "id,client_id,administrator_id,contract_number,contract_group,contract_quota,credit_amount,status",
+      )
+      .eq("organization_id", context.profile.organization_id)
+      .eq("status", "active"),
+  ]);
+
+  if (assembliesResult.error) {
+    logMyDayError("loadAssemblyOpportunities.assemblies", assembliesResult.error);
+    return {
+      error: "Nao foi possivel ler as assembleias proximas.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+  if (contractsResult.error) {
+    logMyDayError("loadAssemblyOpportunities.contracts", contractsResult.error);
+    return {
+      error: "Nao foi possivel ler os contratos das assembleias.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  const assemblies =
+    (assembliesResult.data ?? []) as unknown as AssemblyRow[];
+  const contracts =
+    (contractsResult.data ?? []) as unknown as OpportunityContractRow[];
+  const assemblyIds = assemblies.map((assembly) => assembly.id);
+  const clientIds = contracts.flatMap((contract) =>
+    contract.client_id ? [contract.client_id] : [],
+  );
+  const administratorIds = contracts.flatMap((contract) =>
+    contract.administrator_id ? [contract.administrator_id] : [],
+  );
+
+  const [bidsResult, clientsResult, administratorsResult] = await Promise.all([
+    assemblyIds.length
+      ? context.supabase
+          .from("contract_bids")
+          .select("assembly_id,result")
+          .eq("organization_id", context.profile.organization_id)
+          .in("assembly_id", assemblyIds)
+      : Promise.resolve({ data: [], error: null }),
+    clientIds.length
+      ? context.supabase
+          .from("clients")
+          .select("id,name")
+          .eq("organization_id", context.profile.organization_id)
+          .in("id", clientIds)
+      : Promise.resolve({ data: [], error: null }),
+    administratorIds.length
+      ? context.supabase
+          .from("administrators")
+          .select("id,name")
+          .eq("organization_id", context.profile.organization_id)
+          .in("id", administratorIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const readError =
+    bidsResult.error ?? clientsResult.error ?? administratorsResult.error;
+  if (readError) {
+    logMyDayError("loadAssemblyOpportunities.references", readError);
+    return {
+      error: "Nao foi possivel completar a leitura das assembleias.",
+      ok: false as const,
+      status: 500,
+    };
+  }
+
+  const contractsById = new Map(contracts.map((contract) => [contract.id, contract]));
+  const clientsById = new Map(
+    ((clientsResult.data ?? []) as unknown as OpportunityNameRow[]).map((item) => [
+      item.id,
+      item.name?.trim() || "Cliente sem nome",
+    ]),
+  );
+  const administratorsById = new Map(
+    (
+      (administratorsResult.data ?? []) as unknown as OpportunityNameRow[]
+    ).map((item) => [
+      item.id,
+      item.name?.trim() || "Administradora sem nome",
+    ]),
+  );
+  const bidResultsByAssemblyId = (
+    (bidsResult.data ?? []) as unknown as OpportunityBidRow[]
+  ).reduce<Map<string, string[]>>((results, bid) => {
+    results.set(bid.assembly_id, [
+      ...(results.get(bid.assembly_id) ?? []),
+      bid.result,
+    ]);
+    return results;
+  }, new Map());
+
+  const candidates = assemblies.flatMap<AssemblyOpportunityCandidate>(
+    (assembly) => {
+      const contract = contractsById.get(assembly.contract_id);
+      if (!contract) return [];
+      const contractNumber = contract.contract_number?.trim();
+
+      return [{
+        administratorName: contract.administrator_id
+          ? administratorsById.get(contract.administrator_id) ??
+            "Administradora nao encontrada"
+          : "Administradora nao vinculada",
+        assemblyDate: assembly.assembly_date,
+        assemblyId: assembly.id,
+        assemblyStatus: assembly.status,
+        bidResults: bidResultsByAssemblyId.get(assembly.id) ?? [],
+        clientId: contract.client_id ?? undefined,
+        clientName: contract.client_id
+          ? clientsById.get(contract.client_id) ?? "Cliente nao encontrado"
+          : "Cliente nao vinculado",
+        contractId: contract.id,
+        contractName: contractNumber
+          ? `Contrato ${contractNumber}`
+          : "Contrato sem numero",
+        contractStatus: contract.status,
+        creditAmount: normalizeOpportunityNumber(contract.credit_amount),
+        groupNumber: contract.contract_group?.trim() || undefined,
+        quotaNumber: contract.contract_quota?.trim() || undefined,
+      }];
+    },
+  );
+
+  return {
+    ok: true as const,
+    opportunities: buildAssemblyOpportunities(candidates, now),
   };
 }
 
@@ -412,9 +599,34 @@ async function resolveRequestContext(accessToken: string | null) {
       .eq("id", userData.user.id)
       .maybeSingle<CrmMyDayProfile>();
 
-    if (profileError || !isValidProfile(profile)) {
+    if (profileError) {
+      logMyDayError("resolveRequestContext.profile", profileError);
+      return {
+        error: "Nao foi possivel consultar o perfil autenticado.",
+        ok: false as const,
+        status: 500,
+      };
+    }
+    if (!profile) {
       return {
         error: "Perfil nao encontrado.",
+        ok: false as const,
+        status: 403,
+      };
+    }
+    if (profile.is_active !== true) {
+      return { error: "Perfil inativo.", ok: false as const, status: 403 };
+    }
+    if (!profile.organization_id) {
+      return {
+        error: "Perfil sem organizacao vinculada.",
+        ok: false as const,
+        status: 403,
+      };
+    }
+    if (!isValidProfile(profile)) {
+      return {
+        error: "Papel nao autorizado para acessar o Meu Dia.",
         ok: false as const,
         status: 403,
       };
@@ -426,7 +638,8 @@ async function resolveRequestContext(accessToken: string | null) {
       supabase,
       user: userData.user,
     };
-  } catch {
+  } catch (error) {
+    logMyDayError("resolveRequestContext", error);
     return {
       error: genericAccessError,
       ok: false as const,
@@ -440,12 +653,23 @@ function isValidProfile(
 ): profile is CrmMyDayProfile & {
   is_active: true;
   organization_id: string;
-  role: "admin" | "sdr";
+  role: "admin" | "master" | "sdr";
 } {
   return Boolean(
     profile?.id &&
       profile.organization_id &&
       profile.is_active === true &&
-      (profile.role === "admin" || profile.role === "sdr"),
+      ["admin", "master", "sdr"].includes(profile.role ?? ""),
   );
+}
+
+function normalizeOpportunityNumber(value: number | string | null) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function logMyDayError(operation: string, error: unknown) {
+  if (process.env.NODE_ENV !== "production") {
+    console.error(`[OPP-001] ${operation}`, error);
+  }
 }

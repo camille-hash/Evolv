@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useEffect,
   useMemo,
@@ -70,6 +71,7 @@ import {
   type CrmStage,
   type CrmTask,
   type CrmTemperature,
+  type AssemblyOpportunity,
 } from "@/modules/crm";
 import { fetchCrmMyDay } from "@/modules/crm/client/crm-my-day-client";
 import { cn } from "@/lib/utils";
@@ -211,17 +213,19 @@ const dateWindowWithNoSimulationOptions = [
 ] as const;
 
 export function CrmPage({
+  initialTab = "executive-dashboard",
   onConvertToClient,
   onGenerateMultiCotas,
   onGenerateSimulation,
 }: {
+  initialTab?: CrmOperationalTab;
   onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
   onGenerateMultiCotas?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
 }) {
   const [activeTab, setActiveTab] =
-    useState<CrmOperationalTab>("executive-dashboard");
+    useState<CrmOperationalTab>(initialTab);
   const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
   const [expandedPipelineColumns, setExpandedPipelineColumns] = useState<
     Record<string, boolean>
@@ -311,9 +315,13 @@ export function CrmPage({
         if (isActive) {
           setMyDayView(nextMyDayView);
         }
-      } catch {
+      } catch (error) {
         if (isActive) {
-          setMyDayError("Nao foi possivel carregar o Meu Dia.");
+          setMyDayError(
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel carregar o Meu Dia.",
+          );
         }
       } finally {
         if (isActive) {
@@ -953,6 +961,7 @@ export function CrmPage({
           groups={myDayGroups}
           isLoading={isLoadingMyDay}
           onOpen={setSelectedLeadId}
+          opportunities={myDayView?.assemblyOpportunities ?? []}
         />
       ) : null}
 
@@ -1569,11 +1578,13 @@ function MyDayPanel({
   groups,
   isLoading,
   onOpen,
+  opportunities,
 }: {
   error: string | null;
   groups: MyDayGroups;
   isLoading: boolean;
   onOpen: (leadId: string) => void;
+  opportunities: AssemblyOpportunity[];
 }) {
   if (isLoading) {
     return (
@@ -1591,44 +1602,158 @@ function MyDayPanel({
     );
   }
 
-  if (!groups.total) {
-    return (
-      <section className="executive-surface rounded-md border-dashed p-5 text-sm text-muted-foreground">
-        Nenhuma acao pendente para hoje.
+  return (
+    <div className="grid min-w-0 gap-4">
+      <AssemblyOpportunitiesBlock opportunities={opportunities} />
+      <section className="grid min-w-0 gap-4 xl:grid-cols-2">
+        <MyDayTaskBlock
+          emptyText="Nenhuma tarefa vencida."
+          onOpen={onOpen}
+          tasks={groups.overdue}
+          title="Tarefas vencidas"
+          variant="overdue"
+        />
+        <MyDayTaskBlock
+          emptyText="Nenhuma tarefa para hoje."
+          onOpen={onOpen}
+          tasks={groups.today}
+          title="Tarefas com vencimento hoje"
+          variant="today"
+        />
+        <MyDayGreenFlagsBlock
+          emptyText="Nenhum Check Point identificado."
+          items={groups.greenFlags}
+          onOpen={onOpen}
+          title="Check Points"
+        />
+        <MyDayTaskBlock
+          emptyText="Nenhuma proxima acao agendada."
+          onOpen={onOpen}
+          tasks={groups.future}
+          title="Proximas acoes"
+          variant="future"
+        />
       </section>
-    );
-  }
+    </div>
+  );
+}
+
+function AssemblyOpportunitiesBlock({
+  opportunities,
+}: {
+  opportunities: AssemblyOpportunity[];
+}) {
+  return (
+    <section className="executive-surface rounded-md p-5 text-card-foreground">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Oportunidades Prioritarias
+          </p>
+          <h3 className="mt-1 font-semibold">
+            Assembleias proximas sem estrategia de lance
+          </h3>
+        </div>
+        <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs text-muted-foreground">
+          {opportunities.length}
+        </span>
+      </div>
+      {opportunities.length ? (
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          {opportunities.map((opportunity) => (
+            <AssemblyOpportunityCard
+              key={opportunity.id}
+              opportunity={opportunity}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-md border border-dashed p-4">
+          <p className="text-sm font-semibold text-foreground">
+            Nenhuma oportunidade de assembleia para os proximos 10 dias.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Assembleias futuras sem estrategia registrada aparecerao aqui
+            automaticamente.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AssemblyOpportunityCard({
+  opportunity,
+}: {
+  opportunity: AssemblyOpportunity;
+}) {
+  const prepareHref = `${opportunity.workspaceHref}&assemblyId=${encodeURIComponent(opportunity.assemblyId)}&action=prepare-bid`;
+  const priorityLabels = {
+    critical: "Critica",
+    high: "Alta",
+    medium: "Media",
+  } as const;
 
   return (
-    <section className="grid min-w-0 gap-4 xl:grid-cols-2">
-      <MyDayTaskBlock
-        emptyText="Nenhuma tarefa vencida."
-        onOpen={onOpen}
-        tasks={groups.overdue}
-        title="Tarefas vencidas"
-        variant="overdue"
-      />
-      <MyDayTaskBlock
-        emptyText="Nenhuma tarefa para hoje."
-        onOpen={onOpen}
-        tasks={groups.today}
-        title="Tarefas com vencimento hoje"
-        variant="today"
-      />
-      <MyDayGreenFlagsBlock
-        emptyText="Nenhum Check Point identificado."
-        items={groups.greenFlags}
-        onOpen={onOpen}
-        title="Check Points"
-      />
-      <MyDayTaskBlock
-        emptyText="Nenhuma proxima acao agendada."
-        onOpen={onOpen}
-        tasks={groups.future}
-        title="Proximas acoes"
-        variant="future"
-      />
-    </section>
+    <article className="rounded-md border bg-background/80 p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900">
+          {priorityLabels[opportunity.priority]}
+        </span>
+        <time className="text-xs text-muted-foreground">
+          {new Intl.DateTimeFormat("pt-BR", {
+            dateStyle: "short",
+            timeZone: "America/Sao_Paulo",
+          }).format(new Date(opportunity.assemblyDate))}
+        </time>
+      </div>
+      <h4 className="mt-3 text-base font-semibold text-foreground">
+        {opportunity.title}
+      </h4>
+      <p className="mt-1 text-sm font-medium text-foreground">
+        {opportunity.clientName}
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {opportunity.contractName} · {opportunity.administratorName}
+      </p>
+      {opportunity.groupNumber || opportunity.quotaNumber ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {opportunity.groupNumber
+            ? `Grupo ${opportunity.groupNumber}`
+            : "Grupo nao informado"}
+          {" · "}
+          {opportunity.quotaNumber
+            ? `Cota ${opportunity.quotaNumber}`
+            : "Cota nao informada"}
+        </p>
+      ) : null}
+      <p className="mt-3 text-sm text-muted-foreground">
+        {opportunity.description}
+      </p>
+      <p className="mt-2 text-sm font-medium text-foreground">
+        {opportunity.recommendedAction}
+      </p>
+      <p className="mt-2 text-sm font-semibold text-foreground">
+        {new Intl.NumberFormat("pt-BR", {
+          currency: "BRL",
+          style: "currency",
+        }).format(opportunity.creditAmount)}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          className="rounded-md border px-3 py-2 text-sm font-medium transition hover:border-primary/45"
+          href={opportunity.workspaceHref}
+        >
+          Abrir contrato
+        </Link>
+        <Link
+          className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+          href={prepareHref}
+        >
+          Preparar estrategia
+        </Link>
+      </div>
+    </article>
   );
 }
 

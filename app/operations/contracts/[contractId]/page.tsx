@@ -5,6 +5,8 @@ type OperationsContractWorkspaceRouteProps = {
     contractId: string;
   }>;
   searchParams: Promise<{
+    action?: string;
+    assemblyId?: string;
     clientId?: string;
     origin?: string;
   }>;
@@ -15,12 +17,14 @@ export default async function OperationsContractWorkspacePage({
   searchParams,
 }: OperationsContractWorkspaceRouteProps) {
   const { contractId } = await params;
-  const { clientId, origin } = await searchParams;
+  const { action, assemblyId, clientId, origin } = await searchParams;
 
   return (
     <OperationsContractWorkspace
       clientId={clientId}
       contractId={contractId}
+      initialAssemblyId={assemblyId}
+      prepareBid={action === "prepare-bid"}
       origin={origin}
     />
   );

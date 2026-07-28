@@ -127,6 +127,7 @@ export default function Home() {
   const [leadProposalContext, setLeadProposalContext] =
     useState<CrmLeadProposalContext | null>(null);
   const [convertedClientId, setConvertedClientId] = useState<string | null>(null);
+  const [openCrmMyDay, setOpenCrmMyDay] = useState(false);
   const [clientNotice, setClientNotice] = useState<string | null>(null);
   const [accessReady, setAccessReady] = useState(false);
   const [isSessionExpirationWarningOpen, setIsSessionExpirationWarningOpen] =
@@ -178,6 +179,14 @@ export default function Home() {
         ) {
           setConvertedClientId(requestedClientId);
           setActiveSection("client");
+        }
+        if (
+          storedUser &&
+          requestedView.get("section") === "crm" &&
+          requestedView.get("crmTab") === "my-day"
+        ) {
+          setOpenCrmMyDay(true);
+          setActiveSection("crm");
         }
 
         setClientContext(loadClientContext());
@@ -414,6 +423,7 @@ export default function Home() {
               </div>
             ) : null}
             <CrmPage
+              initialTab={openCrmMyDay ? "my-day" : "executive-dashboard"}
               onConvertToClient={handleConvertLeadToClient}
               onGenerateMultiCotas={
                 canCurrentUserUseSimulationTools

@@ -1,4 +1,5 @@
 export * from "./crm-engine";
+export * from "./assembly-opportunities";
 export * from "./crm-intelligence";
 export * from "./crm-green-flags";
 export * from "./crm-operational-aging";
