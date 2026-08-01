@@ -59,3 +59,31 @@ export async function createLeadCommercialProposal(
 
   return payload.proposal;
 }
+
+export async function updateLeadCommercialProposalStatus(
+  accessToken: string,
+  input: {
+    action: "approve" | "expire" | "present" | "reject" | "supersede";
+    proposalId: string;
+  },
+) {
+  const response = await fetch("/api/crm/lead-commercial-proposals", {
+    body: JSON.stringify(input),
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    },
+    method: "PATCH",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | ProposalPayload
+    | null;
+
+  if (!response.ok || !payload?.proposal) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel atualizar a proposta comercial.",
+    );
+  }
+
+  return payload.proposal;
+}

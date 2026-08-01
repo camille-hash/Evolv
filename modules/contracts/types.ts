@@ -30,9 +30,12 @@ export type ContractInput = {
   leadId?: string | null;
   metadata?: Record<string, unknown>;
   productType?: string | null;
+  proposalSnapshot?: Record<string, unknown> | null;
   quota?: string | null;
   rejectedAt?: string | null;
   signedAt?: string | null;
+  sourceProposalId?: string | null;
+  sourceProposalVersion?: number | null;
   status?: ContractStatus;
   submittedAt?: string | null;
   termMonths?: number | null;
@@ -58,9 +61,12 @@ export type Contract = {
   metadata: Record<string, unknown>;
   organizationId: string;
   productType: string | null;
+  proposalSnapshot: Record<string, unknown>;
   quota: string | null;
   rejectedAt: string | null;
   signedAt: string | null;
+  sourceProposalId: string | null;
+  sourceProposalVersion: number | null;
   status: ContractStatus;
   submittedAt: string | null;
   termMonths: number | null;

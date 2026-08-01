@@ -1020,6 +1020,17 @@ export function SimulatorPanel({
 
     try {
       const title = buildAnchoredProposalName(simulationName, proposal.label);
+      const linkedSimulationId = await persistLeadSimulationForProposal({
+        accessToken,
+        bidType,
+        commercialData,
+        formState,
+        insuranceOption,
+        leadProposalContext,
+        proposal,
+        selectedAdministrator,
+        title,
+      });
 
       const createdProposal = await createLeadCommercialProposal(accessToken, {
         leadId: leadProposalContext.leadId,
@@ -1049,6 +1060,7 @@ export function SimulatorPanel({
           proposal,
           selectedAdministrator,
         }),
+        simulationId: linkedSimulationId,
         sourceSuggestion: proposal.kind,
         summary: buildAnchoredProposalSummary(proposal),
         title,
@@ -1248,6 +1260,17 @@ export function SimulatorPanel({
         simulationName,
         sourceProposal.label,
       )} - Personalizada`;
+      const linkedSimulationId = await persistLeadSimulationForProposal({
+        accessToken,
+        bidType: savedProposal.presentation.bidType,
+        commercialData,
+        formState,
+        insuranceOption: commercialProposalEditor.draft.insuranceOption,
+        leadProposalContext,
+        proposal: savedProposal,
+        selectedAdministrator,
+        title,
+      });
 
       const createdProposal = await createLeadCommercialProposal(accessToken, {
         leadId: leadProposalContext.leadId,
@@ -1279,6 +1302,7 @@ export function SimulatorPanel({
           proposal: savedProposal,
           selectedAdministrator,
         }),
+        simulationId: linkedSimulationId,
         sourceSuggestion: sourceProposal.kind,
         summary: buildAnchoredProposalSummary(savedProposal),
         title,
@@ -3249,6 +3273,67 @@ async function fetchCommercialProposalPreview(
   }
 
   return payload.preview;
+}
+
+async function persistLeadSimulationForProposal({
+  accessToken,
+  bidType,
+  commercialData,
+  formState,
+  insuranceOption,
+  leadProposalContext,
+  proposal,
+  selectedAdministrator,
+  title,
+}: {
+  accessToken: string;
+  bidType: BidType;
+  commercialData: SimulatorCommercialData;
+  formState: SimulatorFormState;
+  insuranceOption: InsuranceOption;
+  leadProposalContext: CrmLeadProposalContext;
+  proposal: AnchoredProposal;
+  selectedAdministrator: SimulatorAdministrator | null;
+  title: string;
+}) {
+  const payload = buildLeadSimulationApiPayload({
+    bidType,
+    calculation: calculateSimulatorScenarios(proposal.input),
+    commercialData,
+    formState: {
+      ...formState,
+      credit: String(proposal.input.credit),
+      termMonths: String(proposal.input.termMonths),
+    },
+    insuranceOption,
+    leadProposalContext,
+    presentation: proposal.presentation,
+    selectedAdministrator,
+    selectedScenarioKey: proposal.scenarioKey,
+    simulationName: title,
+    simulatorInput: proposal.input,
+  });
+
+  const response = await fetch("/api/crm/lead-simulations", {
+    body: JSON.stringify(payload),
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+  const body = (await response.json().catch(() => null)) as {
+    error?: string;
+    simulation?: { id?: string };
+  } | null;
+
+  if (!response.ok || !body?.simulation?.id) {
+    throw new Error(
+      body?.error ?? "Nao foi possivel vincular a proposta a uma simulacao.",
+    );
+  }
+
+  return body.simulation.id;
 }
 
 function buildLeadSimulationApiPayload({

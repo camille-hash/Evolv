@@ -56,8 +56,11 @@ type ContractRow = {
   metadata: Record<string, unknown> | null;
   organization_id: string;
   product_type: string | null;
+  proposal_snapshot: Record<string, unknown> | null;
   rejected_at: string | null;
   signed_at: string | null;
+  source_proposal_id: string | null;
+  source_proposal_version: number | null;
   status: string | null;
   submitted_at: string | null;
   term_months: number | null;
@@ -100,6 +103,9 @@ const contractColumns = [
   "contract_number",
   "status",
   "product_type",
+  "source_proposal_id",
+  "source_proposal_version",
+  "proposal_snapshot",
   "credit_amount",
   "installment_amount",
   "term_months",
@@ -941,6 +947,9 @@ function toContractPayload(input: ContractInput) {
   setIfDefined(payload, "contract_number", input.contractNumber);
   setIfDefined(payload, "status", input.status);
   setIfDefined(payload, "product_type", input.productType);
+  setIfDefined(payload, "source_proposal_id", input.sourceProposalId);
+  setIfDefined(payload, "source_proposal_version", input.sourceProposalVersion);
+  setIfDefined(payload, "proposal_snapshot", input.proposalSnapshot);
   setIfDefined(payload, "credit_amount", input.creditAmount);
   setIfDefined(payload, "installment_amount", input.installmentAmount);
   setIfDefined(payload, "term_months", input.termMonths);
@@ -1176,9 +1185,14 @@ function mapContractRow(row: ContractRow): Contract {
     metadata: isRecord(row.metadata) ? row.metadata : {},
     organizationId: row.organization_id,
     productType: row.product_type,
+    proposalSnapshot: isRecord(row.proposal_snapshot)
+      ? row.proposal_snapshot
+      : {},
     quota: row.contract_quota,
     rejectedAt: row.rejected_at,
     signedAt: row.signed_at,
+    sourceProposalId: row.source_proposal_id,
+    sourceProposalVersion: row.source_proposal_version,
     status: normalizeContractStatus(row.status),
     submittedAt: row.submitted_at,
     termMonths: row.term_months,
