@@ -75,11 +75,14 @@ export type StrategyArtifactReference = {
 };
 
 export type FinancialProductDefinition = {
+  category?: string;
   description: string;
   family: FinancialProductFamily;
   id: string;
+  metadata?: PatrimonialStrategyMetadata;
   name: string;
   supportedEngineIds: string[];
+  version?: string;
 };
 
 export type CalculationEngineDefinition<

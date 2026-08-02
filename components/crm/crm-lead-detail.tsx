@@ -92,6 +92,11 @@ import type { GeneratedProposalRecord } from "@/modules/proposal/proposal-histor
 import { fetchLeadContracts } from "@/modules/contracts/client";
 import type { LeadContractSummary } from "@/modules/contracts/types";
 import { generateMultiCotasCommercialPdf } from "@/modules/reports";
+import {
+  centsToCurrencyAmount,
+  isReferenceCapitalStrategySnapshot,
+  type ReferenceCapitalStrategySnapshot,
+} from "@/modules/patrimonial-strategy";
 import { cn } from "@/lib/utils";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -179,6 +184,7 @@ type CrmLeadDetailProps = {
   onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
   onDraftChange: (draft: CrmLeadInput) => void;
   onGenerateMultiCotas?: (lead: CrmLead) => void;
+  onGenerateReferenceCapitalStrategy?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   proposals: GeneratedProposalRecord[];
@@ -193,6 +199,7 @@ export function CrmLeadDetail({
   onConvertToClient,
   onDraftChange,
   onGenerateMultiCotas,
+  onGenerateReferenceCapitalStrategy,
   onGenerateSimulation,
   onSave,
   proposals,
@@ -921,6 +928,10 @@ export function CrmLeadDetail({
     onGenerateMultiCotas?.(lead);
   }
 
+  function handleGenerateLeadReferenceCapitalStrategy() {
+    onGenerateReferenceCapitalStrategy?.(lead);
+  }
+
   function updateStrategicProfileDraft(
     patch: Partial<StrategicProfileDraft>,
   ) {
@@ -1344,10 +1355,11 @@ export function CrmLeadDetail({
 
   return (
     <section className="grid gap-4">
-      {onGenerateSimulation || onGenerateMultiCotas ? (
+      {onGenerateSimulation || onGenerateMultiCotas || onGenerateReferenceCapitalStrategy ? (
         <PrimaryJourneyAction
           onSelectCommercialSimulation={handleGenerateLeadSimulation}
           onSelectMultiCotas={handleGenerateLeadMultiCotas}
+          onSelectReferenceCapitalStrategy={handleGenerateLeadReferenceCapitalStrategy}
         />
       ) : null}
 
@@ -4712,6 +4724,16 @@ function LeadMultiCotasReadDetail({
   simulation: CrmLeadSimulation;
 }) {
   const snapshot = readRecord(simulation.calculationSnapshot);
+  if (isReferenceCapitalStrategySnapshot(snapshot)) {
+    return (
+      <ReferenceCapitalSavedStrategyDetail
+        onClose={onClose}
+        simulation={simulation}
+        snapshot={snapshot}
+      />
+    );
+  }
+
   const input = readRecord(snapshot.input);
   const metadata = readRecord(snapshot.metadata);
   const result = readRecord(snapshot.result);
@@ -4852,6 +4874,188 @@ function MultiCotasSnapshotCard({ card }: { card: Record<string, unknown> }) {
       </div>
     </article>
   );
+}
+
+function ReferenceCapitalSavedStrategyDetail({
+  onClose,
+  simulation,
+  snapshot,
+}: {
+  onClose: () => void;
+  simulation: CrmLeadSimulation;
+  snapshot: ReferenceCapitalStrategySnapshot;
+}) {
+  const result = snapshot.result;
+
+  if (!isReferenceCapitalStrategySnapshot(snapshot)) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-md border bg-card p-5 text-card-foreground">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Estrategia Patrimonial salva
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-foreground">
+            {simulation.title}
+          </h4>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Grupo Exclusivo Referencia Capital -{" "}
+            {dateFormatter.format(new Date(simulation.createdAt))}
+          </p>
+        </div>
+        <Button onClick={onClose} type="button" variant="ghost">
+          Fechar detalhe
+        </Button>
+      </div>
+
+      <div className="mt-5 grid gap-5">
+        <SimulationDetailSection title="Resumo">
+          <SimulationDetailGrid>
+            <LeadInfo
+              label="Credito total contratado"
+              value={formatCentsAsCurrency(result.consolidated.totalCreditCents)}
+            />
+            <LeadInfo
+              label="Quantidade de cotas"
+              value={String(result.consolidated.quotaCount)}
+            />
+            <LeadInfo
+              label="Parcela - meses 1 a 12"
+              value={formatCentsAsCurrency(
+                result.consolidated.installmentMonths1To12Cents,
+              )}
+            />
+            <LeadInfo
+              label="Parcela - meses 13 a 24"
+              value={formatCentsAsCurrency(
+                result.consolidated.installmentMonths13To24Cents,
+              )}
+            />
+            <LeadInfo
+              label="Parcela-base - meses 25 a 216"
+              value={formatCentsAsCurrency(
+                result.consolidated.installmentMonths25To216Cents,
+              )}
+            />
+          </SimulationDetailGrid>
+        </SimulationDetailSection>
+
+        <SimulationDetailSection title="Produto e regras">
+          <SimulationDetailGrid>
+            <LeadInfo label="Produto" value="Grupo Exclusivo Referencia Capital" />
+            <LeadInfo label="Versao" value={snapshot.financialProductVersion} />
+            <LeadInfo label="Engine" value={snapshot.calculationEngineKey} />
+            <LeadInfo label="Plano" value="216 meses" />
+            <LeadInfo label="Seguro" value="Prestamista incluso na parcela" />
+            <LeadInfo label="Atualizacao" value="INCC anual, primeiro reajuste na 14a parcela" />
+          </SimulationDetailGrid>
+        </SimulationDetailSection>
+
+        <SimulationDetailSection title="Cotas">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {result.quotas.map((quota, index) => (
+              <article
+                className="rounded-md border bg-background/70 p-4 text-sm"
+                key={quota.id}
+              >
+                <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  Cota {quota.position} - {quota.catalogCode}
+                </p>
+                <p className="mt-2 text-lg font-semibold text-foreground">
+                  {formatCentsAsCurrency(quota.creditCents)}
+                </p>
+                <div className="mt-4 grid gap-2 text-xs text-muted-foreground">
+                  <span>
+                    Meses 1 a 12:{" "}
+                    {formatCentsAsCurrency(quota.installmentMonths1To12Cents)}
+                  </span>
+                  <span>
+                    Meses 13 a 24:{" "}
+                    {formatCentsAsCurrency(quota.installmentMonths13To24Cents)}
+                  </span>
+                  <span>
+                    Meses 25 a 216:{" "}
+                    {formatCentsAsCurrency(quota.installmentMonths25To216Cents)}
+                  </span>
+                  <span>
+                    Cenário de contemplação: mês{" "}
+                    {resolveReferenceCapitalQuotaScenarioMonth(snapshot, quota.id, index)}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </SimulationDetailSection>
+
+        <SimulationDetailSection title="Cenario editorial">
+          <SimulationDetailGrid>
+            <LeadInfo
+              label="Cenarios por cota"
+              value={result.quotas
+                .map(
+                  (quota, index) =>
+                    `Cota ${quota.position}: mes ${resolveReferenceCapitalQuotaScenarioMonth(
+                      snapshot,
+                      quota.id,
+                      index,
+                    )}`,
+                )
+                .join(" | ")}
+            />
+            <LeadInfo
+              label="Exibir no material"
+              value={resolveReferenceCapitalEditorialPreference(snapshot) ? "Sim" : "Nao"}
+            />
+          </SimulationDetailGrid>
+        </SimulationDetailSection>
+      </div>
+    </section>
+  );
+}
+
+function resolveReferenceCapitalQuotaScenarioMonth(
+  snapshot: ReferenceCapitalStrategySnapshot,
+  quotaId: string,
+  index: number,
+) {
+  const inputQuota = snapshot.input.quotas.find((quota) => quota.id === quotaId);
+  const candidate =
+    typeof inputQuota?.contemplationScenarioMonth === "number"
+      ? inputQuota.contemplationScenarioMonth
+      : readLegacyReferenceCapitalScenarioMonth(snapshot);
+
+  return typeof candidate === "number" && Number.isInteger(candidate)
+    ? candidate
+    : Math.min(216, (index + 1) * 12);
+}
+
+function resolveReferenceCapitalEditorialPreference(
+  snapshot: ReferenceCapitalStrategySnapshot,
+) {
+  const input = snapshot.input as ReferenceCapitalStrategySnapshot["input"] & {
+    includeContemplationScenarioInMaterial?: boolean;
+  };
+
+  return (
+    input.includeContemplationScenariosInMaterial ??
+    input.includeContemplationScenarioInMaterial ??
+    false
+  );
+}
+
+function readLegacyReferenceCapitalScenarioMonth(
+  snapshot: ReferenceCapitalStrategySnapshot,
+) {
+  const input = snapshot.input as ReferenceCapitalStrategySnapshot["input"] & {
+    contemplationScenarioMonth?: number | null;
+  };
+
+  return typeof input.contemplationScenarioMonth === "number"
+    ? input.contemplationScenarioMonth
+    : null;
 }
 
 function LeadSimulationReadDetail({
@@ -5143,6 +5347,21 @@ function readNumber(value: unknown) {
 
 function resolveMultiCotasHistorySummary(simulation: CrmLeadSimulation) {
   const calculationSnapshot = readRecord(simulation.calculationSnapshot);
+  if (isReferenceCapitalStrategySnapshot(calculationSnapshot)) {
+    const result = calculationSnapshot.result;
+    const financialSummary = [
+      `Credito total: ${formatCentsAsCurrency(result.consolidated.totalCreditCents)}`,
+      `Meses 1 a 12: ${formatCentsAsCurrency(result.consolidated.installmentMonths1To12Cents)}`,
+      `Meses 13 a 24: ${formatCentsAsCurrency(result.consolidated.installmentMonths13To24Cents)}`,
+      `Meses 25 a 216: ${formatCentsAsCurrency(result.consolidated.installmentMonths25To216Cents)}`,
+    ];
+
+    return {
+      financialSummary,
+      quotaCount: result.consolidated.quotaCount,
+    };
+  }
+
   const result = readRecord(calculationSnapshot.result);
   const snapshotSummary = readRecord(result.summary);
   const quotaCount =
@@ -5209,6 +5428,10 @@ function formatCurrencyOrDash(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value)
     ? currencyFormatter.format(value)
     : "-";
+}
+
+function formatCentsAsCurrency(cents: number) {
+  return currencyFormatter.format(centsToCurrencyAmount(cents));
 }
 
 function readProposalSummaryNumber(value: unknown) {

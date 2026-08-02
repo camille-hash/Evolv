@@ -6,9 +6,11 @@ import { Plus } from "lucide-react";
 export function PrimaryJourneyAction({
   onSelectCommercialSimulation,
   onSelectMultiCotas,
+  onSelectReferenceCapitalStrategy,
 }: {
   onSelectCommercialSimulation: () => void;
   onSelectMultiCotas: () => void;
+  onSelectReferenceCapitalStrategy?: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -59,6 +61,21 @@ export function PrimaryJourneyAction({
                   Planejamento patrimonial utilizando multiplas cartas.
                 </span>
               </button>
+              {onSelectReferenceCapitalStrategy ? (
+                <button
+                  className="rounded-md border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5"
+                  onClick={() => handleSelect(onSelectReferenceCapitalStrategy)}
+                  type="button"
+                >
+                  <span className="text-sm font-semibold text-foreground">
+                    Estrategia Patrion Asset
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    Grupo Exclusivo Referencia Capital com composicao
+                    obrigatoriamente Multi-Cotas.
+                  </span>
+                </button>
+              ) : null}
             </div>
             <button
               className="mt-3 text-xs font-medium text-muted-foreground transition hover:text-foreground"

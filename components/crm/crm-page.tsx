@@ -216,11 +216,13 @@ export function CrmPage({
   initialTab = "executive-dashboard",
   onConvertToClient,
   onGenerateMultiCotas,
+  onGenerateReferenceCapitalStrategy,
   onGenerateSimulation,
 }: {
   initialTab?: CrmOperationalTab;
   onConvertToClient?: (input: ConvertLeadToClientInput) => void | Promise<void>;
   onGenerateMultiCotas?: (lead: CrmLead) => void;
+  onGenerateReferenceCapitalStrategy?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onGenerateProposal?: (lead: CrmLead) => void;
 }) {
@@ -531,6 +533,7 @@ export function CrmPage({
         onConvertToClient={onConvertToClient}
         onDraftChange={setDraft}
         onGenerateMultiCotas={onGenerateMultiCotas}
+        onGenerateReferenceCapitalStrategy={onGenerateReferenceCapitalStrategy}
         onGenerateSimulation={onGenerateSimulation}
         onSave={handleSaveSelectedLead}
         proposals={[]}

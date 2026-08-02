@@ -2,6 +2,8 @@ const CRM_LEAD_PROPOSAL_CONTEXT_KEY = "evolv.crm.lead-proposal-context.v1";
 
 export type CrmLeadProposalContext = {
   intent: "simulation" | "proposal" | "multi_cotas";
+  financialProductKey?: string;
+  financialProductVersion?: string;
   leadId: string;
   leadName: string;
   leadDesiredCredit?: number;
@@ -17,6 +19,8 @@ export type CrmLeadProposalContext = {
 
 export function saveCrmLeadProposalContext(input: {
   intent: "simulation" | "proposal" | "multi_cotas";
+  financialProductKey?: string;
+  financialProductVersion?: string;
   leadId: string;
   leadName: string;
   leadDesiredCredit?: number;
@@ -25,6 +29,8 @@ export function saveCrmLeadProposalContext(input: {
 }): CrmLeadProposalContext {
   const context: CrmLeadProposalContext = {
     intent: input.intent,
+    financialProductKey: normalizeOptionalText(input.financialProductKey),
+    financialProductVersion: normalizeOptionalText(input.financialProductVersion),
     leadId: input.leadId,
     leadName: input.leadName,
     leadDesiredCredit:
@@ -101,6 +107,8 @@ function normalizeCrmLeadProposalContext(
       candidate.intent === "simulation" || candidate.intent === "multi_cotas"
         ? candidate.intent
         : "proposal",
+    financialProductKey: normalizeOptionalText(candidate.financialProductKey),
+    financialProductVersion: normalizeOptionalText(candidate.financialProductVersion),
     leadId: candidate.leadId,
     leadName: candidate.leadName,
     leadDesiredCredit:

@@ -4,6 +4,7 @@ import type {
   StrategyArtifactReference,
 } from "./types.ts";
 import { defineFinancialProduct, definePublication } from "./registry.ts";
+import { referenceCapitalExclusiveProductDefinition } from "./reference-capital-2227.ts";
 
 export const traditionalConsortiumProduct = defineFinancialProduct({
   description:
@@ -36,6 +37,7 @@ export const currentFinancialProducts: FinancialProductDefinition[] = [
   traditionalConsortiumProduct,
   multiQuotaProduct,
   structuredGroupProduct,
+  referenceCapitalExclusiveProductDefinition,
 ];
 
 export const existingPublicationChannels: PublicationDefinition[] = [

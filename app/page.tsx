@@ -49,6 +49,10 @@ import {
   type AccessSection,
   type User,
 } from "@/modules/access";
+import {
+  referenceCapitalProductKey,
+  referenceCapitalProductVersion,
+} from "@/modules/patrimonial-strategy";
 
 const simulatorPageBySection: Partial<Record<PlatformSection, SimulatorPanelPage>> = {
   wealth: "journey",
@@ -288,9 +292,15 @@ export default function Home() {
   function handleGenerateSimulationFromLead(
     lead: CrmLead,
     intent: "simulation" | "proposal" | "multi_cotas",
+    options?: Pick<
+      CrmLeadProposalContext,
+      "financialProductKey" | "financialProductVersion"
+    >,
   ) {
     const nextContext = saveCrmLeadProposalContext({
       intent,
+      financialProductKey: options?.financialProductKey,
+      financialProductVersion: options?.financialProductVersion,
       leadId: lead.id,
       leadName: lead.nome,
       leadDesiredCredit: lead.valorPretendido,
@@ -428,6 +438,15 @@ export default function Home() {
               onGenerateMultiCotas={
                 canCurrentUserUseSimulationTools
                   ? (lead) => handleGenerateSimulationFromLead(lead, "multi_cotas")
+                  : undefined
+              }
+              onGenerateReferenceCapitalStrategy={
+                canCurrentUserUseSimulationTools
+                  ? (lead) =>
+                      handleGenerateSimulationFromLead(lead, "multi_cotas", {
+                        financialProductKey: referenceCapitalProductKey,
+                        financialProductVersion: referenceCapitalProductVersion,
+                      })
                   : undefined
               }
               onGenerateSimulation={

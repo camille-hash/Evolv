@@ -15,6 +15,7 @@ import {
   type MultiCotasResult,
 } from "@/modules/multi-cotas";
 import { Button } from "@/components/ui/button";
+import { ReferenceCapitalStrategyPage } from "@/components/patrimonial-strategy/reference-capital-strategy-page";
 import {
   ConsultingConditionsEditor,
   initialCommercialConsultingConditions,
@@ -22,6 +23,7 @@ import {
   type CommercialConsultingConditionsState,
 } from "@/components/commercial/consulting-conditions-editor";
 import type { CrmLeadProposalContext } from "@/modules/crm";
+import { referenceCapitalProductKey } from "@/modules/patrimonial-strategy";
 import { generateMultiCotasCommercialPdf } from "@/modules/reports";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -41,6 +43,34 @@ type MultiCotasSaveState = {
 };
 
 export function MultiCotasPage({
+  leadProposalContext,
+  onClearLeadProposalContext,
+  onOpenCrm,
+}: {
+  leadProposalContext?: CrmLeadProposalContext | null;
+  onClearLeadProposalContext?: () => void;
+  onOpenCrm?: () => void;
+}) {
+  if (leadProposalContext?.financialProductKey === referenceCapitalProductKey) {
+    return (
+      <ReferenceCapitalStrategyPage
+        leadProposalContext={leadProposalContext}
+        onClearLeadProposalContext={onClearLeadProposalContext}
+        onOpenCrm={onOpenCrm}
+      />
+    );
+  }
+
+  return (
+    <LegacyMultiCotasPage
+      leadProposalContext={leadProposalContext}
+      onClearLeadProposalContext={onClearLeadProposalContext}
+      onOpenCrm={onOpenCrm}
+    />
+  );
+}
+
+function LegacyMultiCotasPage({
   leadProposalContext,
   onClearLeadProposalContext,
   onOpenCrm,
