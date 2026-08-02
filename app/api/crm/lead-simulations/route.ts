@@ -3,12 +3,14 @@ import {
   createLeadSimulation,
   getLeadSimulationById,
   listLeadSimulationsByLeadId,
+  saveLeadSimulationPatrimonialPublication,
 } from "@/modules/crm/server/crm-lead-simulations-service";
 import {
   isCrmLeadSimulationSource,
   isCrmLeadSimulationType,
   type CreateCrmLeadSimulationInput,
 } from "@/modules/crm";
+import type { PatrimonialPublication } from "@/modules/patrimonial-strategy";
 
 export async function GET(request: NextRequest) {
   const accessToken = readBearerToken(request);
@@ -95,6 +97,35 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ simulation: result.simulation }, { status: 201 });
+}
+
+export async function PATCH(request: NextRequest) {
+  const accessToken = readBearerToken(request);
+  const body = (await request.json().catch(() => null)) as {
+    publication?: unknown;
+    simulationId?: string;
+  } | null;
+
+  if (!body?.simulationId || !isPlainObject(body.publication)) {
+    return NextResponse.json(
+      { error: "Informe a estrategia e a publicacao." },
+      { status: 400 },
+    );
+  }
+
+  const result = await saveLeadSimulationPatrimonialPublication(accessToken, {
+    publication: body.publication as PatrimonialPublication,
+    simulationId: body.simulationId,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error },
+      { status: result.status },
+    );
+  }
+
+  return NextResponse.json({ simulation: result.simulation });
 }
 
 function readBearerToken(request: NextRequest) {

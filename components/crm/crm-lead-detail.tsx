@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { LeadContractsCard } from "@/components/crm/lead-contracts-card";
 import { PrimaryJourneyAction } from "@/components/crm/primary-journey-action";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
+import { PublicationBuilderPanel } from "@/components/patrimonial-strategy/publication-builder-panel";
 import type { ConvertLeadToClientInput } from "@/modules/client-context";
 import {
   buildDualPipelineSnapshot,
@@ -95,6 +96,8 @@ import { generateMultiCotasCommercialPdf } from "@/modules/reports";
 import {
   centsToCurrencyAmount,
   isReferenceCapitalStrategySnapshot,
+  readPublicationsFromStrategySnapshot,
+  type PatrimonialPublication,
   type ReferenceCapitalStrategySnapshot,
 } from "@/modules/patrimonial-strategy";
 import { cn } from "@/lib/utils";
@@ -4886,9 +4889,53 @@ function ReferenceCapitalSavedStrategyDetail({
   snapshot: ReferenceCapitalStrategySnapshot;
 }) {
   const result = snapshot.result;
+  const [publicationSnapshot, setPublicationSnapshot] = useState<
+    Record<string, unknown>
+  >(simulation.presentationSnapshot);
+  const publications = readPublicationsFromStrategySnapshot(publicationSnapshot);
+  const latestPublication =
+    publications
+      .filter((publication) => publication.strategyVersion === 1)
+      .sort(
+        (left, right) =>
+          right.publicationVersion - left.publicationVersion ||
+          right.createdAt.localeCompare(left.createdAt),
+      )[0] ?? null;
 
   if (!isReferenceCapitalStrategySnapshot(snapshot)) {
     return null;
+  }
+
+  async function savePublication(publication: PatrimonialPublication) {
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      throw new Error("Sessao Supabase indisponivel. Faca login novamente.");
+    }
+
+    const response = await fetch("/api/crm/lead-simulations", {
+      body: JSON.stringify({
+        publication,
+        simulationId: simulation.id,
+      }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    });
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+      simulation?: CrmLeadSimulation;
+    } | null;
+
+    if (!response.ok || !body?.simulation) {
+      throw new Error(
+        body?.error ?? "Nao foi possivel salvar a publicacao.",
+      );
+    }
+
+    setPublicationSnapshot(body.simulation.presentationSnapshot);
   }
 
   return (
@@ -5011,6 +5058,17 @@ function ReferenceCapitalSavedStrategyDetail({
             />
           </SimulationDetailGrid>
         </SimulationDetailSection>
+
+        <PublicationBuilderPanel
+          createdBy={simulation.createdBy}
+          initialPublication={latestPublication}
+          onPreparePublication={savePublication}
+          onSaveDraft={savePublication}
+          strategyId={`strategy:${simulation.organizationId}:${simulation.leadId}:${simulation.id}`}
+          strategySnapshot={snapshot}
+          strategyTitle={simulation.title}
+          strategyVersion={1}
+        />
       </div>
     </section>
   );

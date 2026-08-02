@@ -1,6 +1,12 @@
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import { triggerDm001RecalculationAfterCrmEvent } from "../../decision-models/dm-001/event-hooks";
 import {
+  attachPublicationToStrategySnapshot,
+  assertValidPublicationSnapshot,
+  isReferenceCapitalStrategySnapshot,
+  type PatrimonialPublication,
+} from "../../patrimonial-strategy";
+import {
   isCrmLeadSimulationSource,
   isCrmLeadSimulationStatus,
   isCrmLeadSimulationType,
@@ -373,6 +379,89 @@ export async function markLeadSimulationCommercialEvent(
   if (error) {
     return {
       error: "Nao foi possivel atualizar a simulacao.",
+      ok: false,
+      status: 500,
+    };
+  }
+
+  return {
+    ok: true,
+    simulation: mapCrmLeadSimulationRow(data as unknown as CrmLeadSimulationRow),
+  };
+}
+
+export async function saveLeadSimulationPatrimonialPublication(
+  accessToken: string | null,
+  input: {
+    publication: PatrimonialPublication;
+    simulationId: string;
+  },
+): Promise<MutateLeadSimulationResult> {
+  if (!input.simulationId.trim()) {
+    return {
+      error: "Informe a estrategia para salvar a publicacao.",
+      ok: false,
+      status: 400,
+    };
+  }
+
+  try {
+    assertValidPublicationSnapshot(input.publication);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Publicacao invalida para esta estrategia.",
+      ok: false,
+      status: 400,
+    };
+  }
+
+  const context = await resolveLeadSimulationRequestContext(accessToken);
+
+  if (!context.ok) {
+    return context;
+  }
+
+  const simulationValidation = await validateSimulationOrganization(
+    context,
+    input.simulationId,
+  );
+
+  if (!simulationValidation.ok) {
+    return simulationValidation;
+  }
+
+  const simulation = simulationValidation.simulation;
+
+  if (!isReferenceCapitalStrategySnapshot(simulation.calculationSnapshot)) {
+    return {
+      error: "A simulacao informada nao e uma Estrategia Patrimonial publicavel.",
+      ok: false,
+      status: 400,
+    };
+  }
+
+  const presentationSnapshot = attachPublicationToStrategySnapshot({
+    publication: input.publication,
+    strategySnapshot: simulation.presentationSnapshot,
+  });
+
+  const { data, error } = await context.supabase
+    .from("crm_lead_simulations")
+    .update({
+      presentation_snapshot: presentationSnapshot,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.simulationId)
+    .eq("organization_id", context.profile.organization_id)
+    .select(crmLeadSimulationColumns)
+    .single();
+
+  if (error) {
+    return {
+      error: "Nao foi possivel salvar a publicacao da estrategia.",
       ok: false,
       status: 500,
     };
