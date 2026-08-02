@@ -2,13 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { PublicationBuilderPanel } from "@/components/patrimonial-strategy/publication-builder-panel";
 import { Button } from "@/components/ui/button";
-import type { CrmLeadProposalContext } from "@/modules/crm";
+import type { CrmLeadProposalContext, CrmLeadSimulation } from "@/modules/crm";
 import { readSupabaseAccessToken } from "@/modules/access/supabase-session-token";
 import {
   buildReferenceCapitalStrategySnapshot,
   calculateReferenceCapitalExclusiveStrategy,
   centsToCurrencyAmount,
+  isReferenceCapitalStrategySnapshot,
+  readPublicationsFromStrategySnapshot,
+  type PatrimonialPublication,
   referenceCapitalCreditCatalog,
   referenceCapitalProductKey,
   referenceCapitalProductVersion,
@@ -62,6 +66,10 @@ export function ReferenceCapitalStrategyPage({
     message: "",
     status: "idle",
   });
+  const [savedSimulation, setSavedSimulation] =
+    useState<CrmLeadSimulation | null>(null);
+  const [isPublicationBuilderOpen, setIsPublicationBuilderOpen] =
+    useState(false);
 
   const calculation = useMemo(() => {
     try {
@@ -183,17 +191,22 @@ export function ReferenceCapitalStrategyPage({
       });
       const body = (await response.json().catch(() => null)) as {
         error?: string;
-        simulation?: { id?: string };
+        simulation?: CrmLeadSimulation;
       } | null;
 
       if (!response.ok) {
         throw new Error(body?.error ?? "Nao foi possivel salvar a estrategia.");
       }
 
+      if (!body?.simulation?.id) {
+        throw new Error("A estrategia foi salva, mas o retorno nao trouxe identificador.");
+      }
+
+      setSavedSimulation(body.simulation);
+      setIsPublicationBuilderOpen(false);
       setSaveState({
-        message: body?.simulation?.id
-          ? `Estrategia salva. ID: ${body.simulation.id}`
-          : "Estrategia salva no lead.",
+        message:
+          "Estrategia salva com sucesso. Agora voce pode preparar o Material Executivo que sera compartilhado com o cliente.",
         status: "success",
       });
     } catch (error) {
@@ -206,6 +219,62 @@ export function ReferenceCapitalStrategyPage({
       });
     }
   }
+
+  async function savePublication(publication: PatrimonialPublication) {
+    if (!savedSimulation) {
+      throw new Error("Salve a estrategia antes de preparar o Material Executivo.");
+    }
+
+    const accessToken = await readSupabaseAccessToken();
+
+    if (!accessToken) {
+      throw new Error("Sessao Supabase indisponivel. Faca login novamente.");
+    }
+
+    const response = await fetch("/api/crm/lead-simulations", {
+      body: JSON.stringify({
+        publication,
+        simulationId: savedSimulation.id,
+      }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    });
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+      simulation?: CrmLeadSimulation;
+    } | null;
+
+    if (!response.ok || !body?.simulation) {
+      throw new Error(
+        body?.error ?? "Nao foi possivel salvar a publicacao.",
+      );
+    }
+
+    setSavedSimulation(body.simulation);
+  }
+
+  const savedPublications = savedSimulation
+    ? readPublicationsFromStrategySnapshot(savedSimulation.presentationSnapshot)
+    : [];
+  const latestPublication =
+    savedPublications
+      .filter((publication) => publication.strategyVersion === 1)
+      .sort((left, right) => {
+        if (left.publicationVersion !== right.publicationVersion) {
+          return right.publicationVersion - left.publicationVersion;
+        }
+
+        return right.createdAt.localeCompare(left.createdAt);
+      })[0] ?? null;
+  const savedStrategySnapshot = savedSimulation?.calculationSnapshot ?? null;
+  const canRenderPublicationBuilder = Boolean(
+    savedSimulation &&
+      savedStrategySnapshot &&
+      isReferenceCapitalStrategySnapshot(savedStrategySnapshot),
+  );
 
   return (
     <section className="grid gap-6">
@@ -267,6 +336,15 @@ export function ReferenceCapitalStrategyPage({
                     ? "Salvando..."
                     : "Salvar estrategia no lead"}
                 </Button>
+                {savedSimulation ? (
+                  <Button
+                    onClick={() => setIsPublicationBuilderOpen(true)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    Preparar Material Executivo
+                  </Button>
+                ) : null}
                 {onClearLeadProposalContext ? (
                   <Button
                     onClick={onClearLeadProposalContext}
@@ -310,6 +388,47 @@ export function ReferenceCapitalStrategyPage({
           </div>
         </section>
       )}
+
+      {canRenderPublicationBuilder &&
+      savedSimulation &&
+      savedStrategySnapshot &&
+      isReferenceCapitalStrategySnapshot(savedStrategySnapshot) ? (
+        isPublicationBuilderOpen || latestPublication ? (
+          <PublicationBuilderPanel
+            createdBy={savedSimulation.createdBy}
+            initialPublication={latestPublication}
+            onPreparePublication={savePublication}
+            onSaveDraft={savePublication}
+            strategyId={`strategy:${savedSimulation.organizationId}:${savedSimulation.leadId}:${savedSimulation.id}`}
+            strategySnapshot={savedStrategySnapshot}
+            strategyTitle={savedSimulation.title}
+            strategyVersion={1}
+          />
+        ) : (
+          <section className="executive-surface rounded-md p-5 text-card-foreground">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Material Executivo
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-foreground">
+                  Nenhuma publicacao criada.
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Transforme esta Estrategia Patrimonial em um Material Executivo
+                  para compartilhar com o cliente.
+                </p>
+              </div>
+              <Button
+                onClick={() => setIsPublicationBuilderOpen(true)}
+                type="button"
+              >
+                Preparar Material Executivo
+              </Button>
+            </div>
+          </section>
+        )
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-[1fr_0.72fr]">
         <section className="executive-surface rounded-md p-6">

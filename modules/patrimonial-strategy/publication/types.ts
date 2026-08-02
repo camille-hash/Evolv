@@ -162,11 +162,28 @@ export type PatrimonialPublication = {
   publicationType: ImplementedPatrimonialPublicationType;
   publicationVersion: number;
   selectedChapters: PatrimonialPublicationChapterSelection[];
+  renderedArtifacts?: PatrimonialPublicationRenderedArtifactMetadata[];
   sourceArtifacts: PatrimonialPublicationSourceArtifacts;
   status: PatrimonialPublicationStatus;
   strategyId: string;
   strategyVersion: number;
   title: string;
+};
+
+export type PatrimonialPublicationRenderedArtifactMetadata = {
+  artifactId: string;
+  byteLength: number;
+  checksum?: string | null;
+  createdAt: string;
+  fileName: string;
+  mimeType: "application/pdf";
+  publicationId: string;
+  publicationVersion: number;
+  rendererKey: string;
+  rendererVersion: string;
+  status: "generated";
+  strategyId: string;
+  strategyVersion: number;
 };
 
 export type PatrimonialPublicationPreviewItem = {

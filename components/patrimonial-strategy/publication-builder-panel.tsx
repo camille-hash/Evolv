@@ -1,15 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Lock, Save } from "lucide-react";
+import { CheckCircle2, Download, Lock, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  attachExecutiveMaterialPdfArtifactMetadata,
   buildPatrimonialPublication,
   createPublicationPreview,
   getReferenceCapitalExecutiveMaterialChapters,
+  renderExecutiveMaterialPdf,
   resolveChapterAvailability,
   type PatrimonialPublication,
   type PatrimonialPublicationChapterKey,
+  type PatrimonialPublicationRenderedArtifactMetadata,
   type ReferenceCapitalStrategySnapshot,
 } from "@/modules/patrimonial-strategy";
 
@@ -48,6 +51,13 @@ export function PublicationBuilderPanel({
     message: string;
     status: "idle" | "saving" | "success" | "error";
   }>({ message: "", status: "idle" });
+  const [artifactMetadata, setArtifactMetadata] =
+    useState<PatrimonialPublicationRenderedArtifactMetadata | null>(
+      initialPublication?.renderedArtifacts?.at(-1) ?? null,
+    );
+  const currentStatus = artifactMetadata
+    ? "rendered"
+    : initialPublication?.status ?? "draft";
 
   const publication = useMemo(
     () =>
@@ -166,6 +176,73 @@ export function PublicationBuilderPanel({
     }
   }
 
+  async function handleGenerateExecutiveMaterial() {
+    if (!onPreparePublication) {
+      return;
+    }
+
+    setFeedback({
+      message: "Gerando Material Executivo...",
+      status: "saving",
+    });
+
+    try {
+      const readyPublication =
+        publication.status === "draft"
+          ? buildPatrimonialPublication({
+              createdBy,
+              publicationId: publication.id,
+              publicationVersion: publication.publicationVersion,
+              selectedOptionalChapterKeys: selectedOptionalKeys,
+              status: "ready",
+              strategyId,
+              strategySnapshot,
+              strategyTitle,
+              strategyVersion,
+              title: publication.title,
+            })
+          : publication;
+      const artifact = renderExecutiveMaterialPdf(readyPublication);
+      downloadPdfArtifact(artifact.fileName, artifact.bytes);
+      const renderedPublication = attachExecutiveMaterialPdfArtifactMetadata({
+        artifact,
+        publication: readyPublication,
+      });
+
+      await onPreparePublication(renderedPublication);
+
+      const metadata = {
+        artifactId: artifact.artifactId,
+        byteLength: artifact.byteLength,
+        checksum: artifact.checksum,
+        createdAt: artifact.createdAt,
+        fileName: artifact.fileName,
+        mimeType: artifact.mimeType,
+        publicationId: artifact.publicationId,
+        publicationVersion: artifact.publicationVersion,
+        rendererKey: artifact.rendererKey,
+        rendererVersion: artifact.rendererVersion,
+        status: artifact.status,
+        strategyId: artifact.strategyId,
+        strategyVersion: artifact.strategyVersion,
+      } satisfies PatrimonialPublicationRenderedArtifactMetadata;
+
+      setArtifactMetadata(metadata);
+      setFeedback({
+        message: `Material Executivo gerado: ${artifact.fileName}`,
+        status: "success",
+      });
+    } catch (error) {
+      setFeedback({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel gerar o Material Executivo.",
+        status: "error",
+      });
+    }
+  }
+
   return (
     <section className="grid gap-5 rounded-md border bg-card p-5 text-card-foreground">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -184,26 +261,44 @@ export function PublicationBuilderPanel({
             <span>Consultor: {strategySnapshot.leadContext?.responsibleName ?? "-"}</span>
             <span>Versao da estrategia: {strategyVersion}</span>
             <span>Publicacao: v{publication.publicationVersion}</span>
+            <span>Status: {formatPublicationStatus(currentStatus)}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            disabled={!onSaveDraft || feedback.status === "saving"}
-            onClick={handleSaveDraft}
-            type="button"
-            variant="secondary"
-          >
-            <Save className="h-4 w-4" aria-hidden />
-            Salvar rascunho
-          </Button>
-          <Button
-            disabled={!onPreparePublication || feedback.status === "saving"}
-            onClick={handlePreparePublication}
-            type="button"
-          >
-            <CheckCircle2 className="h-4 w-4" aria-hidden />
-            Preparar publicacao
-          </Button>
+          {currentStatus === "draft" ? (
+            <>
+              <Button
+                disabled={!onSaveDraft || feedback.status === "saving"}
+                onClick={handleSaveDraft}
+                type="button"
+                variant="secondary"
+              >
+                <Save className="h-4 w-4" aria-hidden />
+                Salvar rascunho
+              </Button>
+              <Button
+                disabled={!onPreparePublication || feedback.status === "saving"}
+                onClick={handlePreparePublication}
+                type="button"
+              >
+                <CheckCircle2 className="h-4 w-4" aria-hidden />
+                Preparar publicacao
+              </Button>
+            </>
+          ) : null}
+          {currentStatus !== "draft" ? (
+            <Button
+              disabled={!onPreparePublication || feedback.status === "saving"}
+              onClick={handleGenerateExecutiveMaterial}
+              type="button"
+              variant="secondary"
+            >
+              <Download className="h-4 w-4" aria-hidden />
+              {artifactMetadata
+                ? "Baixar Material Executivo"
+                : "Gerar Material Executivo"}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -217,6 +312,16 @@ export function PublicationBuilderPanel({
         >
           {feedback.message}
         </p>
+      ) : null}
+
+      {artifactMetadata ? (
+        <div className="rounded-md border bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
+          <p className="font-medium text-foreground">Artefato gerado</p>
+          <p>Arquivo: {artifactMetadata.fileName}</p>
+          <p>Versao do renderer: {artifactMetadata.rendererVersion}</p>
+          <p>Tamanho: {formatByteLength(artifactMetadata.byteLength)}</p>
+          <p>Gerado em: {artifactMetadata.createdAt}</p>
+        </div>
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[1fr_0.56fr]">
@@ -308,4 +413,44 @@ export function PublicationBuilderPanel({
       </div>
     </section>
   );
+}
+
+function downloadPdfArtifact(fileName: string, bytes: Uint8Array) {
+  const arrayBuffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+  const blob = new Blob([arrayBuffer], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function formatByteLength(byteLength: number) {
+  if (byteLength < 1024) {
+    return `${byteLength} bytes`;
+  }
+
+  return `${(byteLength / 1024).toFixed(1)} KB`;
+}
+
+function formatPublicationStatus(status: "draft" | "ready" | "rendered" | "archived") {
+  if (status === "draft") {
+    return "Rascunho";
+  }
+
+  if (status === "rendered") {
+    return "Material Executivo gerado";
+  }
+
+  if (status === "archived") {
+    return "Arquivado";
+  }
+
+  return "Pronto para publicacao";
 }
