@@ -137,6 +137,12 @@ export type RecordLeadIngestionEventParams = {
   supabase: LeadIngestionSupabaseClient;
 };
 
+export type RecordLeadIngestionTransportEventParams = {
+  input: LeadIngestionRawInput;
+  receivedAt?: string;
+  supabase: LeadIngestionSupabaseClient;
+};
+
 export type MaterializeLeadIngestionEventParams = {
   eventId: string;
   processedAt?: string;

@@ -23,6 +23,7 @@ import type {
   MaterializeLeadIngestionEventTransactionRow,
   RecordLeadIngestionEventParams,
   RecordLeadIngestionEventResult,
+  RecordLeadIngestionTransportEventParams,
   ResolveLeadIngestionIntegrationConfigParams,
 } from "./types.ts";
 
@@ -217,6 +218,65 @@ export async function recordLeadIngestionEvent(
       "PAYLOAD_INVALID",
       sanitizeLeadIngestionErrorMessage(
         error.message || "Nao foi possivel preservar evento de ingestao.",
+      ),
+      500,
+    );
+  }
+
+  return {
+    event: mapEventRow(data),
+    idempotent: false,
+    integrationConfig: integrationLookup.integrationConfig,
+    ok: true,
+  };
+}
+
+export async function recordLeadIngestionTransportEvent(
+  params: RecordLeadIngestionTransportEventParams,
+): Promise<RecordLeadIngestionEventResult> {
+  const normalizedPayload = normalizeLeadIngestionPayload(params.input);
+  const identityValidation = validateIngestionIdentity(normalizedPayload);
+
+  if (!identityValidation.ok) {
+    return identityValidation;
+  }
+
+  const integrationLookup = await lookupIntegrationConfigForEvent(
+    params,
+    normalizedPayload,
+  );
+  const eventStatus = resolveInitialTransportEventStatus(integrationLookup);
+  const rejection = resolveInitialTransportRejection(integrationLookup);
+  const receivedAt = normalizeTimestamp(params.receivedAt) ?? new Date().toISOString();
+
+  const { data, error } = await params.supabase
+    .from("lead_ingestion_events")
+    .insert({
+      event_type: normalizedPayload.eventType,
+      external_event_id: normalizeOptionalText(params.input.externalEventId),
+      external_id: normalizedPayload.externalId,
+      integration_config_id: integrationLookup.integrationConfig?.id ?? null,
+      last_error_code: rejection?.code ?? null,
+      last_error_message: rejection?.message ?? null,
+      normalized_payload: normalizedPayload,
+      organization_id: integrationLookup.integrationConfig?.organizationId ?? null,
+      received_at: receivedAt,
+      source_payload: normalizedPayload.sourcePayload,
+      source_system: normalizedPayload.sourceSystem,
+      status: eventStatus,
+    })
+    .select(ingestionEventColumns)
+    .single<LeadIngestionEventRow>();
+
+  if (error) {
+    if (error.code === "23505") {
+      return resolveIdempotentEvent(params, normalizedPayload);
+    }
+
+    return leadIngestionError(
+      "PAYLOAD_INVALID",
+      sanitizeLeadIngestionErrorMessage(
+        error.message || "Nao foi possivel preservar envelope de ingestao.",
       ),
       500,
     );
@@ -431,6 +491,16 @@ function resolveInitialEventStatus(
   return "materialization_pending";
 }
 
+function resolveInitialTransportEventStatus(
+  integrationLookup: Awaited<ReturnType<typeof lookupIntegrationConfigForEvent>>,
+): LeadIngestionStatus {
+  if (integrationLookup.errorCode) {
+    return "rejected";
+  }
+
+  return "fetch_pending";
+}
+
 function resolveInitialRejection(
   integrationLookup: Awaited<ReturnType<typeof lookupIntegrationConfigForEvent>>,
   validation: ReturnType<typeof validateMaterializationPayload>,
@@ -446,6 +516,19 @@ function resolveInitialRejection(
     return {
       code: validation.code,
       message: validation.error,
+    };
+  }
+
+  return null;
+}
+
+function resolveInitialTransportRejection(
+  integrationLookup: Awaited<ReturnType<typeof lookupIntegrationConfigForEvent>>,
+) {
+  if (integrationLookup.errorCode) {
+    return {
+      code: integrationLookup.errorCode,
+      message: integrationLookup.errorMessage ?? "Envelope rejeitado.",
     };
   }
 
