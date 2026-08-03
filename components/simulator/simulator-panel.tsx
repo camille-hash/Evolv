@@ -49,6 +49,7 @@ import {
   type SimulatorSavedSimulation,
   type SimulatorScenarioKey,
 } from "@/modules/simulator";
+import { resolveCommercialProposalProjection } from "@/modules/simulator/commercial-proposal-projection";
 import {
   generateSimulatorCommercialPdf,
   type PdfCommercialConsultingConditions,
@@ -1967,6 +1968,11 @@ function AnchoredProposalsSection({
               initialCommercialConsultingConditions;
             const proposalSaveRecord =
               commercialProposalSaveState.records[proposal.kind];
+            const projection = resolveCommercialProposalProjection(
+              proposal,
+              proposalSaveRecord,
+            );
+            const displayedProposal = projection.proposal;
             const isSavingProposal =
               commercialProposalSaveState.status === "saving" &&
               commercialProposalSaveState.activeKind === proposal.kind;
@@ -1978,10 +1984,15 @@ function AnchoredProposalsSection({
               >
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                    {proposal.label}
+                    {displayedProposal.label}
                   </p>
+                  {projection.isCustomized ? (
+                    <p className="mt-2 inline-flex w-fit rounded-full border border-primary/20 bg-primary/[0.06] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
+                      Personalizada
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {proposal.objective}
+                    {displayedProposal.objective}
                   </p>
                 </div>
 
@@ -1989,43 +2000,44 @@ function AnchoredProposalsSection({
                   <AnchoredProposalValue
                     label="Credito"
                     value={currencyFormatter.format(
-                      proposal.presentation.commercialCredit,
+                      displayedProposal.presentation.commercialCredit,
                     )}
                   />
                   <AnchoredProposalValue
                     label="Parcela"
                     value={currencyFormatter.format(
-                      proposal.presentation.installmentBeforeContemplation,
+                      displayedProposal.presentation
+                        .installmentBeforeContemplation,
                     )}
                     featured
                   />
                   <AnchoredProposalValue
                     label="Cenario"
-                    value={proposal.presentation.selectedScenarioName}
+                    value={displayedProposal.presentation.selectedScenarioName}
                   />
                   <AnchoredProposalValue
                     label="Parcela pos"
                     value={currencyFormatter.format(
-                      proposal.presentation.installmentAfterContemplation,
+                      displayedProposal.presentation.installmentAfterContemplation,
                     )}
                   />
                   <AnchoredProposalValue
                     label="Venda estimada"
                     value={currencyFormatter.format(
-                      proposal.presentation.estimatedCardSaleValue,
+                      displayedProposal.presentation.estimatedCardSaleValue,
                     )}
                   />
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-2">
                   <SecondaryActionButton
-                    onClick={() => onCustomizeProposal(proposal)}
+                    onClick={() => onCustomizeProposal(displayedProposal)}
                   >
                     Personalizar
                   </SecondaryActionButton>
                   <SecondaryActionButton
                     disabled={commercialProposalSaveState.status === "saving"}
-                    onClick={() => onGenerateProposalPdf(proposal)}
+                    onClick={() => onGenerateProposalPdf(displayedProposal)}
                   >
                     <FileDown className="h-4 w-4" aria-hidden="true" />
                     {isSavingProposal ? "Preparando..." : "Gerar PDF"}
@@ -3193,7 +3205,10 @@ function buildCommercialProposalEditorRequest(
       baseInput: editor.sourceProposal.input,
       bidType: editor.draft.bidType,
       contemplationMonth,
-      credit: credit > 0 ? credit : null,
+      credit:
+        editor.draft.lastEditedAmountField === "credit" && credit > 0
+          ? credit
+          : null,
       insuranceOption: editor.draft.insuranceOption,
       scenarioKey: editor.draft.scenarioKey,
       targetInstallment:
@@ -3485,14 +3500,14 @@ function createCommercialProposalEditorState(
     draft: {
       bidType: proposal.presentation.bidType,
       contemplationMonth: String(proposal.presentation.contemplationMonth),
-      credit: String(proposal.input.credit),
+      credit: formatEditorCurrencyValue(proposal.input.credit),
       insuranceOption:
         proposal.presentation.insuranceLabel === "Sem seguro"
           ? "without-insurance"
           : "with-insurance",
       lastEditedAmountField: null,
       scenarioKey: proposal.scenarioKey,
-      targetInstallment: String(
+      targetInstallment: formatEditorCurrencyValue(
         proposal.presentation.installmentBeforeContemplation,
       ),
       termMonths: String(proposal.input.termMonths),
