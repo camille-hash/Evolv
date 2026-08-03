@@ -22,9 +22,6 @@ create table if not exists public.organizations (
   updated_at timestamptz default now()
 );
 
-alter table public.organizations
-  add column if not exists slug text;
-
 create unique index if not exists organizations_slug_unique_idx
   on public.organizations(slug)
   where slug is not null;
@@ -43,76 +40,11 @@ create table if not exists public.profiles (
   organization_id uuid not null references public.organizations(id) on delete cascade,
   name text not null,
   email text not null,
-  role text not null check (role in ('admin', 'sdr')),
+  role text not null default 'sdr' check (role in ('master', 'admin', 'sdr')),
   is_active boolean not null default true,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
-
-alter table public.profiles
-  add column if not exists organization_id uuid,
-  add column if not exists name text,
-  add column if not exists email text,
-  add column if not exists role text,
-  add column if not exists is_active boolean not null default true,
-  add column if not exists created_at timestamptz default now(),
-  add column if not exists updated_at timestamptz default now();
-
-alter table public.profiles
-  alter column role set default 'sdr',
-  alter column is_active set default true;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'profiles_id_auth_users_fk'
-      and conrelid = 'public.profiles'::regclass
-  ) then
-    alter table public.profiles
-      add constraint profiles_id_auth_users_fk
-      foreign key (id)
-      references auth.users(id)
-      on delete cascade
-      not valid;
-  end if;
-end;
-$$;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'profiles_organization_id_fk'
-      and conrelid = 'public.profiles'::regclass
-  ) then
-    alter table public.profiles
-      add constraint profiles_organization_id_fk
-      foreign key (organization_id)
-      references public.organizations(id)
-      on delete cascade
-      not valid;
-  end if;
-end;
-$$;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'profiles_role_official_check'
-      and conrelid = 'public.profiles'::regclass
-  ) then
-    alter table public.profiles
-      add constraint profiles_role_official_check
-      check (role in ('admin', 'sdr'))
-      not valid;
-  end if;
-end;
-$$;
 
 create index if not exists profiles_organization_id_idx
   on public.profiles(organization_id);
@@ -160,77 +92,6 @@ create table if not exists public.crm_leads (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
-
-alter table public.crm_leads
-  add column if not exists organization_id uuid,
-  add column if not exists assigned_profile_id uuid,
-  add column if not exists external_id text,
-  add column if not exists source_system text default 'evolv',
-  add column if not exists nome text,
-  add column if not exists telefone text,
-  add column if not exists email text,
-  add column if not exists pais text,
-  add column if not exists origem text,
-  add column if not exists consultor text,
-  add column if not exists valor_pretendido numeric default 0,
-  add column if not exists observacoes text,
-  add column if not exists pipeline text,
-  add column if not exists etapa text,
-  add column if not exists tags text[] default '{}',
-  add column if not exists produto_interesse text,
-  add column if not exists temperatura text default 'morna',
-  add column if not exists status text default 'ativa',
-  add column if not exists proxima_acao text,
-  add column if not exists data_proxima_acao date,
-  add column if not exists closed_at timestamptz,
-  add column if not exists titulo_oportunidade text,
-  add column if not exists metadata jsonb default '{}'::jsonb,
-  add column if not exists created_at timestamptz default now(),
-  add column if not exists updated_at timestamptz default now();
-
-alter table public.crm_leads
-  alter column source_system set default 'evolv',
-  alter column valor_pretendido set default 0,
-  alter column tags set default '{}',
-  alter column temperatura set default 'morna',
-  alter column status set default 'ativa',
-  alter column metadata set default '{}'::jsonb;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'crm_leads_organization_id_fk'
-      and conrelid = 'public.crm_leads'::regclass
-  ) then
-    alter table public.crm_leads
-      add constraint crm_leads_organization_id_fk
-      foreign key (organization_id)
-      references public.organizations(id)
-      on delete cascade
-      not valid;
-  end if;
-end;
-$$;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'crm_leads_assigned_profile_id_fk'
-      and conrelid = 'public.crm_leads'::regclass
-  ) then
-    alter table public.crm_leads
-      add constraint crm_leads_assigned_profile_id_fk
-      foreign key (assigned_profile_id)
-      references public.profiles(id)
-      on delete set null
-      not valid;
-  end if;
-end;
-$$;
 
 create index if not exists crm_leads_organization_id_idx
   on public.crm_leads(organization_id);

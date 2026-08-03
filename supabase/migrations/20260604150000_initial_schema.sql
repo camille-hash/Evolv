@@ -16,7 +16,7 @@ create table public.users (
   updated_at timestamptz not null default now()
 );
 
-create table public.administrators (
+create table public.legacy_user_administrators (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references public.users(id) on delete cascade,
   created_at timestamptz not null default now()
