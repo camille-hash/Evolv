@@ -5,6 +5,10 @@ import type {
   MetaWebhookParseResult,
 } from "./types.ts";
 
+export const metaWebhookMaximumEntries = 100;
+export const metaWebhookMaximumChangesPerEntry = 100;
+export const metaWebhookMaximumLeadgenEvents = 100;
+
 export function parseMetaWebhookJson(rawBody: string) {
   try {
     return {
@@ -45,6 +49,14 @@ export function parseMetaWebhookLeadgenEvents(
     ignored.push({ reason: "entry_missing" });
   }
 
+  if (entries.length > metaWebhookMaximumEntries) {
+    return {
+      events: [],
+      ignored: [{ reason: "entry_limit_exceeded" }],
+      limitExceeded: true,
+    };
+  }
+
   for (const entry of entries) {
     if (!isRecord(entry)) {
       ignored.push({ reason: "entry_not_object" });
@@ -58,11 +70,26 @@ export function parseMetaWebhookLeadgenEvents(
       continue;
     }
 
+    if (changes.length > metaWebhookMaximumChangesPerEntry) {
+      return {
+        events: [],
+        ignored: [{ reason: "change_limit_exceeded" }],
+        limitExceeded: true,
+      };
+    }
+
     for (const change of changes) {
       const extracted = extractLeadgenChange(entry, change);
 
       if (extracted.event) {
         events.push(extracted.event);
+        if (events.length > metaWebhookMaximumLeadgenEvents) {
+          return {
+            events: [],
+            ignored: [{ reason: "leadgen_event_limit_exceeded" }],
+            limitExceeded: true,
+          };
+        }
       } else {
         ignored.push({ reason: extracted.reason });
       }

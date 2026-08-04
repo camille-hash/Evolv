@@ -105,10 +105,10 @@ select ok(has_table_privilege('service_role', 'public.lead_ingestion_integration
   'service role has the configuration DML required by the resolver');
 
 select ok(not has_function_privilege('public',
-  'public.claim_lead_ingestion_events(text,integer,integer,timestamp with time zone)', 'EXECUTE'),
+  'public.claim_lead_ingestion_events(text,integer,integer)', 'EXECUTE'),
   'PUBLIC cannot execute claim');
 select ok(not has_function_privilege('public',
-  'public.retry_lead_ingestion_event(uuid,text,timestamp with time zone)', 'EXECUTE'),
+  'public.retry_lead_ingestion_event(uuid,uuid,text)', 'EXECUTE'),
   'PUBLIC cannot execute retry');
 select ok(not has_function_privilege('public',
   'public.materialize_lead_ingestion_event_transaction(uuid,uuid,uuid,timestamp with time zone)', 'EXECUTE'),
@@ -116,12 +116,12 @@ select ok(not has_function_privilege('public',
 
 select is(
   (select proconfig::text from pg_proc where oid =
-    'public.claim_lead_ingestion_events(text,integer,integer,timestamp with time zone)'::regprocedure),
+    'public.claim_lead_ingestion_events(text,integer,integer)'::regprocedure),
   '{"search_path=pg_catalog, public"}', 'claim has a hardened search path'
 );
 select is(
   (select proconfig::text from pg_proc where oid =
-    'public.retry_lead_ingestion_event(uuid,text,timestamp with time zone)'::regprocedure),
+    'public.retry_lead_ingestion_event(uuid,uuid,text)'::regprocedure),
   '{"search_path=pg_catalog, public"}', 'retry has a hardened search path'
 );
 select is(

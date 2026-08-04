@@ -13,9 +13,9 @@ select has_column('public', 'lead_ingestion_events', 'claim_token',
   'events persist an exclusive claim token');
 select has_column('public', 'lead_ingestion_events', 'claim_expires_at',
   'events persist lease expiration');
-select has_function('public', 'claim_lead_ingestion_events', array['text', 'integer', 'integer', 'timestamp with time zone'],
+select has_function('public', 'claim_lead_ingestion_events', array['text', 'integer', 'integer'],
   'claim RPC exists');
-select has_function('public', 'retry_lead_ingestion_event', array['uuid', 'text', 'timestamp with time zone'],
+select has_function('public', 'retry_lead_ingestion_event', array['uuid', 'uuid', 'text'],
   'deterministic retry RPC exists');
 select has_function('public', 'materialize_lead_ingestion_event_transaction',
   array['uuid', 'uuid', 'uuid', 'timestamp with time zone'],
@@ -31,12 +31,12 @@ select ok(
 );
 select ok(
   not has_function_privilege('anon',
-    'public.claim_lead_ingestion_events(text,integer,integer,timestamp with time zone)', 'EXECUTE'),
+    'public.claim_lead_ingestion_events(text,integer,integer)', 'EXECUTE'),
   'anonymous cannot claim events'
 );
 select ok(
   not has_function_privilege('authenticated',
-    'public.retry_lead_ingestion_event(uuid,text,timestamp with time zone)', 'EXECUTE'),
+    'public.retry_lead_ingestion_event(uuid,uuid,text)', 'EXECUTE'),
   'authenticated users cannot retry events directly'
 );
 select ok(
@@ -85,8 +85,7 @@ select is(
 );
 
 select is_empty(
-  $$select * from public.claim_lead_ingestion_events('worker-a', 10, 60,
-      '2026-08-04T12:00:00Z')
+  $$select * from public.claim_lead_ingestion_events('worker-a', 10, 60)
     where id = '30000000-0000-4000-8000-000000000001'$$,
   'tenant unresolved cannot be claimed'
 );
@@ -104,21 +103,26 @@ insert into public.lead_ingestion_events (
 
 select is(
   (select count(*)::integer from public.claim_lead_ingestion_events(
-    'worker-a', 10, 60, '2026-08-04T12:00:00Z')),
+    'worker-a', 10, 60)),
   1,
   'eligible event receives one claim'
 );
 
 select is(
   (select count(*)::integer from public.claim_lead_ingestion_events(
-    'worker-b', 10, 60, '2026-08-04T12:00:30Z')),
+    'worker-b', 10, 60)),
   0,
   'a valid lease blocks a second worker'
 );
 
+-- Fixture-only expiration: production reclaim always compares with the database clock.
+update public.lead_ingestion_events
+set claim_expires_at = clock_timestamp() - interval '1 second'
+where id = '30000000-0000-4000-8000-000000000002';
+
 select is(
   (select count(*)::integer from public.claim_lead_ingestion_events(
-    'worker-b', 10, 60, '2026-08-04T12:01:01Z')),
+    'worker-b', 10, 60)),
   1,
   'an expired lease can be recovered'
 );
@@ -126,32 +130,39 @@ select is(
 update public.lead_ingestion_events
 set status = 'processing_failed', failed_stage = 'materialization',
     retryable = true, next_attempt_at = now(),
-    claim_token = null, claimed_at = null, claim_expires_at = null, worker_id = null
+    claim_token = '40000000-0000-4000-8000-000000000010',
+    claimed_at = clock_timestamp(), claim_expires_at = clock_timestamp() + interval '10 minutes',
+    worker_id = 'worker-retry'
 where id = '30000000-0000-4000-8000-000000000002';
 
 select is(
   (public.retry_lead_ingestion_event(
-    '30000000-0000-4000-8000-000000000002', 'test retry')).status,
-  'materialization_pending',
+    '30000000-0000-4000-8000-000000000002',
+    '40000000-0000-4000-8000-000000000010', 'test retry')),
+  'retried',
   'materialization failure resumes at materialization pending'
 );
 
 update public.lead_ingestion_events
-set status = 'processing_failed', failed_stage = 'graph_fetch', retryable = true
+set status = 'processing_failed', failed_stage = 'graph_fetch', retryable = true,
+    claim_token = '40000000-0000-4000-8000-000000000011',
+    claimed_at = clock_timestamp(), claim_expires_at = clock_timestamp() + interval '10 minutes',
+    worker_id = 'worker-retry'
 where id = '30000000-0000-4000-8000-000000000002';
 
 select is(
   (public.retry_lead_ingestion_event(
-    '30000000-0000-4000-8000-000000000002', 'test graph retry')).status,
-  'fetch_pending',
+    '30000000-0000-4000-8000-000000000002',
+    '40000000-0000-4000-8000-000000000011', 'test graph retry')),
+  'retried',
   'Graph failure resumes at fetch pending'
 );
 
 update public.lead_ingestion_events
 set status = 'materialization_pending',
     claim_token = '40000000-0000-4000-8000-000000000001',
-    claimed_at = '2026-08-04T12:00:00Z',
-    claim_expires_at = '2026-08-04T12:10:00Z',
+    claimed_at = clock_timestamp(),
+    claim_expires_at = clock_timestamp() + interval '10 minutes',
     worker_id = 'worker-materialize',
     normalized_payload = '{"fullName":"Somente Nome","formId":"form-allowed"}'
 where id = '30000000-0000-4000-8000-000000000002';
@@ -210,7 +221,7 @@ insert into public.lead_ingestion_events (
   'materialization_pending', '{}',
   '{"fullName":"Tentativa Cross Tenant","formId":"form-allowed"}',
   '40000000-0000-4000-8000-000000000002',
-  '2026-08-04T12:00:00Z', '2026-08-04T12:10:00Z', 'worker-cross'
+  clock_timestamp(), clock_timestamp() + interval '10 minutes', 'worker-cross'
 );
 
 select throws_ok(

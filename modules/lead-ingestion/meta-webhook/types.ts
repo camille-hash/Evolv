@@ -39,6 +39,7 @@ export type MetaWebhookIgnoredChange = {
 export type MetaWebhookParseResult = {
   events: MetaWebhookLeadgenEvent[];
   ignored: MetaWebhookIgnoredChange[];
+  limitExceeded?: boolean;
 };
 
 export type MetaWebhookProcessParams = {

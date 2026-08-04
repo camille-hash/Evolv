@@ -96,6 +96,10 @@ export async function processVerifiedMetaWebhookPayload(params: {
   }
 
   const parseResult = parseMetaWebhookLeadgenEvents(jsonResult.payload);
+
+  if (parseResult.limitExceeded) {
+    return safeError("Webhook envelope exceeds structural limits.", 413);
+  }
   let duplicateCount = 0;
   let persistedCount = 0;
 

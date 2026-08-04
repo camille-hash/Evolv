@@ -102,6 +102,18 @@ test("GET challenge error does not expose token", () => {
   assert.equal(result.body.includes("wrong-token"), false);
 });
 
+test("GET challenge rejects duplicated parameters", () => {
+  const params = new URLSearchParams({
+    "hub.challenge": "123456",
+    "hub.mode": "subscribe",
+    "hub.verify_token": verifyToken,
+  });
+  params.append("hub.verify_token", "second-token");
+  const result = verifyMetaWebhookChallenge({ config: { verifyToken }, searchParams: params });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.includes("second-token"), false);
+});
+
 test("GET challenge configuration fails without server-side token", () => {
   const result = loadMetaWebhookConfig({
     META_APP_SECRET: appSecret,
@@ -397,6 +409,38 @@ test("parser extracts multiple valid leadgen events", () => {
   });
 
   assert.equal(result.events.length, 2);
+});
+
+test("parser rejects a batch above the structural entry limit", () => {
+  const result = parseMetaWebhookLeadgenEvents({
+    entry: Array.from({ length: 101 }, () => ({ changes: [] })),
+    object: "page",
+  });
+  assert.equal(result.limitExceeded, true);
+  assert.equal(result.events.length, 0);
+});
+
+test("service rejects a batch above the leadgen event limit before persistence", async () => {
+  let persisted = 0;
+  const body = JSON.stringify({
+    entry: [{
+      changes: Array.from({ length: 101 }, (_, index) => ({
+        field: "leadgen",
+        value: { leadgen_id: `lead-${index}`, page_id: "page-1" },
+      })),
+    }],
+    object: "page",
+  });
+  const result = await processVerifiedMetaWebhookPayload({
+    config: { maxBodyBytes: metaWebhookDefaultMaxBodyBytes },
+    rawBodyBytes: new TextEncoder().encode(body),
+    recorder: async () => {
+      persisted += 1;
+      throw new Error("must not persist");
+    },
+  });
+  assert.equal(result.status, 413);
+  assert.equal(persisted, 0);
 });
 
 test("parser reports invalid JSON", () => {
