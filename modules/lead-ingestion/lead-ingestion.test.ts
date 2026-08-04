@@ -52,7 +52,7 @@ test("resolves organization by source system and external account id", async () 
   }
 });
 
-test("rejects an unknown integration while preserving the event", async () => {
+test("preserves an unknown integration as tenant unresolved", async () => {
   const supabase = createFakeLeadIngestionSupabase();
 
   const result = await recordLeadIngestionEvent({
@@ -63,7 +63,7 @@ test("rejects an unknown integration while preserving the event", async () => {
   assert.equal(result.ok, true);
   if (result.ok) {
     assert.equal(result.event.organizationId, null);
-    assert.equal(result.event.status, "rejected");
+    assert.equal(result.event.status, "tenant_unresolved");
     assert.equal(result.event.lastErrorCode, "INTEGRATION_NOT_FOUND");
   }
 });
@@ -82,6 +82,27 @@ test("rejects an inactive integration", async () => {
     assert.equal(result.event.status, "rejected");
     assert.equal(result.event.organizationId, "org-1");
     assert.equal(result.event.lastErrorCode, "INTEGRATION_INACTIVE");
+    assert.equal(result.event.failedStage, "authorization");
+    assert.equal(result.event.errorCategory, "integration_inactive");
+    assert.equal(result.event.retryable, false);
+  }
+});
+
+test("rejects a known page with an empty form allowlist without losing tenant", async () => {
+  const supabase = createFakeLeadIngestionSupabase();
+  await seedIntegration(supabase, { allowedFormIds: [] });
+
+  const result = await recordLeadIngestionEvent({
+    input: validRawLeadPayload(),
+    supabase,
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.event.status, "rejected");
+    assert.equal(result.event.organizationId, "org-1");
+    assert.equal(result.event.failedStage, "authorization");
+    assert.equal(result.event.errorCategory, "form_not_allowed");
   }
 });
 
@@ -161,7 +182,7 @@ test("rejects missing name", async () => {
   }
 });
 
-test("rejects missing phone and email together", async () => {
+test("allows a valid named lead without phone or email", async () => {
   const supabase = createFakeLeadIngestionSupabase();
   await seedIntegration(supabase);
 
@@ -172,8 +193,20 @@ test("rejects missing phone and email together", async () => {
 
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.equal(result.event.status, "rejected");
-    assert.equal(result.event.lastErrorCode, "MISSING_CONTACT");
+    assert.equal(result.event.status, "materialization_pending");
+    assert.equal(result.event.lastErrorCode, null);
+
+    const materialized = await materializeLeadIngestionEvent({
+      claimToken: "00000000-0000-4000-8000-000000000001",
+      eventId: result.event.id,
+      supabase,
+    });
+
+    assert.equal(materialized.ok, true);
+    if (materialized.ok) {
+      assert.equal(materialized.event.status, "materialized");
+      assert.equal(materialized.lead?.stage, "novos");
+    }
   }
 });
 
@@ -235,6 +268,7 @@ test("materializes a valid event into crm_leads", async () => {
   }
 
   const result = await materializeLeadIngestionEvent({
+    claimToken: "00000000-0000-4000-8000-000000000001",
     eventId: recorded.event.id,
     supabase,
   });
@@ -288,6 +322,7 @@ test("links inbox event and crm lead after materialization", async () => {
   }
 
   const materialized = await materializeLeadIngestionEvent({
+    claimToken: "00000000-0000-4000-8000-000000000001",
     eventId: recorded.event.id,
     supabase,
   });
@@ -311,8 +346,8 @@ test("does not create a second crm lead on repeated materialization", async () =
     return;
   }
 
-  await materializeLeadIngestionEvent({ eventId: recorded.event.id, supabase });
-  await materializeLeadIngestionEvent({ eventId: recorded.event.id, supabase });
+  await materializeLeadIngestionEvent({ claimToken: "00000000-0000-4000-8000-000000000001", eventId: recorded.event.id, supabase });
+  await materializeLeadIngestionEvent({ claimToken: "00000000-0000-4000-8000-000000000001", eventId: recorded.event.id, supabase });
 
   assert.equal(supabase.tables.crm_leads.length, 1);
 });
@@ -331,6 +366,7 @@ test("preserves the event when materialization fails", async () => {
   }
 
   const result = await materializeLeadIngestionEvent({
+    claimToken: "00000000-0000-4000-8000-000000000001",
     eventId: recorded.event.id,
     supabase,
   });
@@ -342,7 +378,7 @@ test("preserves the event when materialization fails", async () => {
 
 test("allows valid status transitions", () => {
   assert.doesNotThrow(() =>
-    assertLeadIngestionStatusTransition("received", "materialization_pending"),
+    assertLeadIngestionStatusTransition("received", "fetch_pending"),
   );
   assert.doesNotThrow(() =>
     assertLeadIngestionStatusTransition("materialization_pending", "materialized"),
@@ -372,13 +408,13 @@ test("updates status only through validated transition helper", async () => {
   const updated = await updateLeadIngestionEventStatus({
     eventId: recorded.event.id,
     fromStatus: "materialization_pending",
-    nextStatus: "retry_exhausted",
+    nextStatus: "processing_failed",
     supabase,
   });
 
   assert.equal(updated.ok, true);
   if (updated.ok) {
-    assert.equal(updated.event.status, "retry_exhausted");
+    assert.equal(updated.event.status, "processing_failed");
   }
 });
 
@@ -484,6 +520,18 @@ test("migration keeps inbox and RPC closed to browser roles", () => {
   );
 });
 
+test("hardening migration preserves observed forms without authorizing them", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260804120000_harden_meta_lead_ingestion_foundation.sql",
+    "utf8",
+  );
+
+  assert.match(migration, /set form_id = nullif/);
+  assert.doesNotMatch(migration, /observed_forms/);
+  assert.doesNotMatch(migration, /set allowed_form_ids =/);
+  assert.match(migration, /set search_path = pg_catalog, public/g);
+});
+
 function validRawLeadPayload(overrides: Record<string, unknown> = {}) {
   return {
     adId: "ad-1",
@@ -518,6 +566,7 @@ function readLeadIngestionMigration() {
 async function seedIntegration(
   supabase: FakeLeadIngestionSupabase,
   overrides: Partial<{
+    allowedFormIds: string[];
     externalAccountId: string;
     organizationId: string;
     sourceSystem: string;
@@ -525,6 +574,7 @@ async function seedIntegration(
   }> = {},
 ) {
   const result = await createLeadIngestionIntegrationConfig({
+    allowedFormIds: overrides.allowedFormIds ?? ["form-1"],
     externalAccountId: overrides.externalAccountId ?? "page-1",
     organizationId: overrides.organizationId ?? "org-1",
     sourceSystem: overrides.sourceSystem ?? "meta_lead_ads",
@@ -679,6 +729,7 @@ class FakeQuery {
       }
 
       const row: LeadIngestionIntegrationConfigRow = {
+        allowed_form_ids: (payload.allowed_form_ids as string[]) ?? [],
         created_at: new Date().toISOString(),
         external_account_id: String(payload.external_account_id),
         id: `config-${this.tables.lead_ingestion_integration_configs.length + 1}`,
@@ -712,8 +763,11 @@ class FakeQuery {
         created_at: new Date().toISOString(),
         crm_lead_id: null,
         event_type: String(payload.event_type),
+        error_category: payload.error_category as string | null,
         external_event_id: payload.external_event_id as string | null,
         external_id: String(payload.external_id),
+        failed_stage: payload.failed_stage as string | null,
+        form_id: payload.form_id as string | null,
         id: `event-${this.tables.lead_ingestion_events.length + 1}`,
         integration_config_id: payload.integration_config_id as string | null,
         last_error_code: payload.last_error_code as string | null,
@@ -721,6 +775,7 @@ class FakeQuery {
         normalized_payload: payload.normalized_payload as Record<string, unknown>,
         organization_id: payload.organization_id as string | null,
         processed_at: null,
+        retryable: false,
         received_at: String(payload.received_at),
         source_payload: payload.source_payload as Record<string, unknown>,
         source_system: String(payload.source_system),
@@ -792,12 +847,10 @@ function materializeFakeEvent(
   const phone = String(normalized.phone ?? "").trim();
   const email = String(normalized.email ?? "").trim();
 
-  if (!fullName || (!phone && !email)) {
+  if (!fullName) {
     event.status = "rejected";
-    event.last_error_code = fullName ? "MISSING_CONTACT" : "MISSING_NAME";
-    event.last_error_message = fullName
-      ? "Telefone ou e-mail obrigatorio ausente."
-      : "Nome obrigatorio ausente.";
+    event.last_error_code = "MISSING_NAME";
+    event.last_error_message = "Nome obrigatorio ausente.";
 
     return {
       data: { crm_lead: null, ingestion_event: event },

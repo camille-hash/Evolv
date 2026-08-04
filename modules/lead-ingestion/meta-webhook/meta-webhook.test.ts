@@ -590,7 +590,7 @@ test("unknown page is preserved without tenant", async () => {
 
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.equal(result.event.status, "rejected");
+    assert.equal(result.event.status, "tenant_unresolved");
     assert.equal(result.event.organizationId, null);
     assert.equal(result.event.integrationConfigId, null);
     assert.equal(result.event.lastErrorCode, "INTEGRATION_NOT_FOUND");
@@ -837,6 +837,7 @@ function leadgenInput(overrides: Record<string, unknown> = {}) {
     eventType: "leadgen",
     externalAccountId: "page-1",
     externalId: "leadgen-1",
+    formId: "form-1",
     pageId: "page-1",
     sourcePayload: { leadgenId: "leadgen-1", pageId: "page-1" },
     sourceSystem: "meta_lead_ads",
@@ -865,6 +866,7 @@ function seedIntegration(
   overrides: SeedIntegrationOptions = {},
 ) {
   supabase.tables.lead_ingestion_integration_configs.push({
+    allowed_form_ids: ["form-1", "formulário-ç", "new-form"],
     created_at: "2026-08-03T12:00:00.000Z",
     external_account_id:
       overrides.external_account_id ?? overrides.externalAccountId ?? "page-1",

@@ -8,13 +8,25 @@ export type LeadIngestionIntegrationStatus = "active" | "inactive";
 
 export type LeadIngestionStatus =
   | "received"
+  | "tenant_unresolved"
   | "fetch_pending"
-  | "fetch_failed"
+  | "processing"
   | "materialization_pending"
+  | "review_required"
+  | "processing_failed"
+  | "integrity_conflict"
   | "materialized"
-  | "duplicate"
   | "rejected"
   | "retry_exhausted";
+
+export type LeadIngestionFailedStage =
+  | "tenant_resolution"
+  | "authorization"
+  | "graph_fetch"
+  | "normalization"
+  | "reconciliation"
+  | "materialization"
+  | "internal";
 
 export type LeadIngestionCustomAnswer = {
   key: string;
@@ -70,6 +82,7 @@ export type LeadIngestionRawInput = {
 };
 
 export type LeadIngestionIntegrationConfig = {
+  allowedFormIds: string[];
   createdAt: string;
   externalAccountId: string;
   id: string;
@@ -85,15 +98,20 @@ export type LeadIngestionEvent = {
   createdAt: string;
   crmLeadId: string | null;
   eventType: string;
+  errorCategory: string | null;
   externalEventId: string | null;
   externalId: string;
+  failedStage: LeadIngestionFailedStage | null;
+  formId: string | null;
   id: string;
   integrationConfigId: string | null;
   lastErrorCode: LeadIngestionRejectionCode | string | null;
   lastErrorMessage: string | null;
+  materializationResult: "created" | "linked_existing" | null;
   normalizedPayload: LeadIngestionNormalizedPayload | Record<string, unknown>;
   organizationId: string | null;
   processedAt: string | null;
+  retryable: boolean;
   receivedAt: string;
   sourcePayload: Record<string, unknown>;
   sourceSystem: string;
@@ -117,6 +135,7 @@ export type LeadIngestionCrmLead = {
 };
 
 export type CreateLeadIngestionIntegrationConfigParams = {
+  allowedFormIds?: string[];
   externalAccountId: string;
   organizationId: string;
   publicMetadata?: Record<string, unknown>;
@@ -144,15 +163,18 @@ export type RecordLeadIngestionTransportEventParams = {
 };
 
 export type MaterializeLeadIngestionEventParams = {
+  claimToken: string;
   eventId: string;
   processedAt?: string;
   supabase: LeadIngestionSupabaseClient;
+  targetLeadId?: string;
 };
 
 export type LeadIngestionRejectionCode =
   | "DUPLICATE_EVENT"
   | "INTEGRATION_INACTIVE"
   | "INTEGRATION_NOT_FOUND"
+  | "FORM_NOT_ALLOWED"
   | "INVALID_EXTERNAL_ACCOUNT"
   | "INVALID_EXTERNAL_ID"
   | "INVALID_SOURCE_SYSTEM"
@@ -182,6 +204,7 @@ export type MaterializeLeadIngestionEventResult = LeadIngestionResult<{
 }>;
 
 export type LeadIngestionIntegrationConfigRow = {
+  allowed_form_ids?: string[] | null;
   created_at: string | null;
   external_account_id: string | null;
   id: string;
@@ -197,15 +220,20 @@ export type LeadIngestionEventRow = {
   created_at: string | null;
   crm_lead_id: string | null;
   event_type: string | null;
+  error_category?: string | null;
   external_event_id: string | null;
   external_id: string | null;
+  failed_stage?: string | null;
+  form_id?: string | null;
   id: string;
   integration_config_id: string | null;
   last_error_code: string | null;
   last_error_message: string | null;
+  materialization_result?: string | null;
   normalized_payload: Record<string, unknown> | null;
   organization_id: string | null;
   processed_at: string | null;
+  retryable?: boolean | null;
   received_at: string | null;
   source_payload: Record<string, unknown> | null;
   source_system: string | null;

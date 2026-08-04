@@ -29,6 +29,7 @@ import type {
 
 const integrationConfigColumns = [
   "id",
+  "allowed_form_ids",
   "organization_id",
   "source_system",
   "external_account_id",
@@ -46,6 +47,9 @@ const ingestionEventColumns = [
   "external_id",
   "external_event_id",
   "event_type",
+  "error_category",
+  "failed_stage",
+  "form_id",
   "status",
   "source_payload",
   "normalized_payload",
@@ -53,6 +57,8 @@ const ingestionEventColumns = [
   "attempt_count",
   "last_error_code",
   "last_error_message",
+  "materialization_result",
+  "retryable",
   "received_at",
   "processed_at",
   "created_at",
@@ -87,6 +93,7 @@ export async function createLeadIngestionIntegrationConfig(
   const { data, error } = await params.supabase
     .from("lead_ingestion_integration_configs")
     .insert({
+      allowed_form_ids: (params.allowedFormIds ?? []).map((value) => value.trim()).filter(Boolean),
       external_account_id: externalAccountId,
       organization_id: organizationId,
       public_metadata: normalizePlainObject(params.publicMetadata),
@@ -193,9 +200,12 @@ export async function recordLeadIngestionEvent(
   const { data, error } = await params.supabase
     .from("lead_ingestion_events")
     .insert({
+      error_category: resolveInitialErrorCategory(integrationLookup),
       event_type: normalizedPayload.eventType,
       external_event_id: normalizeOptionalText(params.input.externalEventId),
       external_id: normalizedPayload.externalId,
+      failed_stage: resolveInitialFailedStage(integrationLookup),
+      form_id: normalizedPayload.formId ?? null,
       integration_config_id: integrationLookup.integrationConfig?.id ?? null,
       last_error_code: rejection?.code ?? null,
       last_error_message: rejection?.message ?? null,
@@ -252,9 +262,12 @@ export async function recordLeadIngestionTransportEvent(
   const { data, error } = await params.supabase
     .from("lead_ingestion_events")
     .insert({
+      error_category: resolveInitialErrorCategory(integrationLookup),
       event_type: normalizedPayload.eventType,
       external_event_id: normalizeOptionalText(params.input.externalEventId),
       external_id: normalizedPayload.externalId,
+      failed_stage: resolveInitialFailedStage(integrationLookup),
+      form_id: normalizedPayload.formId ?? null,
       integration_config_id: integrationLookup.integrationConfig?.id ?? null,
       last_error_code: rejection?.code ?? null,
       last_error_message: rejection?.message ?? null,
@@ -301,8 +314,10 @@ export async function materializeLeadIngestionEvent(
 
   const { data, error } = await params.supabase
     .rpc("materialize_lead_ingestion_event_transaction", {
+      p_claim_token: params.claimToken,
       p_event_id: eventId,
       p_processed_at: normalizeTimestamp(params.processedAt) ?? new Date().toISOString(),
+      p_target_lead_id: params.targetLeadId?.trim() || null,
     })
     .maybeSingle<MaterializeLeadIngestionEventTransactionRow>();
 
@@ -433,14 +448,6 @@ function validateMaterializationPayload(
     return leadIngestionError("MISSING_NAME", "Nome obrigatorio ausente.", 422);
   }
 
-  if (!normalizedPayload.phone && !normalizedPayload.email) {
-    return leadIngestionError(
-      "MISSING_CONTACT",
-      "Telefone ou e-mail obrigatorio ausente.",
-      422,
-    );
-  }
-
   return { ok: true as const };
 }
 
@@ -473,6 +480,17 @@ async function lookupIntegrationConfigForEvent(
     };
   }
 
+  if (
+    !normalizedPayload.formId ||
+    !integrationConfig.allowedFormIds.includes(normalizedPayload.formId)
+  ) {
+    return {
+      errorCode: "FORM_NOT_ALLOWED" as const,
+      errorMessage: "Formulario de origem nao autorizado.",
+      integrationConfig,
+    };
+  }
+
   return {
     errorCode: null,
     errorMessage: null,
@@ -485,7 +503,9 @@ function resolveInitialEventStatus(
   validation: ReturnType<typeof validateMaterializationPayload>,
 ): LeadIngestionStatus {
   if (integrationLookup.errorCode || !validation.ok) {
-    return "rejected";
+    return integrationLookup.errorCode === "INTEGRATION_NOT_FOUND"
+      ? "tenant_unresolved"
+      : "rejected";
   }
 
   return "materialization_pending";
@@ -495,7 +515,9 @@ function resolveInitialTransportEventStatus(
   integrationLookup: Awaited<ReturnType<typeof lookupIntegrationConfigForEvent>>,
 ): LeadIngestionStatus {
   if (integrationLookup.errorCode) {
-    return "rejected";
+    return integrationLookup.errorCode === "INTEGRATION_NOT_FOUND"
+      ? "tenant_unresolved"
+      : "rejected";
   }
 
   return "fetch_pending";
@@ -535,6 +557,42 @@ function resolveInitialTransportRejection(
   return null;
 }
 
+function resolveInitialFailedStage(
+  integrationLookup: Awaited<ReturnType<typeof lookupIntegrationConfigForEvent>>,
+) {
+  if (integrationLookup.errorCode === "INTEGRATION_NOT_FOUND") {
+    return "tenant_resolution";
+  }
+
+  if (integrationLookup.errorCode === "FORM_NOT_ALLOWED") {
+    return "authorization";
+  }
+
+  if (integrationLookup.errorCode === "INTEGRATION_INACTIVE") {
+    return "authorization";
+  }
+
+  return null;
+}
+
+function resolveInitialErrorCategory(
+  integrationLookup: Awaited<ReturnType<typeof lookupIntegrationConfigForEvent>>,
+) {
+  if (integrationLookup.errorCode === "INTEGRATION_NOT_FOUND") {
+    return "tenant_unresolved";
+  }
+
+  if (integrationLookup.errorCode === "FORM_NOT_ALLOWED") {
+    return "form_not_allowed";
+  }
+
+  if (integrationLookup.errorCode === "INTEGRATION_INACTIVE") {
+    return "integration_inactive";
+  }
+
+  return null;
+}
+
 async function resolveIdempotentEvent(
   params: RecordLeadIngestionEventParams,
   normalizedPayload: LeadIngestionNormalizedPayload,
@@ -568,6 +626,7 @@ function mapIntegrationConfigRow(
   const now = new Date().toISOString();
 
   return {
+    allowedFormIds: row.allowed_form_ids ?? [],
     createdAt: row.created_at ?? now,
     externalAccountId: row.external_account_id ?? "",
     id: row.id,
@@ -587,15 +646,24 @@ function mapEventRow(row: LeadIngestionEventRow): LeadIngestionEvent {
     createdAt: row.created_at ?? now,
     crmLeadId: row.crm_lead_id,
     eventType: row.event_type ?? "",
+    errorCategory: row.error_category ?? null,
     externalEventId: row.external_event_id,
     externalId: row.external_id ?? "",
+    failedStage: normalizeFailedStage(row.failed_stage),
+    formId: row.form_id ?? null,
     id: row.id,
     integrationConfigId: row.integration_config_id,
     lastErrorCode: row.last_error_code,
     lastErrorMessage: row.last_error_message,
+    materializationResult:
+      row.materialization_result === "created" ||
+      row.materialization_result === "linked_existing"
+        ? row.materialization_result
+        : null,
     normalizedPayload: normalizePlainObject(row.normalized_payload),
     organizationId: row.organization_id,
     processedAt: row.processed_at,
+    retryable: row.retryable ?? false,
     receivedAt: row.received_at ?? now,
     sourcePayload: normalizePlainObject(row.source_payload),
     sourceSystem: row.source_system ?? "",
@@ -629,6 +697,18 @@ function normalizeIntegrationStatus(
 
 function normalizeLeadIngestionStatus(value: unknown): LeadIngestionStatus {
   return isLeadIngestionStatus(value) ? value : "received";
+}
+
+function normalizeFailedStage(value: unknown) {
+  return value === "tenant_resolution" ||
+    value === "authorization" ||
+    value === "graph_fetch" ||
+    value === "normalization" ||
+    value === "reconciliation" ||
+    value === "materialization" ||
+    value === "internal"
+    ? value
+    : null;
 }
 
 function normalizeTimestamp(value: string | undefined) {

@@ -4,14 +4,17 @@ const validLeadIngestionTransitions: Record<
   LeadIngestionStatus,
   readonly LeadIngestionStatus[]
 > = {
-  duplicate: [],
-  fetch_failed: ["fetch_pending", "materialization_pending", "rejected", "retry_exhausted"],
-  fetch_pending: ["fetch_failed", "materialization_pending", "rejected"],
-  materialization_pending: ["duplicate", "materialized", "rejected", "retry_exhausted"],
+  fetch_pending: ["processing", "materialization_pending", "review_required", "processing_failed", "rejected", "integrity_conflict"],
+  integrity_conflict: [],
+  materialization_pending: ["processing", "materialized", "processing_failed", "integrity_conflict"],
   materialized: [],
-  received: ["fetch_pending", "materialization_pending", "rejected"],
-  rejected: ["fetch_pending", "materialization_pending", "retry_exhausted"],
+  processing: ["fetch_pending", "materialization_pending", "review_required", "processing_failed", "rejected", "integrity_conflict", "materialized"],
+  processing_failed: ["fetch_pending", "materialization_pending", "retry_exhausted"],
+  received: ["tenant_unresolved", "fetch_pending", "rejected", "integrity_conflict"],
+  rejected: [],
+  review_required: ["materialization_pending", "rejected", "integrity_conflict"],
   retry_exhausted: ["fetch_pending", "materialization_pending"],
+  tenant_unresolved: ["fetch_pending", "integrity_conflict"],
 };
 
 export function canTransitionLeadIngestionStatus(
@@ -37,11 +40,14 @@ export function assertLeadIngestionStatusTransition(
 export function isLeadIngestionStatus(value: unknown): value is LeadIngestionStatus {
   return (
     value === "received" ||
+    value === "tenant_unresolved" ||
     value === "fetch_pending" ||
-    value === "fetch_failed" ||
+    value === "processing" ||
     value === "materialization_pending" ||
+    value === "review_required" ||
+    value === "processing_failed" ||
+    value === "integrity_conflict" ||
     value === "materialized" ||
-    value === "duplicate" ||
     value === "rejected" ||
     value === "retry_exhausted"
   );
