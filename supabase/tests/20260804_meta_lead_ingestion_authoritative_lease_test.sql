@@ -401,7 +401,9 @@ select is_empty($$select * from public.claim_lead_ingestion_events('worker-early
 -- Fixture-only expiration: this direct update prepares an expired lease; it is
 -- not a production reclaim operation or a caller-controlled clock contract.
 update public.lead_ingestion_events
-set claim_expires_at = clock_timestamp() - interval '1 second'
+set
+  claimed_at = clock_timestamp() - interval '2 minutes',
+  claim_expires_at = clock_timestamp() - interval '1 minute'
 where id = '73000000-0000-4000-8000-000000000014';
 create temporary table new_claim_evidence as
 select id, claim_token
