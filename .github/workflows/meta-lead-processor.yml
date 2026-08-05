@@ -1,0 +1,120 @@
+name: Meta lead processor (manual)
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: meta-lead-processor-production
+  cancel-in-progress: false
+
+jobs:
+  invoke:
+    name: Invoke pending Meta lead processor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: meta-lead-processor-production
+    steps:
+      - name: Invoke authenticated processor route
+        shell: bash
+        env:
+          TRIGGER_SECRET: ${{ secrets.META_LEAD_PROCESSOR_TRIGGER_SECRET }}
+          TRIGGER_URL: ${{ vars.META_LEAD_PROCESSOR_TRIGGER_URL }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${TRIGGER_URL:-}" ]]; then
+            echo "::error::The processor URL is not configured."
+            exit 1
+          fi
+          if [[ -z "${TRIGGER_SECRET:-}" ]]; then
+            echo "::error::The processor credential is not configured."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          started_ms="$(date +%s%3N)"
+
+          set +e
+          http_status="$(curl \
+            --silent \
+            --show-error \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer ${TRIGGER_SECRET}" \
+            --header 'Content-Type: application/json' \
+            --data '{"batchSize":10,"cycles":1}' \
+            "$TRIGGER_URL")"
+          curl_exit=$?
+          set -e
+
+          finished_ms="$(date +%s%3N)"
+          elapsed_ms=$((finished_ms - started_ms))
+          echo "External duration: ${elapsed_ms} ms"
+
+          if [[ $curl_exit -ne 0 ]]; then
+            echo "::error::Processor transport failed."
+            exit 1
+          fi
+
+          echo "HTTP status: ${http_status}"
+          case "$http_status" in
+            200)
+              if ! summary="$(jq -ce '
+                if type == "object"
+                  and (.claimed | type == "number")
+                  and (.cyclesExecuted | type == "number")
+                  and (.durationMs | type == "number")
+                  and (.leaseLost | type == "number")
+                  and (.materialized | type == "number")
+                  and (.requestedBatchSize | type == "number")
+                  and (.requestedCycles | type == "number")
+                  and (.retryExhausted | type == "number")
+                  and (.retryScheduled | type == "number")
+                  and (.terminalFailed | type == "number")
+                  and (.workerId | type == "string")
+                then {
+                  claimed,
+                  cyclesExecuted,
+                  durationMs,
+                  leaseLost,
+                  materialized,
+                  requestedBatchSize,
+                  requestedCycles,
+                  retryExhausted,
+                  retryScheduled,
+                  terminalFailed,
+                  workerId
+                }
+                else error("invalid operational summary")
+                end
+              ' "$response_file" 2>/dev/null)"; then
+                echo "::error::Processor returned an invalid success response."
+                exit 1
+              fi
+              echo "Operational summary: ${summary}"
+              ;;
+            401)
+              echo "::error::Processor credential is absent or divergent."
+              exit 1
+              ;;
+            400|413|415)
+              echo "::error::Processor invocation contract was rejected (${http_status})."
+              exit 1
+              ;;
+            500)
+              echo "::error::Processor reported an internal failure."
+              exit 1
+              ;;
+            503)
+              echo "::error::Processor configuration is unavailable."
+              exit 1
+              ;;
+            *)
+              echo "::error::Processor returned an unclassified HTTP failure (${http_status})."
+              exit 1
+              ;;
+          esac
