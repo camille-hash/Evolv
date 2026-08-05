@@ -4,6 +4,10 @@ import { fetchMetaLead } from "./meta-graph/client.ts";
 import { normalizeMetaGraphLead } from "./meta-graph/normalize.ts";
 import type { MetaGraphLeadResult } from "./meta-graph/types.ts";
 import type { LeadIngestionSupabaseClient } from "./types.ts";
+import {
+  MetaProcessorFailure,
+  type MetaProcessorFailureStage,
+} from "./meta-processor-failure.ts";
 
 type ClaimedMetaLeadEvent = {
   claimExpiresAt: string;
@@ -170,13 +174,19 @@ async function processClaimedMetaLeadEventsWithDependencies(params: {
         normalizedPayload,
         status: "materialization_pending",
       }, dependencies.clock));
-    } catch {
-      results.push(await handleFailure(dependencies.store, event, {
-        category: "processor_internal_failure",
-        message: "Meta lead processing failed.",
-        retryable: true,
-        stage: event.status === "materialization_pending" ? "materialization" : "graph_fetch",
-      }, dependencies.clock));
+    } catch (error) {
+      try {
+        results.push(await handleFailure(dependencies.store, event, {
+          category: "processor_internal_failure",
+          message: "Meta lead processing failed.",
+          retryable: true,
+          stage: event.status === "materialization_pending" ? "materialization" : "graph_fetch",
+        }, dependencies.clock));
+      } catch (handlingError) {
+        if (handlingError instanceof MetaProcessorFailure) throw handlingError;
+        if (error instanceof MetaProcessorFailure) throw error;
+        throw handlingError;
+      }
     }
   }
 
@@ -193,61 +203,82 @@ export function createMetaClaimProcessorStore(
 ): MetaClaimProcessorStore {
   return {
     async claim(params) {
-      const { data, error } = await supabase.rpc("claim_lead_ingestion_events", {
-        p_lease_seconds: params.leaseSeconds,
-        p_limit: params.limit,
-        p_worker_id: params.workerId,
-      });
+      const { data, error } = await callSupabaseRpc(
+        () => supabase.rpc("claim_lead_ingestion_events", {
+          p_lease_seconds: params.leaseSeconds,
+          p_limit: params.limit,
+          p_worker_id: params.workerId,
+        }),
+        "claim",
+      );
 
-      if (error) throw new Error("Could not claim lead ingestion events.");
+      if (error) {
+        throw new MetaProcessorFailure(
+          "processor_claim_rpc_failed",
+          "claim",
+          false,
+        );
+      }
       return Array.isArray(data) ? data.flatMap(mapClaimedEvent) : [];
     },
 
     async markEnriched(event, normalizedPayload) {
-      const { data, error } = await supabase.rpc(
-        "mark_meta_lead_ingestion_event_enriched",
-        {
-          p_claim_token: event.claimToken,
-          p_event_id: event.id,
-          p_normalized_payload: normalizedPayload,
-        },
+      const { data, error } = await callSupabaseRpc(
+        () => supabase.rpc(
+          "mark_meta_lead_ingestion_event_enriched",
+          {
+            p_claim_token: event.claimToken,
+            p_event_id: event.id,
+            p_normalized_payload: normalizedPayload,
+          },
+        ),
+        "enrichment",
       );
       return !error && data === true;
     },
 
     async materialize(event) {
-      const { data, error } = await supabase.rpc(
-        "materialize_lead_ingestion_event_transaction",
-        {
-          p_claim_token: event.claimToken,
-          p_event_id: event.id,
-          p_target_lead_id: null,
-        },
+      const { data, error } = await callSupabaseRpc(
+        () => supabase.rpc(
+          "materialize_lead_ingestion_event_transaction",
+          {
+            p_claim_token: event.claimToken,
+            p_event_id: event.id,
+            p_target_lead_id: null,
+          },
+        ),
+        "materialization",
       );
       return !error && Array.isArray(data) && data.length > 0;
     },
 
     async markFailed(event, failure) {
-      const { data, error } = await supabase.rpc(
-        "mark_meta_lead_ingestion_event_failed",
-        {
-          p_category: failure.category,
-          p_claim_token: event.claimToken,
-          p_event_id: event.id,
-          p_message: failure.message,
-          p_retryable: failure.retryable,
-          p_stage: failure.stage,
-        },
+      const { data, error } = await callSupabaseRpc(
+        () => supabase.rpc(
+          "mark_meta_lead_ingestion_event_failed",
+          {
+            p_category: failure.category,
+            p_claim_token: event.claimToken,
+            p_event_id: event.id,
+            p_message: failure.message,
+            p_retryable: failure.retryable,
+            p_stage: failure.stage,
+          },
+        ),
+        "failure_recording",
       );
       return !error && data === true;
     },
 
     async retry(event, reason) {
-      const { data, error } = await supabase.rpc("retry_lead_ingestion_event", {
-        p_claim_token: event.claimToken,
-        p_event_id: event.id,
-        p_reason: reason,
-      });
+      const { data, error } = await callSupabaseRpc(
+        () => supabase.rpc("retry_lead_ingestion_event", {
+          p_claim_token: event.claimToken,
+          p_event_id: event.id,
+          p_reason: reason,
+        }),
+        "retry",
+      );
       if (error) return "lease_lost";
       return data === "retried" || data === "retry_exhausted"
         ? data
@@ -263,7 +294,17 @@ async function materializeClaimedEvent(
 ) {
   const now = readSafeLeaseTime(event, clock);
   if (!now) return { eventId: event.id, outcome: "lease_lost" as const };
-  const materialized = await store.materialize(event, now);
+  let materialized: boolean;
+  try {
+    materialized = await store.materialize(event, now);
+  } catch (error) {
+    if (error instanceof MetaProcessorFailure) throw error;
+    throw new MetaProcessorFailure(
+      "processor_materialization_failed",
+      "materialization",
+      true,
+    );
+  }
   if (materialized) return { eventId: event.id, outcome: "materialized" as const };
   return handleFailure(store, event, {
     category: "materialization_failed",
@@ -271,6 +312,21 @@ async function materializeClaimedEvent(
     retryable: true,
     stage: "materialization",
   }, clock);
+}
+
+async function callSupabaseRpc<T>(
+  operation: () => PromiseLike<{ data: T; error: unknown }>,
+  stage: Exclude<MetaProcessorFailureStage, "configuration" | "client_initialization" | "unexpected">,
+) {
+  try {
+    return await operation();
+  } catch {
+    throw new MetaProcessorFailure(
+      "processor_supabase_transport_failed",
+      stage,
+      true,
+    );
+  }
 }
 
 async function handleFailure(

@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { createMetaProcessorTriggerHttpHandlerForTesting } from "./meta-processor-trigger-http.ts";
+import {
+  MetaProcessorFailure,
+  type MetaProcessorFailureCode,
+  type MetaProcessorFailureStage,
+} from "./meta-processor-failure.ts";
+import type { MetaProcessorFailureLog } from "./meta-processor-trigger-http.ts";
 
 const secret = "synthetic-trigger-secret";
 
@@ -156,11 +162,97 @@ test("passes explicit bounded values to the service", async () => {
 });
 
 test("sanitizes unexpected internal failures", async () => {
+  const logs: MetaProcessorFailureLog[] = [];
   const response = await handler({ execute: async () => {
-    throw new Error(`sensitive ${secret}`);
-  } })(request(secret, {}));
+    throw new Error([
+      "SECRET_SENTINEL",
+      "TOKEN_SENTINEL",
+      "EMAIL_SENTINEL",
+      "PHONE_SENTINEL",
+      "URL_SENTINEL",
+      "EXTERNAL_ERROR_SENTINEL",
+      secret,
+    ].join(" "));
+  }, logs })(request(secret, {}));
   assert.equal(response.status, 500);
-  assert.equal(JSON.stringify(await response.json()).includes(secret), false);
+  assert.deepEqual(await response.json(), { error: "Meta lead processing failed." });
+  assert.deepEqual(logs, [{
+    code: "processor_unexpected_failure",
+    correlationId: "correlation-test",
+    event: "meta_lead_processor_failure",
+    retryable: false,
+    stage: "unexpected",
+    timestamp: "2026-08-05T15:30:00.000Z",
+  }]);
+  const recorded = JSON.stringify(logs);
+  for (const sentinel of [
+    "SECRET_SENTINEL", "TOKEN_SENTINEL", "EMAIL_SENTINEL",
+    "PHONE_SENTINEL", "URL_SENTINEL", "EXTERNAL_ERROR_SENTINEL", secret,
+  ]) {
+    assert.equal(recorded.includes(sentinel), false);
+  }
+  assert.equal(recorded.includes("stack"), false);
+  assert.equal(recorded.includes("message"), false);
+});
+
+test("logs each typed global failure exactly once with its controlled classification", async () => {
+  const cases: Array<{
+    code: MetaProcessorFailureCode;
+    retryable: boolean;
+    stage: MetaProcessorFailureStage;
+  }> = [
+    { code: "processor_persistence_not_configured", retryable: false, stage: "configuration" },
+    { code: "processor_client_initialization_failed", retryable: false, stage: "client_initialization" },
+    { code: "processor_claim_rpc_failed", retryable: false, stage: "claim" },
+    { code: "processor_supabase_transport_failed", retryable: true, stage: "claim" },
+    { code: "processor_materialization_failed", retryable: true, stage: "materialization" },
+  ];
+  for (const item of cases) {
+    const logs: MetaProcessorFailureLog[] = [];
+    const response = await handler({ execute: async () => {
+      throw new MetaProcessorFailure(item.code, item.stage, item.retryable);
+    }, logs })(request(secret, {}));
+    assert.equal(response.status, 500);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0]?.code, item.code);
+    assert.equal(logs[0]?.stage, item.stage);
+    assert.equal(logs[0]?.retryable, item.retryable);
+    assert.equal(logs[0]?.correlationId, "correlation-test");
+  }
+});
+
+test("preserves the sanitized response when the best-effort logger throws", async () => {
+  let executeCalls = 0;
+  let logCalls = 0;
+  const loggerSentinel = "EXTERNAL_LOGGER_ERROR_SENTINEL";
+  const response = await handler({
+    execute: async () => {
+      executeCalls += 1;
+      throw new MetaProcessorFailure(
+        "processor_claim_rpc_failed",
+        "claim",
+        false,
+      );
+    },
+    logFailure: () => {
+      logCalls += 1;
+      throw new Error(loggerSentinel);
+    },
+  })(request(secret, {}));
+
+  assert.equal(executeCalls, 1);
+  assert.equal(logCalls, 1);
+  assert.equal(response.status, 500);
+  const body = await response.json();
+  assert.deepEqual(body, { error: "Meta lead processing failed." });
+  assert.equal(JSON.stringify(body).includes(loggerSentinel), false);
+});
+
+test("does not emit a failure log on success", async () => {
+  const logs: MetaProcessorFailureLog[] = [];
+  const response = await handler({ logs })(request(secret, {}));
+  assert.equal(response.status, 200);
+  assert.deepEqual(logs, []);
 });
 
 test("sets no-store on every success and error response class", async () => {
@@ -189,11 +281,16 @@ test("route is POST-only and delegates without claim or Graph logic", () => {
 
 function handler(options: {
   execute?: (params: { batchSize: number; cycles: number }) => Promise<ReturnType<typeof summary>>;
+  logFailure?: (entry: MetaProcessorFailureLog) => void;
+  logs?: MetaProcessorFailureLog[];
   secret?: string;
 } = {}) {
   return createMetaProcessorTriggerHttpHandlerForTesting({
+    clock: () => new Date("2026-08-05T15:30:00.000Z"),
+    createCorrelationId: () => "correlation-test",
     env: { META_LEAD_PROCESSOR_TRIGGER_SECRET: "secret" in options ? options.secret : secret },
     execute: options.execute ?? (async () => summary()),
+    logFailure: options.logFailure ?? ((entry) => options.logs?.push(entry)),
   });
 }
 

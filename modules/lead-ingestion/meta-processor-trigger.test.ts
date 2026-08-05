@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createMetaProcessorTriggerForTesting } from "./meta-processor-trigger.ts";
+import { MetaProcessorFailure } from "./meta-processor-failure.ts";
 import type { LeadIngestionSupabaseClient } from "./types.ts";
 
 const client = {} as LeadIngestionSupabaseClient;
@@ -91,7 +92,31 @@ test("fails closed when service-role persistence is unavailable", async () => {
     createWorkerId: () => "worker-test",
     processCycle: async () => result(0),
   });
-  await assert.rejects(() => trigger({ batchSize: 1, cycles: 1 }), /not configured/);
+  await assert.rejects(
+    () => trigger({ batchSize: 1, cycles: 1 }),
+    (error: unknown) => error instanceof MetaProcessorFailure &&
+      error.code === "processor_persistence_not_configured" &&
+      error.stage === "configuration" &&
+      error.retryable === false,
+  );
+});
+
+test("classifies service-role client construction failures without leaking the cause", async () => {
+  const trigger = createMetaProcessorTriggerForTesting({
+    clock: sequenceClock(),
+    createServiceRoleClient: () => {
+      throw new Error("EXTERNAL_ERROR_SENTINEL URL_SENTINEL SECRET_SENTINEL");
+    },
+    createWorkerId: () => "worker-test",
+    processCycle: async () => result(0),
+  });
+  await assert.rejects(
+    () => trigger({ batchSize: 1, cycles: 1 }),
+    (error: unknown) => error instanceof MetaProcessorFailure &&
+      error.code === "processor_client_initialization_failed" &&
+      error.stage === "client_initialization" &&
+      error.message === "processor_client_initialization_failed",
+  );
 });
 
 test("does not duplicate claim or materialization logic", () => {

@@ -7,6 +7,7 @@ import {
 } from "./meta-claim-processor.ts";
 import { createMetaWebhookServiceRoleClient } from "./meta-webhook/service.ts";
 import type { LeadIngestionSupabaseClient } from "./types.ts";
+import { MetaProcessorFailure } from "./meta-processor-failure.ts";
 
 export const metaProcessorTriggerLimits = {
   defaultBatchSize: 10,
@@ -80,9 +81,22 @@ async function runMetaProcessorTriggerWithDependencies(
     "cycles",
   );
 
-  const supabase = dependencies.createServiceRoleClient();
+  let supabase: LeadIngestionSupabaseClient | null;
+  try {
+    supabase = dependencies.createServiceRoleClient();
+  } catch {
+    throw new MetaProcessorFailure(
+      "processor_client_initialization_failed",
+      "client_initialization",
+      false,
+    );
+  }
   if (!supabase) {
-    throw new Error("Meta processor persistence is not configured.");
+    throw new MetaProcessorFailure(
+      "processor_persistence_not_configured",
+      "configuration",
+      false,
+    );
   }
 
   const workerId = dependencies.createWorkerId().trim();

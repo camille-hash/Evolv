@@ -6,6 +6,7 @@ import {
   createMetaClaimProcessorForTesting,
   type MetaClaimProcessorStore,
 } from "./meta-claim-processor.ts";
+import { MetaProcessorFailure } from "./meta-processor-failure.ts";
 import type { MetaGraphLeadResult } from "./meta-graph/types.ts";
 import type { LeadIngestionSupabaseClient } from "./types.ts";
 
@@ -209,14 +210,81 @@ test("production store sends no worker timestamps to authoritative claim or muta
   assert.equal(calls.some((call) => "p_now" in call.params), false);
 });
 
+test("classifies a claim RPC error without retaining the external error", async () => {
+  const supabase = {
+    async rpc() {
+      return {
+        data: null,
+        error: { message: "EXTERNAL_ERROR_SENTINEL SECRET_SENTINEL" },
+      };
+    },
+  } as unknown as LeadIngestionSupabaseClient;
+  const store = createMetaClaimProcessorStore(supabase);
+  await assert.rejects(
+    () => store.claim({ leaseSeconds: 60, limit: 10, workerId: "worker-1" }),
+    (error: unknown) => error instanceof MetaProcessorFailure &&
+      error.code === "processor_claim_rpc_failed" &&
+      error.stage === "claim" &&
+      error.retryable === false &&
+      error.message === "processor_claim_rpc_failed",
+  );
+});
+
+test("classifies a rejected Supabase request as a sanitized transport failure", async () => {
+  const supabase = {
+    async rpc() {
+      throw new Error("URL_SENTINEL TOKEN_SENTINEL EXTERNAL_ERROR_SENTINEL");
+    },
+  } as unknown as LeadIngestionSupabaseClient;
+  const store = createMetaClaimProcessorStore(supabase);
+  await assert.rejects(
+    () => store.claim({ leaseSeconds: 60, limit: 10, workerId: "worker-1" }),
+    (error: unknown) => error instanceof MetaProcessorFailure &&
+      error.code === "processor_supabase_transport_failed" &&
+      error.stage === "claim" &&
+      error.retryable === true &&
+      error.message === "processor_supabase_transport_failed",
+  );
+});
+
+test("classifies a propagated materialization exception at its boundary", async () => {
+  const fixture = createFixture([claimedEvent({ status: "materialization_pending" })], {
+    failError: new Error("TOKEN_SENTINEL"),
+    materializeError: new Error("EMAIL_SENTINEL PHONE_SENTINEL EXTERNAL_ERROR_SENTINEL"),
+  });
+  await assert.rejects(
+    () => fixture.run(),
+    (error: unknown) => error instanceof MetaProcessorFailure &&
+      error.code === "processor_materialization_failed" &&
+      error.stage === "materialization" &&
+      error.message === "processor_materialization_failed",
+  );
+});
+
+test("preserves canonical failure handling when a materialization exception is recoverable", async () => {
+  const fixture = createFixture([claimedEvent({ status: "materialization_pending" })], {
+    materializeError: new Error("EXTERNAL_ERROR_SENTINEL"),
+  });
+  const result = await fixture.run();
+  assert.equal(result.results[0]?.outcome, "retry_scheduled");
+  assert.deepEqual(fixture.calls.sequence, [
+    "claim",
+    "materialize:event-1",
+    "fail:processor_internal_failure",
+    "retry:processor_internal_failure",
+  ]);
+});
+
 function createFixture(
   events: ReturnType<typeof claimedEvent>[],
   options: {
     advanceAfterEnrich?: string;
     enrichSucceeds?: boolean;
+    failError?: Error;
     failSucceeds?: boolean;
     fetchLead?: (id: string, options: { timeoutMs: number }, clock: ReturnType<typeof createClock>) => Promise<MetaGraphLeadResult>;
     materializeSucceeds?: boolean;
+    materializeError?: Error;
     retryOutcome?: "retried" | "lease_lost" | "retry_exhausted";
   } = {},
 ) {
@@ -235,8 +303,16 @@ function createFixture(
       if (options.advanceAfterEnrich) clock.set(options.advanceAfterEnrich);
       return options.enrichSucceeds ?? true;
     },
-    async markFailed(_event, failure) { calls.sequence.push(`fail:${failure.category}`); return options.failSucceeds ?? true; },
-    async materialize(event) { calls.sequence.push(`materialize:${event.id}`); return options.materializeSucceeds ?? true; },
+    async markFailed(_event, failure) {
+      calls.sequence.push(`fail:${failure.category}`);
+      if (options.failError) throw options.failError;
+      return options.failSucceeds ?? true;
+    },
+    async materialize(event) {
+      calls.sequence.push(`materialize:${event.id}`);
+      if (options.materializeError) throw options.materializeError;
+      return options.materializeSucceeds ?? true;
+    },
     async retry(_event, reason) { calls.sequence.push(`retry:${reason}`); return options.retryOutcome ?? "retried"; },
   };
   const fetchLead = async (id: string, fetchOptions: { timeoutMs: number }) => {

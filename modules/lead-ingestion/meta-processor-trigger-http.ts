@@ -1,32 +1,61 @@
 import "server-only";
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   metaProcessorTriggerLimits,
   runMetaProcessorTrigger,
   type MetaProcessorTriggerSummary,
 } from "./meta-processor-trigger.ts";
+import {
+  normalizeMetaProcessorFailure,
+  type MetaProcessorFailureCode,
+  type MetaProcessorFailureStage,
+} from "./meta-processor-failure.ts";
 
 const maximumBodyBytes = 4_096;
 const allowedFields = new Set(["batchSize", "cycles"]);
 
 type HttpDependencies = {
+  clock: () => Date;
+  createCorrelationId: () => string;
   env: Record<string, string | undefined>;
   execute: (params: { batchSize: number; cycles: number }) => Promise<MetaProcessorTriggerSummary>;
+  logFailure: (entry: MetaProcessorFailureLog) => void;
+};
+
+export type MetaProcessorFailureLog = {
+  code: MetaProcessorFailureCode;
+  correlationId: string;
+  event: "meta_lead_processor_failure";
+  retryable: boolean;
+  stage: MetaProcessorFailureStage;
+  timestamp: string;
 };
 
 export async function handleMetaProcessorTriggerRequest(request: Request) {
   return handleMetaProcessorTriggerRequestWithDependencies(request, {
+    clock: () => new Date(),
+    createCorrelationId: randomUUID,
     env: process.env,
     execute: runMetaProcessorTrigger,
+    logFailure: (entry) => console.error(JSON.stringify(entry)),
   });
 }
 
 export function createMetaProcessorTriggerHttpHandlerForTesting(
-  dependencies: HttpDependencies,
+  dependencies: Pick<HttpDependencies, "env" | "execute"> & Partial<
+    Pick<HttpDependencies, "clock" | "createCorrelationId" | "logFailure">
+  >,
 ) {
+  const resolvedDependencies: HttpDependencies = {
+    clock: dependencies.clock ?? (() => new Date("2026-08-05T12:00:00.000Z")),
+    createCorrelationId: dependencies.createCorrelationId ?? (() => "test-correlation-id"),
+    env: dependencies.env,
+    execute: dependencies.execute,
+    logFailure: dependencies.logFailure ?? (() => undefined),
+  };
   return (request: Request) =>
-    handleMetaProcessorTriggerRequestWithDependencies(request, dependencies);
+    handleMetaProcessorTriggerRequestWithDependencies(request, resolvedDependencies);
 }
 
 async function handleMetaProcessorTriggerRequestWithDependencies(
@@ -59,7 +88,20 @@ async function handleMetaProcessorTriggerRequestWithDependencies(
   try {
     const summary = await dependencies.execute(payload.value);
     return Response.json(summary, { headers: noStoreHeaders(), status: 200 });
-  } catch {
+  } catch (error) {
+    const failure = normalizeMetaProcessorFailure(error);
+    try {
+      dependencies.logFailure({
+        code: failure.code,
+        correlationId: dependencies.createCorrelationId(),
+        event: "meta_lead_processor_failure",
+        retryable: failure.retryable,
+        stage: failure.stage,
+        timestamp: dependencies.clock().toISOString(),
+      });
+    } catch {
+      // Observability is best-effort and must not alter the sanitized response.
+    }
     return jsonError("Meta lead processing failed.", 500);
   }
 }
