@@ -26,8 +26,8 @@ select ok(
   'anonymous cannot read integration configuration'
 );
 select ok(
-  not has_table_privilege('authenticated', 'public.lead_ingestion_integration_configs', 'SELECT'),
-  'authenticated users cannot read integration configuration directly'
+  has_table_privilege('authenticated', 'public.lead_ingestion_integration_configs', 'SELECT'),
+  'authenticated users may read configurations subject to tenant RLS'
 );
 select ok(
   not has_function_privilege('anon',
@@ -117,7 +117,8 @@ select is(
 
 -- Fixture-only expiration: production reclaim always compares with the database clock.
 update public.lead_ingestion_events
-set claim_expires_at = clock_timestamp() - interval '1 second'
+set claimed_at = clock_timestamp() - interval '2 minutes',
+    claim_expires_at = clock_timestamp() - interval '1 second'
 where id = '30000000-0000-4000-8000-000000000002';
 
 select is(

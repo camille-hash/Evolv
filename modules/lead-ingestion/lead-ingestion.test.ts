@@ -522,7 +522,7 @@ test("migration keeps inbox and RPC closed to browser roles", () => {
 
 test("hardening migration preserves observed forms without authorizing them", () => {
   const migration = readFileSync(
-    "supabase/migrations/20260804120000_harden_meta_lead_ingestion_foundation.sql",
+    "supabase/migrations/20260806120000_finalize_meta_lead_ingestion_foundation.sql",
     "utf8",
   );
 
