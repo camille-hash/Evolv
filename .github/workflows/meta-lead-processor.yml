@@ -6,7 +6,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: meta-lead-processor-production
+  group: meta-lead-processor-production-v2
   cancel-in-progress: false
 
 jobs:
