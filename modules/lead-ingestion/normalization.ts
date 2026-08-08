@@ -19,6 +19,8 @@ export function normalizeLeadIngestionPayload(
     "";
   const eventType = normalizeText(input.eventType) ?? "lead_created";
   const sourcePayload = normalizePlainObject(input.sourcePayload);
+  const fullName = normalizeText(input.fullName) ??
+    (sourceSystem === metaLeadAdsSourceSystem ? "Lead Meta Ads" : undefined);
 
   return removeEmptyObjectValues({
     adId: normalizeText(input.adId),
@@ -35,7 +37,7 @@ export function normalizeLeadIngestionPayload(
     externalId,
     formId: normalizeText(input.formId),
     formName: normalizeText(input.formName),
-    fullName: normalizeText(input.fullName),
+    fullName,
     occurredAt: normalizeText(input.occurredAt),
     pageId: normalizeText(input.pageId) ?? externalAccountId,
     phone: normalizePhone(input.phone),
@@ -61,7 +63,7 @@ export function normalizePhone(value: unknown) {
   const digits = text.replace(/\D+/g, "");
 
   if (!digits) {
-    return undefined;
+    return text;
   }
 
   return hasInternationalPrefix ? `+${digits}` : digits;

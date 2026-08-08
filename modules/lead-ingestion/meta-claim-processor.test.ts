@@ -126,19 +126,57 @@ for (const category of ["graph_auth_failed", "graph_permission_denied", "graph_l
   });
 }
 
-test("a lead without a usable name fails normalization without materialization", async () => {
+test("a lead without a usable name is enriched with a technical fallback and materialized", async () => {
   const fixture = createFixture([claimedEvent()], { fetchLead: async () => ({
     lead: { fieldData: [{ name: "email", values: ["synthetic@example.test"] }], id: "lead-1" }, ok: true,
   }) });
   const result = await fixture.run();
-  assert.equal(result.results[0]?.category, "normalization_failed");
-  assert.equal(fixture.calls.sequence.some((call) => call.startsWith("materialize:")), false);
+  assert.equal(result.materializedCount, 1);
+  assert.equal(fixture.calls.sequence.some((call) => call.startsWith("materialize:")), true);
+  assert.equal(fixture.calls.enriched[0]?.fullName, "Lead Meta Ads");
 });
 
-test("logs sanitized field data diagnostics only when a name is missing", async () => {
+test("a lead with only phone is materialized with a technical fallback name", async () => {
+  const fixture = createFixture([claimedEvent()], { fetchLead: async () => ({
+    lead: { fieldData: [{ name: "telefone", values: ["(11) 99999-0000"] }], id: "lead-1" }, ok: true,
+  }) });
+
+  const result = await fixture.run();
+
+  assert.equal(result.materializedCount, 1);
+  assert.equal(fixture.calls.enriched[0]?.fullName, "Lead Meta Ads");
+  assert.equal(fixture.calls.enriched[0]?.phone, "11999990000");
+});
+
+test("a lead with only email is materialized with a technical fallback name", async () => {
+  const fixture = createFixture([claimedEvent()], { fetchLead: async () => ({
+    lead: { fieldData: [{ name: "email", values: ["lead@example.test"] }], id: "lead-1" }, ok: true,
+  }) });
+
+  const result = await fixture.run();
+
+  assert.equal(result.materializedCount, 1);
+  assert.equal(fixture.calls.enriched[0]?.fullName, "Lead Meta Ads");
+  assert.equal(fixture.calls.enriched[0]?.email, "lead@example.test");
+});
+
+test("a lead with no canonical fields is materialized with custom answers and fallback name", async () => {
+  const fixture = createFixture([claimedEvent()], { fetchLead: async () => ({
+    lead: { fieldData: [{ name: "qual_é_a_sua_capacidade_de_investimento_mensal?", values: ["R$ 5.000"] }], id: "lead-1" }, ok: true,
+  }) });
+
+  const result = await fixture.run();
+
+  assert.equal(result.materializedCount, 1);
+  assert.equal(fixture.calls.enriched[0]?.fullName, "Lead Meta Ads");
+  assert.deepEqual(fixture.calls.enriched[0]?.customAnswers, [
+    { key: "qual_é_a_sua_capacidade_de_investimento_mensal?", value: "R$ 5.000" },
+  ]);
+});
+
+test("observed Meta form shape materializes and does not emit diagnostics", async () => {
   const diagnostics: unknown[] = [];
   const fixture = createFixture([claimedEvent()], {
-    diagnosticLogger: (entry) => diagnostics.push(entry),
     fetchLead: async () => ({
       lead: {
         fieldData: [
@@ -166,23 +204,11 @@ test("logs sanitized field data diagnostics only when a name is missing", async 
 
   const result = await fixture.run();
 
-  assert.equal(result.results[0]?.category, "normalization_failed");
-  assert.equal(diagnostics.length, 1);
-  assert.deepEqual(diagnostics[0], {
-    acceptedEntryCount: 3,
-    category: "normalization_failed",
-    discardedEntryCount: 0,
-    discardedEntryReasons: {},
-    externalId: "lead-1",
-    fieldDataShape: [
-      { name: "nome_completo", valueCount: 1 },
-      { name: "email", valueCount: 1 },
-      { name: "telefone", valueCount: 1 },
-    ],
-    formId: "form-1",
-    receivedEntryCount: 3,
-    stage: "normalization",
-  });
+  assert.equal(result.materializedCount, 1);
+  assert.equal(diagnostics.length, 0);
+  assert.equal(fixture.calls.enriched[0]?.fullName, "SECRET_PERSON_NAME");
+  assert.equal(fixture.calls.enriched[0]?.email, "secret@example.test");
+  assert.equal(fixture.calls.enriched[0]?.phone, "SECRET_PHONE_VALUE");
 
   const serialized = JSON.stringify(diagnostics);
   assert.equal(serialized.includes("SECRET_PERSON_NAME"), false);
@@ -196,7 +222,6 @@ test("logs sanitized field data diagnostics only when a name is missing", async 
 test("does not emit field data diagnostics for successfully normalized leads", async () => {
   const diagnostics: unknown[] = [];
   const fixture = createFixture([claimedEvent()], {
-    diagnosticLogger: (entry) => diagnostics.push(entry),
     fetchLead: async () => ({
       lead: {
         fieldData: [{ name: "full_name", values: ["Synthetic Lead"] }],
@@ -220,11 +245,8 @@ test("does not emit field data diagnostics for successfully normalized leads", a
   assert.equal(diagnostics.length, 0);
 });
 
-test("diagnostic logger failures do not change canonical normalization failure handling", async () => {
+test("diagnostic logger is not invoked for materializable fallback leads", async () => {
   const fixture = createFixture([claimedEvent()], {
-    diagnosticLogger: () => {
-      throw new Error("LOGGER_SECRET_SENTINEL");
-    },
     fetchLead: async () => ({
       lead: {
         fieldData: [{ name: "nome", values: ["SECRET_PERSON_NAME"] }],
@@ -243,9 +265,9 @@ test("diagnostic logger failures do not change canonical normalization failure h
 
   const result = await fixture.run();
 
-  assert.equal(result.results[0]?.category, "normalization_failed");
-  assert.equal(result.results[0]?.outcome, "terminal_failure");
-  assert.deepEqual(fixture.calls.sequence, ["claim", "fetch:lead-1", "fail:normalization_failed"]);
+  assert.equal(result.materializedCount, 1);
+  assert.deepEqual(fixture.calls.sequence, ["claim", "fetch:lead-1", "enrich:event-1", "materialize:event-1"]);
+  assert.equal(fixture.calls.enriched[0]?.fullName, "Lead Meta Ads");
 });
 
 test("an already enriched event skips Graph and uses canonical materialization", async () => {
@@ -392,7 +414,6 @@ function createFixture(
   events: ReturnType<typeof claimedEvent>[],
   options: {
     advanceAfterEnrich?: string;
-    diagnosticLogger?: (entry: unknown) => void;
     enrichSucceeds?: boolean;
     failError?: Error;
     failSucceeds?: boolean;
@@ -435,7 +456,6 @@ function createFixture(
   };
   const processor = createMetaClaimProcessorForTesting({
     clock,
-    diagnosticLogger: options.diagnosticLogger ?? (() => undefined),
     fetchLead,
     store,
   });

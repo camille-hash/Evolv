@@ -4,9 +4,9 @@ import type { MetaGraphLead } from "./types.ts";
 const canonicalAliases = {
   email: ["email"],
   firstName: ["first_name", "first name"],
-  fullName: ["full_name", "full name", "name"],
+  fullName: ["full_name", "full name", "name", "nome_completo"],
   lastName: ["last_name", "last name"],
-  phone: ["phone_number", "phone number", "phone"],
+  phone: ["phone_number", "phone number", "phone", "telefone"],
 } as const;
 
 export function normalizeMetaGraphLead(

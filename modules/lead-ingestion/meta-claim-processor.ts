@@ -2,10 +2,7 @@ import "server-only";
 import { normalizeLeadIngestionPayload } from "./normalization.ts";
 import { fetchMetaLead } from "./meta-graph/client.ts";
 import { normalizeMetaGraphLead } from "./meta-graph/normalize.ts";
-import type {
-  MetaGraphFieldDataDiagnostic,
-  MetaGraphLeadResult,
-} from "./meta-graph/types.ts";
+import type { MetaGraphLeadResult } from "./meta-graph/types.ts";
 import type { LeadIngestionSupabaseClient } from "./types.ts";
 import {
   MetaProcessorFailure,
@@ -38,24 +35,11 @@ type FetchClaimedMetaLead = (
 
 type MetaClaimProcessorDependencies = {
   clock: () => Date;
-  diagnosticLogger?: (entry: MetaNormalizationDiagnosticLogEntry) => void;
   fetchLead: FetchClaimedMetaLead;
   store: MetaClaimProcessorStore;
 };
 
 type RetryClaimedMetaLeadOutcome = "retried" | "lease_lost" | "retry_exhausted";
-
-type MetaNormalizationDiagnosticLogEntry = {
-  acceptedEntryCount: number;
-  category: "normalization_failed";
-  discardedEntryCount: number;
-  discardedEntryReasons: Record<string, number>;
-  externalId: string;
-  fieldDataShape: MetaGraphFieldDataDiagnostic["fieldDataShape"];
-  formId?: string;
-  receivedEntryCount: number;
-  stage: "normalization";
-};
 
 export type MetaClaimProcessorStore = {
   claim(params: {
@@ -156,22 +140,6 @@ async function processClaimedMetaLeadEventsWithDependencies(params: {
 
       const enrichedInput = normalizeMetaGraphLead(graphResult.lead, event.sourcePayload);
       const normalizedPayload = normalizeLeadIngestionPayload(enrichedInput);
-
-      if (!normalizedPayload.fullName) {
-        emitNormalizationDiagnostic(
-          dependencies.diagnosticLogger,
-          event,
-          graphResult.lead.fieldDataDiagnostic,
-          graphResult.lead.formId,
-        );
-        results.push(await handleFailure(dependencies.store, event, {
-          category: "normalization_failed",
-          message: "Meta lead does not contain a valid name.",
-          retryable: false,
-          stage: "normalization",
-        }, dependencies.clock));
-        continue;
-      }
 
       const transitionNow = readSafeLeaseTime(event, dependencies.clock);
 
@@ -376,36 +344,6 @@ async function handleFailure(
   }
 
   return { category: failure.category, eventId: event.id, outcome: "terminal_failure" as const };
-}
-
-function emitNormalizationDiagnostic(
-  logger: MetaClaimProcessorDependencies["diagnosticLogger"],
-  event: ClaimedMetaLeadEvent,
-  diagnostic: MetaGraphFieldDataDiagnostic | undefined,
-  graphFormId: string | undefined,
-) {
-  const entry: MetaNormalizationDiagnosticLogEntry = {
-    acceptedEntryCount: diagnostic?.acceptedEntryCount ?? 0,
-    category: "normalization_failed",
-    discardedEntryCount: diagnostic?.discardedEntryCount ?? 0,
-    discardedEntryReasons: diagnostic?.discardedEntryReasons ?? {},
-    externalId: event.externalId,
-    fieldDataShape: diagnostic?.fieldDataShape ?? [],
-    formId: graphFormId ?? normalizeText(event.sourcePayload.formId),
-    receivedEntryCount: diagnostic?.receivedEntryCount ?? 0,
-    stage: "normalization",
-  };
-
-  try {
-    if (logger) {
-      logger(entry);
-      return;
-    }
-
-    console.info("[EVOLV meta lead ingestion]", entry);
-  } catch {
-    // Diagnostic logging must never change claim, retry or failure semantics.
-  }
 }
 
 function mapClaimedEvent(value: unknown): ClaimedMetaLeadEvent[] {

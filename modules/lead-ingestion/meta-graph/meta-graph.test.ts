@@ -156,6 +156,28 @@ test("normalizes canonical fields and preserves unknown answers", () => {
   assert.equal("organizationId" in result, false);
 });
 
+test("normalizes observed Portuguese Meta fields and preserves custom answers", () => {
+  const result = normalizeMetaGraphLead({
+    fieldData: [
+      { name: "email", values: ["lead@example.test"] },
+      { name: "nome_completo", values: ["A"] },
+      { name: "telefone", values: ["(11) 99999-0000"] },
+      { name: "qual_é_a_sua_capacidade_de_investimento_mensal?", values: ["R$ 5.000"] },
+      { name: "você_é_brasileiro_e_possui_cpf?", values: ["Sim"] },
+    ],
+    formId: "1225439199692862",
+    id: "lead_123",
+  }, { pageId: "page-1" });
+
+  assert.equal(result.fullName, "A");
+  assert.equal(result.email, "lead@example.test");
+  assert.equal(result.phone, "(11) 99999-0000");
+  assert.deepEqual(result.customAnswers, [
+    { key: "qual_é_a_sua_capacidade_de_investimento_mensal?", value: "R$ 5.000" },
+    { key: "você_é_brasileiro_e_possui_cpf?", value: "Sim" },
+  ]);
+});
+
 test("prefers full_name and handles empty field data", () => {
   const named = normalizeMetaGraphLead({ fieldData: [
     { name: "full_name", values: ["Canonical Name", "Ignored"] }, { name: "first_name", values: ["Alias"] },

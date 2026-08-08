@@ -166,7 +166,7 @@ test("handles idempotent conflict deterministically", async () => {
   }
 });
 
-test("rejects missing name", async () => {
+test("uses a technical fallback instead of rejecting a Meta lead without name", async () => {
   const supabase = createFakeLeadIngestionSupabase();
   await seedIntegration(supabase);
 
@@ -177,8 +177,124 @@ test("rejects missing name", async () => {
 
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.equal(result.event.status, "rejected");
-    assert.equal(result.event.lastErrorCode, "MISSING_NAME");
+    assert.equal(result.event.status, "materialization_pending");
+    assert.equal(result.event.lastErrorCode, null);
+    assert.equal(
+      (result.event.normalizedPayload as Record<string, unknown>).fullName,
+      "Lead Meta Ads",
+    );
+  }
+});
+
+test("does not apply the Meta technical fallback to non-Meta sources", () => {
+  const normalized = normalizeLeadIngestionPayload({
+    eventType: "lead_created",
+    externalAccountId: "external-account-1",
+    externalId: "external-lead-1",
+    fullName: "   ",
+    sourcePayload: {},
+    sourceSystem: "partner_import",
+  });
+
+  assert.equal("fullName" in normalized, false);
+  assert.notEqual(normalized.fullName, "Lead Meta Ads");
+  assert.equal(normalized.sourceSystem, "partner_import");
+});
+
+test("materializes a Meta lead with only phone using a technical fallback name", async () => {
+  const supabase = createFakeLeadIngestionSupabase();
+  await seedIntegration(supabase);
+
+  const result = await recordLeadIngestionEvent({
+    input: validRawLeadPayload({ email: "", fullName: "", phone: " (11) 99999-0000 " }),
+    supabase,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const materialized = await materializeLeadIngestionEvent({
+    claimToken: "00000000-0000-4000-8000-000000000001",
+    eventId: result.event.id,
+    supabase,
+  });
+  assert.equal(materialized.ok, true);
+  if (materialized.ok) {
+    assert.equal(materialized.lead?.nome, "Lead Meta Ads");
+    assert.equal(materialized.lead?.phone, "11999990000");
+  }
+});
+
+test("materializes a Meta lead with only email using a technical fallback name", async () => {
+  const supabase = createFakeLeadIngestionSupabase();
+  await seedIntegration(supabase);
+
+  const result = await recordLeadIngestionEvent({
+    input: validRawLeadPayload({ email: " lead@example.test ", fullName: "", phone: "" }),
+    supabase,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const materialized = await materializeLeadIngestionEvent({
+    claimToken: "00000000-0000-4000-8000-000000000001",
+    eventId: result.event.id,
+    supabase,
+  });
+  assert.equal(materialized.ok, true);
+  if (materialized.ok) {
+    assert.equal(materialized.lead?.nome, "Lead Meta Ads");
+    assert.equal(materialized.lead?.email, "lead@example.test");
+  }
+});
+
+test("materializes a Meta lead with malformed email using the real normalization behavior", async () => {
+  const supabase = createFakeLeadIngestionSupabase();
+  await seedIntegration(supabase);
+
+  const result = await recordLeadIngestionEvent({
+    input: validRawLeadPayload({ email: " NOT-AN-EMAIL ", fullName: "", phone: "" }),
+    supabase,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.event.status, "materialization_pending");
+  assert.equal(result.event.lastErrorCode, null);
+  assert.equal((result.event.normalizedPayload as Record<string, unknown>).email, "not-an-email");
+  assert.equal((result.event.normalizedPayload as Record<string, unknown>).fullName, "Lead Meta Ads");
+
+  const materialized = await materializeLeadIngestionEvent({
+    claimToken: "00000000-0000-4000-8000-000000000001",
+    eventId: result.event.id,
+    supabase,
+  });
+  assert.equal(materialized.ok, true);
+  if (materialized.ok) {
+    assert.equal(materialized.event.status, "materialized");
+    assert.equal(materialized.lead?.nome, "Lead Meta Ads");
+    assert.equal(materialized.lead?.email, "not-an-email");
+  }
+});
+
+test("materializes a Meta lead with no recognized contact fields using a technical fallback name", async () => {
+  const supabase = createFakeLeadIngestionSupabase();
+  await seedIntegration(supabase);
+
+  const result = await recordLeadIngestionEvent({
+    input: validRawLeadPayload({ email: "", fullName: "", phone: "" }),
+    supabase,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const materialized = await materializeLeadIngestionEvent({
+    claimToken: "00000000-0000-4000-8000-000000000001",
+    eventId: result.event.id,
+    supabase,
+  });
+  assert.equal(materialized.ok, true);
+  if (materialized.ok) {
+    assert.equal(materialized.lead?.nome, "Lead Meta Ads");
   }
 });
 
@@ -216,6 +332,10 @@ test("normalizes email conservatively", () => {
 
 test("normalizes phone without inventing country code", () => {
   assert.equal(normalizePhone(" (11) 98888-7777 "), "11988887777");
+});
+
+test("preserves malformed phone text instead of blocking materialization", () => {
+  assert.equal(normalizePhone(" whatsapp indisponivel "), "whatsapp indisponivel");
 });
 
 test("preserves international phone prefix safely", () => {
