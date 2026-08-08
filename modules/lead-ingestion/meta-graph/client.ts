@@ -4,6 +4,8 @@ import {
   metaGraphApiVersion,
   metaGraphHost,
   metaGraphLeadFields,
+  type MetaGraphFieldData,
+  type MetaGraphFieldDataDiagnostic,
   type MetaGraphLeadResult,
   type MetaGraphSafeError,
 } from "./types.ts";
@@ -137,27 +139,65 @@ function parseMetaGraphLead(value: unknown, expectedId: string): MetaGraphLeadRe
     return graphError("graph_invalid_response", false, "Meta Graph field data is missing.");
   }
 
+  const fieldDataParse = parseFieldData(value.field_data);
+
   return {
     lead: {
       adId: normalizeText(value.ad_id),
       createdTime: normalizeText(value.created_time),
-      fieldData: value.field_data.flatMap((entry) => {
-        if (!isRecord(entry)) {
-          return [];
-        }
-
-        const name = normalizeText(entry.name);
-        const values = Array.isArray(entry.values)
-          ? entry.values.flatMap((item) => normalizeText(item) ?? [])
-          : [];
-
-        return name ? [{ name, values }] : [];
-      }),
+      fieldData: fieldDataParse.fieldData,
+      fieldDataDiagnostic: fieldDataParse.diagnostic,
       formId: normalizeText(value.form_id),
       id: expectedId,
     },
     ok: true,
   };
+}
+
+function parseFieldData(entries: unknown[]): {
+  diagnostic: MetaGraphFieldDataDiagnostic;
+  fieldData: MetaGraphFieldData[];
+} {
+  const discardedEntryReasons: Record<string, number> = {};
+  const fieldData: MetaGraphFieldData[] = [];
+
+  for (const entry of entries) {
+    if (!isRecord(entry)) {
+      incrementReason(discardedEntryReasons, "entry_not_object");
+      continue;
+    }
+
+    const name = normalizeText(entry.name);
+
+    if (!name) {
+      incrementReason(discardedEntryReasons, "missing_name");
+      continue;
+    }
+
+    const values = Array.isArray(entry.values)
+      ? entry.values.flatMap((item) => normalizeText(item) ?? [])
+      : [];
+
+    fieldData.push({ name, values });
+  }
+
+  return {
+    diagnostic: {
+      acceptedEntryCount: fieldData.length,
+      discardedEntryCount: entries.length - fieldData.length,
+      discardedEntryReasons,
+      fieldDataShape: fieldData.map((field) => ({
+        name: field.name,
+        valueCount: field.values.length,
+      })),
+      receivedEntryCount: entries.length,
+    },
+    fieldData,
+  };
+}
+
+function incrementReason(reasons: Record<string, number>, reason: string) {
+  reasons[reason] = (reasons[reason] ?? 0) + 1;
 }
 
 function classifyMetaGraphError(status: number, value: unknown): MetaGraphSafeError & { ok: false } {

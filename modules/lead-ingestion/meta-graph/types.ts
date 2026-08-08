@@ -34,10 +34,22 @@ export type MetaGraphFieldData = {
   values: string[];
 };
 
+export type MetaGraphFieldDataDiagnostic = {
+  acceptedEntryCount: number;
+  discardedEntryCount: number;
+  discardedEntryReasons: Record<string, number>;
+  fieldDataShape: Array<{
+    name: string;
+    valueCount: number;
+  }>;
+  receivedEntryCount: number;
+};
+
 export type MetaGraphLead = {
   adId?: string;
   createdTime?: string;
   fieldData: MetaGraphFieldData[];
+  fieldDataDiagnostic?: MetaGraphFieldDataDiagnostic;
   formId?: string;
   id: string;
 };

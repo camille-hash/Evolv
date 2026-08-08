@@ -135,6 +135,119 @@ test("a lead without a usable name fails normalization without materialization",
   assert.equal(fixture.calls.sequence.some((call) => call.startsWith("materialize:")), false);
 });
 
+test("logs sanitized field data diagnostics only when a name is missing", async () => {
+  const diagnostics: unknown[] = [];
+  const fixture = createFixture([claimedEvent()], {
+    diagnosticLogger: (entry) => diagnostics.push(entry),
+    fetchLead: async () => ({
+      lead: {
+        fieldData: [
+          { name: "nome_completo", values: ["SECRET_PERSON_NAME"] },
+          { name: "email", values: ["secret@example.test"] },
+          { name: "telefone", values: ["SECRET_PHONE_VALUE"] },
+        ],
+        fieldDataDiagnostic: {
+          acceptedEntryCount: 3,
+          discardedEntryCount: 0,
+          discardedEntryReasons: {},
+          fieldDataShape: [
+            { name: "nome_completo", valueCount: 1 },
+            { name: "email", valueCount: 1 },
+            { name: "telefone", valueCount: 1 },
+          ],
+          receivedEntryCount: 3,
+        },
+        formId: "form-1",
+        id: "lead-1",
+      },
+      ok: true,
+    }),
+  });
+
+  const result = await fixture.run();
+
+  assert.equal(result.results[0]?.category, "normalization_failed");
+  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(diagnostics[0], {
+    acceptedEntryCount: 3,
+    category: "normalization_failed",
+    discardedEntryCount: 0,
+    discardedEntryReasons: {},
+    externalId: "lead-1",
+    fieldDataShape: [
+      { name: "nome_completo", valueCount: 1 },
+      { name: "email", valueCount: 1 },
+      { name: "telefone", valueCount: 1 },
+    ],
+    formId: "form-1",
+    receivedEntryCount: 3,
+    stage: "normalization",
+  });
+
+  const serialized = JSON.stringify(diagnostics);
+  assert.equal(serialized.includes("SECRET_PERSON_NAME"), false);
+  assert.equal(serialized.includes("secret@example.test"), false);
+  assert.equal(serialized.includes("SECRET_PHONE_VALUE"), false);
+  assert.equal(serialized.includes("Authorization"), false);
+  assert.equal(serialized.includes("Bearer"), false);
+  assert.equal(serialized.includes("synthetic-test-token"), false);
+});
+
+test("does not emit field data diagnostics for successfully normalized leads", async () => {
+  const diagnostics: unknown[] = [];
+  const fixture = createFixture([claimedEvent()], {
+    diagnosticLogger: (entry) => diagnostics.push(entry),
+    fetchLead: async () => ({
+      lead: {
+        fieldData: [{ name: "full_name", values: ["Synthetic Lead"] }],
+        fieldDataDiagnostic: {
+          acceptedEntryCount: 1,
+          discardedEntryCount: 0,
+          discardedEntryReasons: {},
+          fieldDataShape: [{ name: "full_name", valueCount: 1 }],
+          receivedEntryCount: 1,
+        },
+        formId: "form-1",
+        id: "lead-1",
+      },
+      ok: true,
+    }),
+  });
+
+  const result = await fixture.run();
+
+  assert.equal(result.materializedCount, 1);
+  assert.equal(diagnostics.length, 0);
+});
+
+test("diagnostic logger failures do not change canonical normalization failure handling", async () => {
+  const fixture = createFixture([claimedEvent()], {
+    diagnosticLogger: () => {
+      throw new Error("LOGGER_SECRET_SENTINEL");
+    },
+    fetchLead: async () => ({
+      lead: {
+        fieldData: [{ name: "nome", values: ["SECRET_PERSON_NAME"] }],
+        fieldDataDiagnostic: {
+          acceptedEntryCount: 1,
+          discardedEntryCount: 0,
+          discardedEntryReasons: {},
+          fieldDataShape: [{ name: "nome", valueCount: 1 }],
+          receivedEntryCount: 1,
+        },
+        id: "lead-1",
+      },
+      ok: true,
+    }),
+  });
+
+  const result = await fixture.run();
+
+  assert.equal(result.results[0]?.category, "normalization_failed");
+  assert.equal(result.results[0]?.outcome, "terminal_failure");
+  assert.deepEqual(fixture.calls.sequence, ["claim", "fetch:lead-1", "fail:normalization_failed"]);
+});
+
 test("an already enriched event skips Graph and uses canonical materialization", async () => {
   const fixture = createFixture([claimedEvent({ status: "materialization_pending" })]);
   assert.equal((await fixture.run()).materializedCount, 1);
@@ -279,6 +392,7 @@ function createFixture(
   events: ReturnType<typeof claimedEvent>[],
   options: {
     advanceAfterEnrich?: string;
+    diagnosticLogger?: (entry: unknown) => void;
     enrichSucceeds?: boolean;
     failError?: Error;
     failSucceeds?: boolean;
@@ -319,7 +433,12 @@ function createFixture(
     calls.fetchCount += 1; calls.fetchBudgets.push(fetchOptions.timeoutMs); calls.sequence.push(`fetch:${id}`);
     return options.fetchLead?.(id, fetchOptions, clock) ?? graphSuccess(id);
   };
-  const processor = createMetaClaimProcessorForTesting({ clock, fetchLead, store });
+  const processor = createMetaClaimProcessorForTesting({
+    clock,
+    diagnosticLogger: options.diagnosticLogger ?? (() => undefined),
+    fetchLead,
+    store,
+  });
   return {
     calls,
     processor,

@@ -102,6 +102,45 @@ test("rejects invalid JSON, incomplete and excessive responses", async () => wit
   assert.equal((await fetchMetaLead("lead_123")).ok, false);
 }));
 
+test("exposes only sanitized field data shape diagnostics", async () => withRuntime(async () => {
+  globalThis.fetch = async () => jsonResponse({
+    ad_id: "ad-1",
+    field_data: [
+      { name: "nome_completo", values: ["SECRET_PERSON_NAME"] },
+      { name: "telefone", values: ["SECRET_PHONE_VALUE"] },
+      "malformed-entry",
+      { values: ["SECRET_WITHOUT_NAME"] },
+      { name: "observacao", values: [null, ""] },
+    ],
+    form_id: "form-1",
+    id: "lead_123",
+  });
+
+  const result = await fetchMetaLead("lead_123");
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.ok ? result.lead.fieldDataDiagnostic : null, {
+    acceptedEntryCount: 3,
+    discardedEntryCount: 2,
+    discardedEntryReasons: {
+      entry_not_object: 1,
+      missing_name: 1,
+    },
+    fieldDataShape: [
+      { name: "nome_completo", valueCount: 1 },
+      { name: "telefone", valueCount: 1 },
+      { name: "observacao", valueCount: 0 },
+    ],
+    receivedEntryCount: 5,
+  });
+
+  const serializedDiagnostic = JSON.stringify(result.ok ? result.lead.fieldDataDiagnostic : null);
+  assert.equal(serializedDiagnostic.includes("SECRET_PERSON_NAME"), false);
+  assert.equal(serializedDiagnostic.includes("SECRET_PHONE_VALUE"), false);
+  assert.equal(serializedDiagnostic.includes("SECRET_WITHOUT_NAME"), false);
+  assert.equal(serializedDiagnostic.includes(syntheticToken), false);
+}));
+
 test("normalizes canonical fields and preserves unknown answers", () => {
   const result = normalizeMetaGraphLead({
     fieldData: [
