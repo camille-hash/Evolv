@@ -1,12 +1,14 @@
-name: Meta lead processor (manual)
+name: Meta lead processor
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
 
 permissions: {}
 
 concurrency:
-  group: meta-lead-processor-production-v2
+  group: meta-lead-processor-production
   cancel-in-progress: false
 
 jobs:
@@ -35,6 +37,10 @@ jobs:
 
           response_file="$(mktemp)"
           trap 'rm -f "$response_file"' EXIT
+          processor_payload='{"batchSize":1,"cycles":1}'
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
+            processor_payload='{"batchSize":10,"cycles":1}'
+          fi
           started_ms="$(date +%s%3N)"
 
           set +e
@@ -46,7 +52,7 @@ jobs:
             --request POST \
             --header "Authorization: Bearer ${TRIGGER_SECRET}" \
             --header 'Content-Type: application/json' \
-            --data '{"batchSize":1,"cycles":1}' \
+            --data "$processor_payload" \
             "$TRIGGER_URL")"
           curl_exit=$?
           set -e
