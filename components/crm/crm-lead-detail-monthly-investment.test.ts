@@ -29,3 +29,51 @@ test("does not query the complementary projection for non-Meta leads", () => {
     /lead-monthly-investment-capacity\?leadId=\$\{encodeURIComponent\(lead\.id\)\}/,
   );
 });
+
+test("loads both Meta declarations from the same single request", () => {
+  assert.equal(
+    (source.match(/fetch\(\s*`\/api\/crm\/lead-monthly-investment-capacity/g) ?? [])
+      .length,
+    1,
+  );
+  assert.match(
+    source,
+    /declaredBrazilianAndCpfStatus\?: unknown;\s*monthlyInvestmentCapacity\?: unknown;/,
+  );
+  assert.match(
+    source,
+    /setLeadMetaDeclarationsState\(\{[\s\S]{0,320}declaredBrazilianAndCpfStatus:[\s\S]{0,320}monthlyInvestmentCapacity:/,
+  );
+  assert.doesNotMatch(source, /fetch\([^)]*declaredBrazilianAndCpfStatus/);
+});
+
+test("accepts only yes or no and translates the compound declaration neutrally", () => {
+  assert.match(
+    source,
+    /payload\?\.declaredBrazilianAndCpfStatus === "yes" \|\|\s*payload\?\.declaredBrazilianAndCpfStatus === "no"/,
+  );
+  assert.match(
+    source,
+    /declaredBrazilianAndCpfStatus === "yes"\s*\? "Sim"\s*: declaredBrazilianAndCpfStatus === "no"\s*\? "Não"\s*: null/,
+  );
+  assert.match(source, /label="Brasileiro e possui CPF"/);
+  assert.doesNotMatch(
+    source,
+    /CPF (?:validado|confirmado)|Documento verificado|Elegível|Regular|Aprovado/i,
+  );
+});
+
+test("hides absent or invalid declarations and resets them when the lead changes", () => {
+  assert.match(
+    source,
+    /setLeadMetaDeclarationsState\(\{\s*declaredBrazilianAndCpfStatus: null,\s*leadId: lead\.id,\s*monthlyInvestmentCapacity: null,\s*\}\);/,
+  );
+  assert.match(
+    source,
+    /\{declaredBrazilianAndCpfLabel \? \([\s\S]{0,180}label="Brasileiro e possui CPF"[\s\S]{0,120}\) : null\}/,
+  );
+  assert.doesNotMatch(
+    source,
+    /label="Brasileiro e possui CPF"[\s\S]{0,120}Não informado/,
+  );
+});

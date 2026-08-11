@@ -286,11 +286,11 @@ export function CrmLeadDetail({
     decision: CommercialAttentionProductDecision | null;
     leadId: string;
   } | null>(null);
-  const [monthlyInvestmentCapacityState, setMonthlyInvestmentCapacityState] =
-    useState<{
-      leadId: string;
-      monthlyInvestmentCapacity: string | null;
-    } | null>(null);
+  const [leadMetaDeclarationsState, setLeadMetaDeclarationsState] = useState<{
+    declaredBrazilianAndCpfStatus: "yes" | "no" | null;
+    leadId: string;
+    monthlyInvestmentCapacity: string | null;
+  } | null>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [isLoadingKnowledge, setIsLoadingKnowledge] = useState(false);
   const [isLoadingSimulations, setIsLoadingSimulations] = useState(false);
@@ -409,9 +409,19 @@ export function CrmLeadDetail({
     strategicProfile,
   });
   const monthlyInvestmentCapacity =
-    monthlyInvestmentCapacityState?.leadId === lead.id
-      ? monthlyInvestmentCapacityState.monthlyInvestmentCapacity
+    leadMetaDeclarationsState?.leadId === lead.id
+      ? leadMetaDeclarationsState.monthlyInvestmentCapacity
       : null;
+  const declaredBrazilianAndCpfStatus =
+    leadMetaDeclarationsState?.leadId === lead.id
+      ? leadMetaDeclarationsState.declaredBrazilianAndCpfStatus
+      : null;
+  const declaredBrazilianAndCpfLabel =
+    declaredBrazilianAndCpfStatus === "yes"
+      ? "Sim"
+      : declaredBrazilianAndCpfStatus === "no"
+        ? "Não"
+        : null;
   const canLeadConvertByBusinessState =
     canLeadConvertToClientByBusinessState(lead);
   const canConvertToClient =
@@ -423,11 +433,13 @@ export function CrmLeadDetail({
     let isActive = true;
 
     async function loadMonthlyInvestmentCapacity() {
+      setLeadMetaDeclarationsState({
+        declaredBrazilianAndCpfStatus: null,
+        leadId: lead.id,
+        monthlyInvestmentCapacity: null,
+      });
+
       if (lead.sourceSystem !== "meta_lead_ads") {
-        setMonthlyInvestmentCapacityState({
-          leadId: lead.id,
-          monthlyInvestmentCapacity: null,
-        });
         return;
       }
 
@@ -443,12 +455,18 @@ export function CrmLeadDetail({
       ).catch(() => null);
       const payload = response?.ok
         ? await response.json().catch(() => null) as {
+            declaredBrazilianAndCpfStatus?: unknown;
             monthlyInvestmentCapacity?: unknown;
           } | null
         : null;
 
       if (isActive) {
-        setMonthlyInvestmentCapacityState({
+        setLeadMetaDeclarationsState({
+          declaredBrazilianAndCpfStatus:
+            payload?.declaredBrazilianAndCpfStatus === "yes" ||
+            payload?.declaredBrazilianAndCpfStatus === "no"
+              ? payload.declaredBrazilianAndCpfStatus
+              : null,
           leadId: lead.id,
           monthlyInvestmentCapacity:
             typeof payload?.monthlyInvestmentCapacity === "string"
@@ -1581,6 +1599,12 @@ export function CrmLeadDetail({
                     label="Capacidade de investimento mensal"
                     value={monthlyInvestmentCapacity ?? "Não informado"}
                   />
+                  {declaredBrazilianAndCpfLabel ? (
+                    <LeadInfo
+                      label="Brasileiro e possui CPF"
+                      value={declaredBrazilianAndCpfLabel}
+                    />
+                  ) : null}
                   <LeadInfo
                     label="Credito desejado"
                     value={currencyFormatter.format(lead.valorPretendido)}

@@ -3,29 +3,31 @@ import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import {
-  projectMonthlyInvestmentCapacity,
-  type LeadMonthlyInvestmentCapacityProjection,
-} from "../monthly-investment-capacity";
+  projectLeadMetaDeclarations,
+  type LeadMetaDeclarations,
+} from "../meta-declarations";
 
-type RpcClient = Pick<SupabaseClient, "auth" | "rpc">;
+export type LeadMetaDeclarationsRpcClient = Pick<SupabaseClient, "auth" | "rpc">;
+type RpcClientFactory = (accessToken: string) => LeadMetaDeclarationsRpcClient;
 
-export type LeadMonthlyInvestmentCapacityResult =
-  | ({ ok: true } & LeadMonthlyInvestmentCapacityProjection)
+export type LeadMetaDeclarationsResult =
+  | ({ ok: true } & LeadMetaDeclarations)
   | { error: string; ok: false; status: number };
 
 const genericAccessError =
   "Nao foi possivel consultar a capacidade de investimento mensal.";
 
-export async function getLeadMonthlyInvestmentCapacity(
+export async function getLeadMetaDeclarations(
   accessToken: string | null,
   leadId: string,
-): Promise<LeadMonthlyInvestmentCapacityResult> {
+  createRpcClient: RpcClientFactory = createServerSupabaseClient,
+): Promise<LeadMetaDeclarationsResult> {
   if (!accessToken) {
     return { error: genericAccessError, ok: false, status: 401 };
   }
 
   try {
-    const supabase = createServerSupabaseClient(accessToken);
+    const supabase = createRpcClient(accessToken);
     const { data: userData, error: userError } =
       await supabase.auth.getUser(accessToken);
 
@@ -34,16 +36,16 @@ export async function getLeadMonthlyInvestmentCapacity(
     }
 
     const { data, error } = await supabase.rpc(
-      "get_lead_monthly_investment_capacity",
+      "get_lead_meta_declarations",
       { p_lead_id: leadId },
     );
 
-    if (error) {
+    if (error || !Array.isArray(data) || data.length !== 1) {
       return { error: genericAccessError, ok: false, status: 500 };
     }
 
     return {
-      monthlyInvestmentCapacity: projectMonthlyInvestmentCapacity(data),
+      ...projectLeadMetaDeclarations(data[0]),
       ok: true,
     };
   } catch {
@@ -51,7 +53,9 @@ export async function getLeadMonthlyInvestmentCapacity(
   }
 }
 
-function createServerSupabaseClient(accessToken: string): RpcClient {
+function createServerSupabaseClient(
+  accessToken: string,
+): LeadMetaDeclarationsRpcClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
