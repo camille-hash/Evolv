@@ -286,6 +286,11 @@ export function CrmLeadDetail({
     decision: CommercialAttentionProductDecision | null;
     leadId: string;
   } | null>(null);
+  const [monthlyInvestmentCapacityState, setMonthlyInvestmentCapacityState] =
+    useState<{
+      leadId: string;
+      monthlyInvestmentCapacity: string | null;
+    } | null>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [isLoadingKnowledge, setIsLoadingKnowledge] = useState(false);
   const [isLoadingSimulations, setIsLoadingSimulations] = useState(false);
@@ -403,10 +408,10 @@ export function CrmLeadDetail({
     multiCotasSimulations,
     strategicProfile,
   });
-  const leadObjective =
-    lead.produtoInteresse ||
-    lead.tituloOportunidade ||
-    currencyFormatter.format(lead.valorPretendido);
+  const monthlyInvestmentCapacity =
+    monthlyInvestmentCapacityState?.leadId === lead.id
+      ? monthlyInvestmentCapacityState.monthlyInvestmentCapacity
+      : null;
   const canLeadConvertByBusinessState =
     canLeadConvertToClientByBusinessState(lead);
   const canConvertToClient =
@@ -414,6 +419,52 @@ export function CrmLeadDetail({
     !isLoadingStrategicProfile &&
     !isLoadingSimulations &&
     Boolean(onConvertToClient);
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadMonthlyInvestmentCapacity() {
+      if (lead.sourceSystem !== "meta_lead_ads") {
+        setMonthlyInvestmentCapacityState({
+          leadId: lead.id,
+          monthlyInvestmentCapacity: null,
+        });
+        return;
+      }
+
+      const accessToken = await readSupabaseAccessToken();
+
+      if (!accessToken) {
+        return;
+      }
+
+      const response = await fetch(
+        `/api/crm/lead-monthly-investment-capacity?leadId=${encodeURIComponent(lead.id)}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      ).catch(() => null);
+      const payload = response?.ok
+        ? await response.json().catch(() => null) as {
+            monthlyInvestmentCapacity?: unknown;
+          } | null
+        : null;
+
+      if (isActive) {
+        setMonthlyInvestmentCapacityState({
+          leadId: lead.id,
+          monthlyInvestmentCapacity:
+            typeof payload?.monthlyInvestmentCapacity === "string"
+              ? payload.monthlyInvestmentCapacity
+              : null,
+        });
+      }
+    }
+
+    void loadMonthlyInvestmentCapacity();
+
+    return () => {
+      isActive = false;
+    };
+  }, [lead.id, lead.sourceSystem]);
+
   useEffect(() => {
     let isActive = true;
 
@@ -1526,7 +1577,10 @@ export function CrmLeadDetail({
                   <LeadInfo label="E-mail" value={lead.email || "-"} />
                   <LeadInfo label="Origem" value={lead.origem || "-"} />
                   <LeadInfo label="Cidade / Pais" value={lead.pais || "-"} />
-                  <LeadInfo label="Objetivo comercial" value={leadObjective} />
+                  <LeadInfo
+                    label="Capacidade de investimento mensal"
+                    value={monthlyInvestmentCapacity ?? "Não informado"}
+                  />
                   <LeadInfo
                     label="Credito desejado"
                     value={currencyFormatter.format(lead.valorPretendido)}

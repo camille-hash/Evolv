@@ -33,6 +33,7 @@ export type CrmOpportunityStatus = "ativa" | "ganha" | "perdida";
 export type CrmLead = {
   id: string;
   externalId?: string;
+  sourceSystem?: string;
   closedAt?: string;
   tituloOportunidade?: string;
   nome: string;

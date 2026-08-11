@@ -9,6 +9,7 @@ import type { CrmRepository } from "./crm-repository";
 type SupabaseCrmLeadRow = {
   id: string;
   external_id: string | null;
+  source_system: string | null;
   nome: string | null;
   telefone: string | null;
   email: string | null;
@@ -40,6 +41,7 @@ type DateNormalizationLog = {
 const crmLeadColumns = [
   "id",
   "external_id",
+  "source_system",
   "nome",
   "telefone",
   "email",
@@ -236,6 +238,7 @@ function mapSupabaseCrmLead(row: SupabaseCrmLeadRow): CrmLead {
   return {
     id: row.id,
     externalId: row.external_id ?? undefined,
+    sourceSystem: row.source_system ?? undefined,
     closedAt: row.closed_at ?? undefined,
     tituloOportunidade: row.titulo_oportunidade ?? undefined,
     nome: row.nome ?? "",
