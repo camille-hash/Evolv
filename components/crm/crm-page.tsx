@@ -23,6 +23,7 @@ import {
 import { AccessSettingsPage } from "@/components/access/access-settings-page";
 import { CrmExecutiveDashboard } from "@/components/crm/crm-executive-dashboard";
 import { CrmLeadDetail } from "@/components/crm/crm-lead-detail";
+import { DeclaredBrazilianCpfField } from "@/components/crm/declared-brazilian-cpf-field";
 import { CrmSourceIndicator } from "@/components/crm/crm-source-indicator";
 import { Button } from "@/components/ui/button";
 import type { ConvertLeadToClientInput } from "@/modules/client-context";
@@ -2441,6 +2442,7 @@ function mapLeadToInput(lead: CrmLead): CrmLeadInput {
     email: lead.email,
     etapa: lead.etapa,
     externalId: lead.externalId,
+    declaredBrazilianAndCpfStatus: lead.declaredBrazilianAndCpfStatus ?? null,
     nome: lead.nome,
     observacoes: lead.observacoes,
     origem: lead.origem,
@@ -2552,6 +2554,17 @@ function LeadForm({
               value={draft.pais ?? ""}
             />
           </Field>
+          <DeclaredBrazilianCpfField
+            name="declaredBrazilianAndCpfStatus"
+            onChange={(declaredBrazilianAndCpfStatus) =>
+              onChange((currentDraft) => ({
+                ...currentDraft,
+                declaredBrazilianAndCpfStatus,
+              }))
+            }
+            required
+            value={draft.declaredBrazilianAndCpfStatus}
+          />
           <Field label="Responsavel">
             <input
               className={fieldInputClass}

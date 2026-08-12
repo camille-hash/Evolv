@@ -124,6 +124,7 @@ export const emptyCrmLeadInput: CrmLeadInput = {
   telefone: "",
   email: "",
   pais: "",
+  declaredBrazilianAndCpfStatus: null,
   origem: "",
   consultor: "",
   valorPretendido: 0,
@@ -417,6 +418,11 @@ export function normalizeCrmLead(value: unknown): CrmLead | null {
       typeof candidate.telefone === "string" ? candidate.telefone : "",
     email: typeof candidate.email === "string" ? candidate.email : "",
     pais: typeof candidate.pais === "string" ? candidate.pais : "",
+    declaredBrazilianAndCpfStatus:
+      candidate.declaredBrazilianAndCpfStatus === "yes" ||
+      candidate.declaredBrazilianAndCpfStatus === "no"
+        ? candidate.declaredBrazilianAndCpfStatus
+        : null,
     origem: typeof candidate.origem === "string" ? candidate.origem : "",
     consultor:
       typeof candidate.consultor === "string" ? candidate.consultor : "",

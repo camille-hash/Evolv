@@ -17,6 +17,7 @@ type AuthenticatedSupabaseCrmLeadRow = {
   telefone: string | null;
   email: string | null;
   pais: string | null;
+  declared_brazilian_and_cpf_status: string | null;
   origem: string | null;
   consultor: string | null;
   valor_pretendido: number | string | null;
@@ -55,6 +56,7 @@ const authenticatedCrmLeadColumns = [
   "telefone",
   "email",
   "pais",
+  "declared_brazilian_and_cpf_status",
   "origem",
   "consultor",
   "valor_pretendido",
@@ -349,6 +351,11 @@ function mapAuthenticatedSupabaseCrmLead(
     telefone: row.telefone ?? "",
     email: row.email ?? "",
     pais: row.pais ?? "",
+    declaredBrazilianAndCpfStatus:
+      row.declared_brazilian_and_cpf_status === "yes" ||
+      row.declared_brazilian_and_cpf_status === "no"
+        ? row.declared_brazilian_and_cpf_status
+        : null,
     origem: row.origem ?? "",
     consultor: row.consultor ?? "",
     valorPretendido: normalizeNumber(row.valor_pretendido),
@@ -387,6 +394,11 @@ function mapCrmLeadPatchToAuthenticatedSupabaseRow(patch: Partial<CrmLead>) {
   setIfPresent(row, "telefone", patch.telefone);
   setIfPresent(row, "email", patch.email);
   setIfPresent(row, "pais", patch.pais);
+  setIfPresent(
+    row,
+    "declared_brazilian_and_cpf_status",
+    patch.declaredBrazilianAndCpfStatus,
+  );
   setIfPresent(row, "origem", patch.origem);
   setIfPresent(row, "consultor", patch.consultor);
   setIfPresent(row, "valor_pretendido", patch.valorPretendido);

@@ -2,6 +2,9 @@ import {
   projectMonthlyInvestmentCapacity,
   type MonthlyInvestmentCapacity,
 } from "./monthly-investment-capacity.ts";
+import type { DeclaredBrazilianAndCpfStatus } from "./crm-types.ts";
+
+export type { DeclaredBrazilianAndCpfStatus } from "./crm-types.ts";
 
 /**
  * Answer declared by the lead to the compound Meta question
@@ -14,8 +17,6 @@ import {
  * This value is independent from the lead's registered CPF and must never
  * populate, validate, or modify that field.
  */
-export type DeclaredBrazilianAndCpfStatus = "yes" | "no";
-
 export type LeadMetaDeclarations = {
   monthlyInvestmentCapacity: MonthlyInvestmentCapacity | null;
   declaredBrazilianAndCpfStatus: DeclaredBrazilianAndCpfStatus | null;

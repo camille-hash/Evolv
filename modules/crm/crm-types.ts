@@ -29,6 +29,7 @@ export type CrmConfigurablePipeline = {
 
 export type CrmTemperature = "fria" | "morna" | "quente";
 export type CrmOpportunityStatus = "ativa" | "ganha" | "perdida";
+export type DeclaredBrazilianAndCpfStatus = "yes" | "no";
 
 export type CrmLead = {
   id: string;
@@ -40,6 +41,7 @@ export type CrmLead = {
   telefone: string;
   email: string;
   pais?: string;
+  declaredBrazilianAndCpfStatus?: DeclaredBrazilianAndCpfStatus | null;
   origem: string;
   consultor: string;
   valorPretendido: number;

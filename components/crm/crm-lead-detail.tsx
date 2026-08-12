@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { LeadContractsCard } from "@/components/crm/lead-contracts-card";
 import { PrimaryJourneyAction } from "@/components/crm/primary-journey-action";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
+import { DeclaredBrazilianCpfField } from "@/components/crm/declared-brazilian-cpf-field";
 import { PublicationBuilderPanel } from "@/components/patrimonial-strategy/publication-builder-panel";
 import type { ConvertLeadToClientInput } from "@/modules/client-context";
 import {
@@ -413,9 +414,10 @@ export function CrmLeadDetail({
       ? leadMetaDeclarationsState.monthlyInvestmentCapacity
       : null;
   const declaredBrazilianAndCpfStatus =
-    leadMetaDeclarationsState?.leadId === lead.id
+    lead.declaredBrazilianAndCpfStatus ??
+    (leadMetaDeclarationsState?.leadId === lead.id
       ? leadMetaDeclarationsState.declaredBrazilianAndCpfStatus
-      : null;
+      : null);
   const declaredBrazilianAndCpfLabel =
     declaredBrazilianAndCpfStatus === "yes"
       ? "Sim"
@@ -1839,6 +1841,15 @@ export function CrmLeadDetail({
                             value={draft.origem}
                           />
                         </Field>
+
+                        <DeclaredBrazilianCpfField
+                          name="detailDeclaredBrazilianAndCpfStatus"
+                          onChange={(declaredBrazilianAndCpfStatus) =>
+                            updateDraft({ declaredBrazilianAndCpfStatus })
+                          }
+                          required
+                          value={draft.declaredBrazilianAndCpfStatus}
+                        />
 
                         <Field label="Consultor">
                           <input
