@@ -264,7 +264,7 @@ function mapSupabaseCrmLead(row: SupabaseCrmLeadRow): CrmLead {
     status: normalizeStatus(row.status),
     proximaAcao: row.proxima_acao ?? "",
     dataProximaAcao: row.data_proxima_acao ?? "",
-    createdAt: row.created_at ?? now,
+    createdAt: row.created_at ?? "",
     updatedAt: row.updated_at ?? row.created_at ?? now,
   };
 }

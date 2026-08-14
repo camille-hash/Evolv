@@ -396,7 +396,7 @@ export function normalizeCrmLead(value: unknown): CrmLead | null {
   const createdAt =
     typeof candidate.createdAt === "string"
       ? candidate.createdAt
-      : new Date().toISOString();
+      : "";
   const updatedAt =
     typeof candidate.updatedAt === "string" ? candidate.updatedAt : createdAt;
 

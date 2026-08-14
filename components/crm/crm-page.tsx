@@ -75,6 +75,7 @@ import {
   type AssemblyOpportunity,
 } from "@/modules/crm";
 import { fetchCrmMyDay } from "@/modules/crm/client/crm-my-day-client";
+import { formatCrmLeadEntryDateTime } from "@/modules/crm/crm-lead-entry-date";
 import { cn } from "@/lib/utils";
 
 type CrmOperationalTab =
@@ -2193,6 +2194,7 @@ function CompactLeadCard({
   const hasRelevantValue = lead.valorPretendido > 0;
   const aging = resolveCrmLeadOperationalAging(lead);
   const nextPendingTask = resolveNextPendingCrmTask(pendingTasks);
+  const entryDateTime = formatCrmLeadEntryDateTime(lead.createdAt);
 
   return (
     <article
@@ -2237,6 +2239,11 @@ function CompactLeadCard({
           {formatPipelineNextAction(nextPendingTask)}
         </span>
       </div>
+      {entryDateTime ? (
+        <p className="mt-0.5 min-w-0 truncate whitespace-nowrap text-[10px] leading-4 text-muted-foreground/80">
+          {entryDateTime}
+        </p>
+      ) : null}
       <div className="mt-1 flex items-center justify-between gap-2">
         <OperationalPriorityBadge lead={lead} nextPendingTask={nextPendingTask} />
         <Button
