@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import {
   assertCommercialProposalTransition,
+  buildCanonicalCommercialProposalRoot,
   buildCommercialProposalStatusUpdatePayload,
   calculateNextCommercialProposalVersion,
   normalizeCommercialProposalAssembly,
+  requireCanonicalCommercialProposalRoot,
   shouldRequireCommercialProposalSimulationId,
 } from "./domain";
 import {
@@ -51,7 +53,7 @@ type CommercialProposalRow = {
   proposal_number: string | null;
   rejected_at: string | null;
   rejected_by: string | null;
-  root_proposal_id: string | null;
+  root_proposal_id: string;
   saved_snapshot: Record<string, unknown> | null;
   simulation_id: string | null;
   source_suggestion: string | null;
@@ -237,13 +239,15 @@ export async function createCommercialProposal(
   const now = new Date();
   const assembly = normalizeCommercialProposalAssembly(input.assembly, now);
   const proposalNumber = createCommercialProposalNumber(now);
+  const proposalIdentity = buildCanonicalCommercialProposalRoot(randomUUID());
   const payload = {
     ...buildCommercialProposalPayload(input, assembly),
     created_by: context.profile.id,
+    id: proposalIdentity.id,
     lead_id: input.leadId,
     organization_id: context.profile.organization_id,
     proposal_number: proposalNumber,
-    root_proposal_id: null,
+    root_proposal_id: proposalIdentity.rootProposalId,
     simulation_id: input.simulationId?.trim() || null,
     status: input.status ?? "generated",
     version: 1,
@@ -297,6 +301,7 @@ export async function createCommercialProposalVersion(
   }
 
   const previousProposal = previousValidation.proposal;
+  const rootProposalId = requireCanonicalCommercialProposalRoot(previousProposal);
   const validation = validateCreateCommercialProposalInput({
     ...input,
     leadId: previousProposal.leadId,
@@ -311,7 +316,7 @@ export async function createCommercialProposalVersion(
 
   const version = await resolveNextCommercialProposalVersion(
     context,
-    previousProposal.proposalNumber,
+    rootProposalId,
   );
   const now = new Date();
   const assembly = normalizeCommercialProposalAssembly(input.assembly, now);
@@ -329,7 +334,7 @@ export async function createCommercialProposalVersion(
     organization_id: context.profile.organization_id,
     previous_version_id: previousProposal.id,
     proposal_number: previousProposal.proposalNumber,
-    root_proposal_id: previousProposal.rootProposalId ?? previousProposal.id,
+    root_proposal_id: rootProposalId,
     simulation_id: previousProposal.simulationId,
     status: input.status ?? "generated",
     version,
@@ -684,13 +689,13 @@ async function validateProposalOrganization(
 
 async function resolveNextCommercialProposalVersion(
   context: RequestContext,
-  proposalNumber: string,
+  rootProposalId: string,
 ) {
   const { data } = await context.supabase
     .from("crm_lead_commercial_proposals")
     .select("version")
     .eq("organization_id", context.profile.organization_id)
-    .eq("proposal_number", proposalNumber)
+    .eq("root_proposal_id", rootProposalId)
     .order("version", { ascending: false })
     .limit(1);
 

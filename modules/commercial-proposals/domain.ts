@@ -77,6 +77,28 @@ export function calculateNextCommercialProposalVersion(versions: number[]) {
   return latestVersion + 1;
 }
 
+export function buildCanonicalCommercialProposalRoot(proposalId: string) {
+  if (!proposalId.trim()) {
+    throw new Error("A proposta precisa de um identificador canonico.");
+  }
+
+  return {
+    id: proposalId,
+    rootProposalId: proposalId,
+  };
+}
+
+export function requireCanonicalCommercialProposalRoot(input: {
+  id: string;
+  rootProposalId: string;
+}) {
+  if (!input.rootProposalId.trim()) {
+    throw new Error("A proposta anterior nao possui raiz canonica.");
+  }
+
+  return input.rootProposalId;
+}
+
 export function shouldRequireCommercialProposalSimulationId(input: {
   metadata?: CommercialProposalSnapshot | null;
   status?: CommercialProposalStatus;

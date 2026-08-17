@@ -6,9 +6,11 @@ import {
   assertCommercialProposalSnapshotIsMutable,
   assertCommercialProposalTransition,
   buildCommercialProposalStatusUpdatePayload,
+  buildCanonicalCommercialProposalRoot,
   calculateNextCommercialProposalVersion,
   calculateNextAssemblyDate,
   normalizeCommercialProposalAssembly,
+  requireCanonicalCommercialProposalRoot,
   shouldRequireCommercialProposalSimulationId,
 } from "./domain.ts";
 import {
@@ -177,6 +179,34 @@ test("new versions preserve previous records by carrying lineage references", ()
 
   assert.equal(nextVersion, 2);
   assert.equal(previous.version, 1);
+});
+
+test("initial creation uses the same generated id as its canonical root", () => {
+  assert.deepEqual(buildCanonicalCommercialProposalRoot("proposal-v1"), {
+    id: "proposal-v1",
+    rootProposalId: "proposal-v1",
+  });
+});
+
+test("a new version propagates the persisted canonical root", () => {
+  assert.equal(
+    requireCanonicalCommercialProposalRoot({
+      id: "proposal-v2",
+      rootProposalId: "proposal-v1",
+    }),
+    "proposal-v1",
+  );
+});
+
+test("a version cannot choose or infer a missing root", () => {
+  assert.throws(
+    () =>
+      requireCanonicalCommercialProposalRoot({
+        id: "proposal-v1",
+        rootProposalId: "",
+      }),
+    /raiz canonica/,
+  );
 });
 
 test("allows approval from generated, presented and legacy saved statuses", () => {

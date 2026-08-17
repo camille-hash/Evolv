@@ -70,7 +70,7 @@ export type CommercialProposal = {
   proposalNumber: string;
   rejectedAt: string | null;
   rejectedBy: string | null;
-  rootProposalId: string | null;
+  rootProposalId: string;
   savedSnapshot: CommercialProposalSnapshot;
   simulationId: string | null;
   sourceSuggestion: CommercialProposalSource;
