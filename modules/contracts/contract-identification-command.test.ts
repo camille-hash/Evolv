@@ -1,0 +1,8 @@
+import assert from "node:assert/strict"; import test from "node:test"; import {readFileSync} from "node:fs";
+import {parseCompleteDraftContractIdentificationInput} from "./contract-identification-command.ts";
+const id="11111111-1111-4111-8111-111111111111";
+test("preserves textual identifiers and presence flags",()=>assert.deepEqual(parseCompleteDraftContractIdentificationInput({contractNumber:" 001-A/2 ",contractQuota:" 0007 "},id),{contractId:id,contractNumber:"001-A/2",contractQuota:"0007"}));
+test("supports progressive completion",()=>assert.equal(parseCompleteDraftContractIdentificationInput({contractQuota:"001"},id)?.contractNumber,undefined));
+test("rejects null empty no fields controls and extras",()=>{for(const v of [{},{contractNumber:null},{contractQuota:" "},{contractNumber:"A\nB"},{contractNumber:"1",origin:"rpa"}])assert.equal(parseCompleteDraftContractIdentificationInput(v,id),null)});
+test("route delegates to one server operation",()=>{const route=readFileSync(new URL("../../app/api/contracts/[contractId]/complete-identification/route.ts",import.meta.url),"utf8");assert.equal((route.match(/completeDraftContractIdentification\(/g)??[]).length,1);assert.doesNotMatch(route,/\.from\(|\.update\(/)});
+test("server delegates persistence to one RPC without service role",()=>{const server=readFileSync(new URL("./contract-identification-server.ts",import.meta.url),"utf8");assert.match(server,/\.rpc\("complete_materialized_contract_identification_transaction"/);assert.equal((server.match(/\.rpc\(/g)??[]).length,1);assert.doesNotMatch(server,/SERVICE_ROLE|service_role|\.update\(/)});
