@@ -141,6 +141,9 @@ export function parseLeadContractInput(value: unknown) {
   if (!isRecord(value)) {
     return invalid("Informe os dados do contrato.");
   }
+  if (["contractMaterializationId", "sourceCompositionItemKey", "commercialCatalogCode", "materializationId", "sourceRootProposalId", "idempotencyKey"].some((field) => field in value)) {
+    return invalid("Campos internos de materializacao nao sao aceitos.");
+  }
 
   const input: LeadContractInput = {};
 

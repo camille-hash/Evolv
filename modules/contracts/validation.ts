@@ -35,6 +35,9 @@ export function parseContractInput(value: unknown) {
   if (!isRecord(value)) {
     return invalid("Informe os dados do contrato.");
   }
+  if (containsMaterializationField(value)) {
+    return invalid("Campos internos de materializacao nao sao aceitos.");
+  }
 
   const input: ContractInput = {};
 
@@ -251,6 +254,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
       typeof value === "object" &&
       !Array.isArray(value),
   );
+}
+
+function containsMaterializationField(value: Record<string, unknown>) {
+  return [
+    "contractMaterializationId", "sourceCompositionItemKey", "commercialCatalogCode",
+    "materializationId", "sourceRootProposalId", "idempotencyKey",
+  ].some((field) => field in value);
 }
 
 function invalid(error: string) {
