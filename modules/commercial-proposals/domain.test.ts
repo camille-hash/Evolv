@@ -221,6 +221,12 @@ test("allows approval from generated, presented and legacy saved statuses", () =
   );
 });
 
+test("keeps approval revocation explicit and reapprovable", () => {
+  assert.doesNotThrow(() =>
+    assertCommercialProposalTransition("approval_revoked", "approved"),
+  );
+});
+
 test("rejects approval from invalid statuses", () => {
   assert.throws(
     () => assertCommercialProposalApprovalEligibility("draft"),

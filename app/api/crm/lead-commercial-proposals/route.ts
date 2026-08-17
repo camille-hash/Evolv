@@ -7,12 +7,14 @@ import {
   listLeadCommercialProposalsByLeadId,
   markCommercialProposalAsPresented,
   rejectCommercialProposal,
-  supersedeCommercialProposal,
+  reviseCommercialProposal,
+  revokeCommercialProposalApproval,
 } from "@/modules/crm/server/crm-lead-commercial-proposals-service";
 import {
   isCrmLeadCommercialProposalSource,
   type CreateCrmLeadCommercialProposalInput,
 } from "@/modules/crm";
+import { parseCommercialProposalCommand } from "@/modules/commercial-proposals/commands";
 
 export async function GET(request: NextRequest) {
   const accessToken = readBearerToken(request);
@@ -98,31 +100,46 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const accessToken = readBearerToken(request);
-  const body = (await request.json().catch(() => null)) as {
-    action?: unknown;
-    proposalId?: unknown;
-  } | null;
-
-  if (typeof body?.proposalId !== "string" || !body.proposalId.trim()) {
-    return NextResponse.json(
-      { error: "Informe a proposta." },
-      { status: 400 },
-    );
+  const command = parseCommercialProposalCommand(await request.json().catch(() => null));
+  if (!command) {
+    return NextResponse.json({ error: "Payload de proposta invalido." }, { status: 400 });
   }
 
-  const action = typeof body.action === "string" ? body.action : "";
+  if (command.action === "revise") {
+    const revision = await reviseCommercialProposal(accessToken, {
+      basedOnVersionId: command.basedOnVersionId,
+      revisionReason: command.revisionReason,
+      rootProposalId: command.rootProposalId,
+      savedSnapshot: command.savedSnapshot,
+    });
+    if (!revision.ok) {
+      return NextResponse.json({ code: revision.code, error: revision.error }, { status: revision.status });
+    }
+    return NextResponse.json(revision.result);
+  }
+
+  if (command.action === "revokeApproval") {
+    const revoked = await revokeCommercialProposalApproval(accessToken, {
+      proposalVersionId: command.proposalVersionId,
+      reason: command.reason,
+    });
+    if (!revoked.ok) {
+      return NextResponse.json({ error: revoked.error }, { status: revoked.status });
+    }
+    return NextResponse.json({ proposal: revoked.proposal });
+  }
+
+  const action = command.action;
   const result =
     action === "present"
-      ? await markCommercialProposalAsPresented(accessToken, body.proposalId)
+      ? await markCommercialProposalAsPresented(accessToken, command.proposalId)
       : action === "approve"
-        ? await approveCommercialProposal(accessToken, body.proposalId)
+        ? await approveCommercialProposal(accessToken, command.proposalId)
         : action === "reject"
-          ? await rejectCommercialProposal(accessToken, body.proposalId)
+          ? await rejectCommercialProposal(accessToken, command.proposalId)
           : action === "expire"
-            ? await expireCommercialProposal(accessToken, body.proposalId)
-            : action === "supersede"
-              ? await supersedeCommercialProposal(accessToken, body.proposalId)
-              : null;
+            ? await expireCommercialProposal(accessToken, command.proposalId)
+            : null;
 
   if (!result) {
     return NextResponse.json(

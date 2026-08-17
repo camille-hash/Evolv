@@ -6,7 +6,8 @@ export {
   listCommercialProposalsByLeadId as listLeadCommercialProposalsByLeadId,
   markCommercialProposalAsPresented,
   rejectCommercialProposal,
-  supersedeCommercialProposal,
+  reviseCommercialProposal,
+  revokeCommercialProposalApproval,
 } from "../../commercial-proposals/server.ts";
 export type {
   CreateCommercialProposalResult as CreateLeadCommercialProposalResult,

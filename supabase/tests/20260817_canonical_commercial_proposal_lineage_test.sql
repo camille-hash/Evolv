@@ -29,6 +29,15 @@ insert into public.organizations (id, name, slug) values
   ('c1000000-0000-4000-8000-000000000001', 'C1 Test A', 'c1-test-a'),
   ('c1000000-0000-4000-8000-000000000002', 'C1 Test B', 'c1-test-b');
 
+insert into auth.users (id)
+values ('c1500000-0000-4000-8000-000000000001');
+insert into public.profiles (id, organization_id, name, email, role)
+values (
+  'c1500000-0000-4000-8000-000000000001',
+  'c1000000-0000-4000-8000-000000000001',
+  'C1 Master', 'c1-master@test.local', 'master'
+);
+
 insert into public.crm_leads (id, organization_id, nome) values
   ('c2000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001', 'Lead A'),
   ('c2000000-0000-4000-8000-000000000002', 'c1000000-0000-4000-8000-000000000002', 'Lead B');
@@ -208,10 +217,13 @@ insert into public.crm_lead_commercial_proposals (
   'c2000000-0000-4000-8000-000000000001', 'RPC approval root', 'recommended',
   'generated', 'PROP-C1-RPC', 'c3000000-0000-4000-8000-000000000030', 1
 );
+select set_config(
+  'request.jwt.claim.sub',
+  'c1500000-0000-4000-8000-000000000001', true
+);
 select lives_ok(
   $$select public.approve_commercial_proposal_transaction(
-    'c3000000-0000-4000-8000-000000000030',
-    'c1000000-0000-4000-8000-000000000001', null)$$,
+    'c3000000-0000-4000-8000-000000000030')$$,
   'normal approval through the RPC remains functional'
 );
 

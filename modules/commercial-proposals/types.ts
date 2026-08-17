@@ -12,6 +12,7 @@ export const commercialProposalStatuses = [
   "generated",
   "presented",
   "approved",
+  "approval_revoked",
   "rejected",
   "expired",
   "superseded",
@@ -26,9 +27,12 @@ export const commercialProposalAuditEventTypes = [
   "version_created",
   "presented",
   "approved",
+  "proposal_approved",
+  "proposal_approval_revoked",
   "rejected",
   "expired",
   "superseded",
+  "version_superseded",
 ] as const;
 
 export type CommercialProposalAuditEventType =
@@ -57,6 +61,9 @@ export type CommercialProposalAssembly = {
 export type CommercialProposal = {
   approvedAt: string | null;
   approvedBy: string | null;
+  approvalRevocationReason: string | null;
+  approvalRevokedAt: string | null;
+  approvalRevokedBy: string | null;
   assembly: CommercialProposalAssembly;
   createdAt: string;
   createdBy: string | null;
@@ -102,6 +109,23 @@ export type CreateCommercialProposalVersionInput = Omit<
 > & {
   previousProposalId: string;
   status?: Extract<CommercialProposalStatus, "draft" | "generated">;
+};
+
+export type ReviseCommercialProposalInput = {
+  basedOnVersionId: string;
+  revisionReason?: string | null;
+  rootProposalId: string;
+  savedSnapshot: CommercialProposalSnapshot;
+};
+
+export type ReviseCommercialProposalResult = {
+  previousProposal: CommercialProposal;
+  proposal: CommercialProposal;
+};
+
+export type RevokeCommercialProposalApprovalInput = {
+  proposalVersionId: string;
+  reason: string;
 };
 
 export type CommercialProposalApprovalInput = {

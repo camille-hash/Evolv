@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { createClient, type User as SupabaseUser } from "@supabase/supabase-js";
 import {
+  mapCommercialProposalCommandError,
+  readCommercialProposalErrorCode,
+} from "./commands";
+import {
   assertCommercialProposalTransition,
   buildCanonicalCommercialProposalRoot,
   buildCommercialProposalStatusUpdatePayload,
-  calculateNextCommercialProposalVersion,
   normalizeCommercialProposalAssembly,
-  requireCanonicalCommercialProposalRoot,
   shouldRequireCommercialProposalSimulationId,
 } from "./domain";
 import {
@@ -20,7 +22,9 @@ import {
   type CommercialProposalStatus,
   type CommercialProposalSummary,
   type CreateCommercialProposalInput,
-  type CreateCommercialProposalVersionInput,
+  type ReviseCommercialProposalInput,
+  type ReviseCommercialProposalResult,
+  type RevokeCommercialProposalApprovalInput,
 } from "./types";
 
 type CommercialProposalProfile = {
@@ -38,6 +42,9 @@ type OrganizationRow = {
 type CommercialProposalRow = {
   approved_at: string | null;
   approved_by: string | null;
+  approval_revocation_reason: string | null;
+  approval_revoked_at: string | null;
+  approval_revoked_by: string | null;
   assembly_day_of_month: number | null;
   created_at: string | null;
   created_by: string | null;
@@ -87,6 +94,9 @@ export type ListCommercialProposalsResult =
 
 export type GetCommercialProposalResult = ProposalMutationResult;
 export type CreateCommercialProposalResult = ProposalMutationResult;
+export type ReviseCommercialProposalCommandResult =
+  | { ok: true; result: ReviseCommercialProposalResult }
+  | { code?: string; error: string; ok: false; status: number };
 
 const commercialProposalColumns = [
   "id",
@@ -104,6 +114,9 @@ const commercialProposalColumns = [
   "presented_at",
   "approved_at",
   "approved_by",
+  "approval_revoked_at",
+  "approval_revoked_by",
+  "approval_revocation_reason",
   "rejected_at",
   "rejected_by",
   "expired_at",
@@ -281,91 +294,53 @@ export async function createCommercialProposal(
   };
 }
 
-export async function createCommercialProposalVersion(
+export async function reviseCommercialProposal(
   accessToken: string | null,
-  input: CreateCommercialProposalVersionInput,
-): Promise<CreateCommercialProposalResult> {
+  input: ReviseCommercialProposalInput,
+): Promise<ReviseCommercialProposalCommandResult> {
+  if (
+    !input.rootProposalId.trim() ||
+    !input.basedOnVersionId.trim() ||
+    !isPlainObject(input.savedSnapshot)
+  ) {
+    return commandError("CP_INVALID_PAYLOAD");
+  }
+
   const context = await resolveCommercialProposalRequestContext(accessToken);
 
   if (!context.ok) {
     return context;
   }
 
-  const previousValidation = await validateProposalOrganization(
-    context,
-    input.previousProposalId,
+  const { data, error } = await context.supabase.rpc(
+    "revise_commercial_proposal_transaction",
+    {
+      p_based_on_version_id: input.basedOnVersionId,
+      p_revision_reason: input.revisionReason ?? null,
+      p_root_proposal_id: input.rootProposalId,
+      p_saved_snapshot: input.savedSnapshot,
+    },
   );
-
-  if (!previousValidation.ok) {
-    return previousValidation;
-  }
-
-  const previousProposal = previousValidation.proposal;
-  const rootProposalId = requireCanonicalCommercialProposalRoot(previousProposal);
-  const validation = validateCreateCommercialProposalInput({
-    ...input,
-    leadId: previousProposal.leadId,
-    originalSnapshot: input.originalSnapshot,
-    savedSnapshot: input.savedSnapshot,
-    sourceSuggestion: previousProposal.sourceSuggestion,
-  });
-
-  if (!validation.ok) {
-    return validation;
-  }
-
-  const version = await resolveNextCommercialProposalVersion(
-    context,
-    rootProposalId,
-  );
-  const now = new Date();
-  const assembly = normalizeCommercialProposalAssembly(input.assembly, now);
-  const payload = {
-    ...buildCommercialProposalPayload(
-      {
-        ...input,
-        leadId: previousProposal.leadId,
-        sourceSuggestion: previousProposal.sourceSuggestion,
-      },
-      assembly,
-    ),
-    created_by: context.profile.id,
-    lead_id: previousProposal.leadId,
-    organization_id: context.profile.organization_id,
-    previous_version_id: previousProposal.id,
-    proposal_number: previousProposal.proposalNumber,
-    root_proposal_id: rootProposalId,
-    simulation_id: previousProposal.simulationId,
-    status: input.status ?? "generated",
-    version,
-  };
-
-  const { data, error } = await context.supabase
-    .from("crm_lead_commercial_proposals")
-    .insert(payload)
-    .select(commercialProposalColumns)
-    .single();
 
   if (error) {
-    return {
-      error: "Nao foi possivel criar uma nova versao da proposta.",
-      ok: false,
-      status: 500,
-    };
+    return commandError(readCommercialProposalErrorCode(error.message));
   }
 
-  const proposal = mapCommercialProposalRow(
-    data as unknown as CommercialProposalRow,
-  );
+  const payload = data as {
+    previousProposal?: CommercialProposalRow;
+    proposal?: CommercialProposalRow;
+  } | null;
 
-  await insertCommercialProposalAuditEvent(context, proposal, "version_created", {
-    previousProposalId: previousProposal.id,
-    previousVersion: previousProposal.version,
-  });
+  if (!payload?.previousProposal || !payload.proposal) {
+    return commandError("CP_LINEAGE_INTEGRITY_ERROR");
+  }
 
   return {
     ok: true,
-    proposal,
+    result: {
+      previousProposal: mapCommercialProposalRow(payload.previousProposal),
+      proposal: mapCommercialProposalRow(payload.proposal),
+    },
   };
 }
 
@@ -389,18 +364,41 @@ export async function approveCommercialProposal(
   const { data, error } = await context.supabase.rpc(
     "approve_commercial_proposal_transaction",
     {
-      p_approved_by: context.profile.id,
-      p_organization_id: context.profile.organization_id,
       p_proposal_id: proposalId,
     },
   );
 
   if (error) {
-    return {
-      error: "Nao foi possivel aprovar a proposta comercial.",
-      ok: false,
-      status: 409,
-    };
+    return commandError(readCommercialProposalErrorCode(error.message));
+  }
+
+  return {
+    ok: true,
+    proposal: mapCommercialProposalRow(data as unknown as CommercialProposalRow),
+  };
+}
+
+export async function revokeCommercialProposalApproval(
+  accessToken: string | null,
+  input: RevokeCommercialProposalApprovalInput,
+): Promise<ProposalMutationResult> {
+  if (!input.proposalVersionId.trim() || !input.reason.trim()) {
+    return commandError("CP_REVOCATION_REASON_REQUIRED");
+  }
+
+  const context = await resolveCommercialProposalRequestContext(accessToken);
+  if (!context.ok) return context;
+
+  const { data, error } = await context.supabase.rpc(
+    "revoke_commercial_proposal_approval_transaction",
+    {
+      p_proposal_version_id: input.proposalVersionId,
+      p_reason: input.reason,
+    },
+  );
+
+  if (error) {
+    return commandError(readCommercialProposalErrorCode(error.message));
   }
 
   return {
@@ -421,13 +419,6 @@ export async function expireCommercialProposal(
   proposalId: string,
 ): Promise<ProposalMutationResult> {
   return updateCommercialProposalStatus(accessToken, proposalId, "expired");
-}
-
-export async function supersedeCommercialProposal(
-  accessToken: string | null,
-  proposalId: string,
-): Promise<ProposalMutationResult> {
-  return updateCommercialProposalStatus(accessToken, proposalId, "superseded");
 }
 
 async function updateCommercialProposalStatus(
@@ -687,27 +678,6 @@ async function validateProposalOrganization(
   };
 }
 
-async function resolveNextCommercialProposalVersion(
-  context: RequestContext,
-  rootProposalId: string,
-) {
-  const { data } = await context.supabase
-    .from("crm_lead_commercial_proposals")
-    .select("version")
-    .eq("organization_id", context.profile.organization_id)
-    .eq("root_proposal_id", rootProposalId)
-    .order("version", { ascending: false })
-    .limit(1);
-
-  return calculateNextCommercialProposalVersion(
-    Array.isArray(data)
-      ? data
-          .map((row) => row.version)
-          .filter((version): version is number => typeof version === "number")
-      : [],
-  );
-}
-
 async function insertCommercialProposalAuditEvent(
   context: RequestContext,
   proposal: CommercialProposal,
@@ -847,6 +817,9 @@ function mapCommercialProposalRow(
   return {
     approvedAt: row.approved_at,
     approvedBy: row.approved_by,
+    approvalRevocationReason: row.approval_revocation_reason,
+    approvalRevokedAt: row.approval_revoked_at,
+    approvalRevokedBy: row.approval_revoked_by,
     assembly: {
       dayOfMonth: row.assembly_day_of_month,
       effectiveNextAssemblyDate: row.effective_next_assembly_date,
@@ -921,4 +894,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
       typeof value === "object" &&
       !Array.isArray(value),
   );
+}
+
+function commandError(code: string) {
+  const mapped = mapCommercialProposalCommandError(code);
+  return { code, error: mapped.error, ok: false as const, status: mapped.status };
 }

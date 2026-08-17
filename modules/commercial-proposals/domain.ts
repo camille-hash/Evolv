@@ -6,6 +6,7 @@ import type {
 
 const allowedTransitions: Record<CommercialProposalStatus, CommercialProposalStatus[]> = {
   approved: ["superseded"],
+  approval_revoked: ["approved", "superseded"],
   draft: ["generated", "superseded"],
   expired: [],
   generated: ["presented", "approved", "rejected", "expired", "superseded"],
@@ -17,6 +18,7 @@ const allowedTransitions: Record<CommercialProposalStatus, CommercialProposalSta
 
 const immutableSnapshotStatuses: CommercialProposalStatus[] = [
   "approved",
+  "approval_revoked",
   "rejected",
   "expired",
   "superseded",
@@ -50,7 +52,12 @@ export function assertCommercialProposalSnapshotIsMutable(
 export function assertCommercialProposalApprovalEligibility(
   status: CommercialProposalStatus,
 ) {
-  if (status !== "generated" && status !== "presented" && status !== "saved") {
+  if (
+    status !== "generated" &&
+    status !== "presented" &&
+    status !== "saved" &&
+    status !== "approval_revoked"
+  ) {
     throw new Error(
       `Proposta comercial nao pode ser aprovada a partir do status ${status}.`,
     );

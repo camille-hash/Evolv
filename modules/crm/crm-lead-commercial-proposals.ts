@@ -11,4 +11,7 @@ export type {
   CommercialProposalStatus as CrmLeadCommercialProposalStatus,
   CommercialProposalSummary as CrmLeadCommercialProposalSummary,
   CreateCommercialProposalInput as CreateCrmLeadCommercialProposalInput,
+  ReviseCommercialProposalInput,
+  ReviseCommercialProposalResult,
+  RevokeCommercialProposalApprovalInput,
 } from "../commercial-proposals/types.ts";
