@@ -38,6 +38,7 @@ export const commercialProposalAuditEventTypes = [
 export type CommercialProposalAuditEventType =
   (typeof commercialProposalAuditEventTypes)[number];
 
+import type { CommercialProposalSnapshotAuthority } from "./snapshot-v1";
 export type CommercialProposalSnapshot = Record<string, unknown>;
 
 export type CommercialProposalSummary = {
@@ -88,6 +89,9 @@ export type CommercialProposal = {
   title: string;
   updatedAt: string;
   version: number;
+  snapshotSchemaVersion: string;
+  commercialTermsHash: string | null;
+  snapshotAuthority: CommercialProposalSnapshotAuthority | "legacy";
 };
 
 export type CreateCommercialProposalInput = {

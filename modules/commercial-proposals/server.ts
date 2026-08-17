@@ -12,6 +12,10 @@ import {
   shouldRequireCommercialProposalSimulationId,
 } from "./domain";
 import {
+  calculateCommercialTermsHash,
+  parseCommercialProposalSavedSnapshot,
+} from "./snapshot-v1";
+import {
   isCommercialProposalSource,
   isCommercialProposalStatus,
   type CommercialProposal,
@@ -72,6 +76,9 @@ type CommercialProposalRow = {
   title: string | null;
   updated_at: string | null;
   version: number | null;
+  snapshot_schema_version: string | null;
+  commercial_terms_hash: string | null;
+  snapshot_authority: string | null;
 };
 
 type RequestContext = {
@@ -111,6 +118,9 @@ const commercialProposalColumns = [
   "root_proposal_id",
   "previous_version_id",
   "version",
+  "snapshot_schema_version",
+  "commercial_terms_hash",
+  "snapshot_authority",
   "presented_at",
   "approved_at",
   "approved_by",
@@ -253,7 +263,7 @@ export async function createCommercialProposal(
   const assembly = normalizeCommercialProposalAssembly(input.assembly, now);
   const proposalNumber = createCommercialProposalNumber(now);
   const proposalIdentity = buildCanonicalCommercialProposalRoot(randomUUID());
-  const payload = {
+  const payload: Record<string, unknown> = {
     ...buildCommercialProposalPayload(input, assembly),
     created_by: context.profile.id,
     id: proposalIdentity.id,
@@ -304,6 +314,10 @@ export async function reviseCommercialProposal(
     !isPlainObject(input.savedSnapshot)
   ) {
     return commandError("CP_INVALID_PAYLOAD");
+  }
+  const parsedSnapshot = parseCommercialProposalSavedSnapshot(input.savedSnapshot);
+  if (parsedSnapshot.kind === "unsupported" || parsedSnapshot.kind === "invalid_v1") {
+    return commandError(parsedSnapshot.code);
   }
 
   const context = await resolveCommercialProposalRequestContext(accessToken);
@@ -736,6 +750,10 @@ function validateCreateCommercialProposalInput(
       status: 400,
     };
   }
+  const parsedSnapshot = parseCommercialProposalSavedSnapshot(input.savedSnapshot);
+  if (parsedSnapshot.kind === "unsupported" || parsedSnapshot.kind === "invalid_v1") {
+    return { error: "Snapshot comercial formal invalido.", ok: false as const, status: 400 };
+  }
 
   if (
     input.status &&
@@ -773,7 +791,18 @@ function buildCommercialProposalPayload(
   input: CreateCommercialProposalInput,
   assembly: CommercialProposalAssembly,
 ) {
+  const parsed = parseCommercialProposalSavedSnapshot(input.savedSnapshot);
+  const snapshotMetadata = parsed.kind === "v1" ? {
+    commercial_terms_hash: calculateCommercialTermsHash(parsed.snapshot),
+    snapshot_authority: parsed.snapshot.provenance.authority,
+    snapshot_schema_version: parsed.snapshot.schemaVersion,
+  } : {
+    commercial_terms_hash: null,
+    snapshot_authority: "legacy",
+    snapshot_schema_version: "legacy",
+  };
   return {
+    ...snapshotMetadata,
     assembly_day_of_month: assembly.dayOfMonth,
     effective_next_assembly_date: assembly.effectiveNextAssemblyDate,
     metadata: normalizeOptionalSnapshot(input.metadata),
@@ -849,7 +878,16 @@ function mapCommercialProposalRow(
     title: row.title ?? "",
     updatedAt: row.updated_at ?? row.created_at ?? now,
     version: row.version ?? 1,
+    snapshotSchemaVersion: row.snapshot_schema_version ?? "legacy",
+    commercialTermsHash: row.commercial_terms_hash,
+    snapshotAuthority: normalizeSnapshotAuthority(row.snapshot_authority),
   };
+}
+
+function normalizeSnapshotAuthority(value: string | null): CommercialProposal["snapshotAuthority"] {
+  return value === "server_derived" || value === "server_verified" ||
+    value === "client_structured_legacy" || value === "unsupported_for_materialization"
+    ? value : "legacy";
 }
 
 function normalizeAssemblySource(row: CommercialProposalRow) {

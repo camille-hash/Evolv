@@ -1,0 +1,18 @@
+begin;
+select plan(14);
+select has_column('public','crm_lead_commercial_proposals','snapshot_schema_version','snapshot schema is explicit');
+select has_column('public','crm_lead_commercial_proposals','commercial_terms_hash','commercial hash is explicit');
+select has_column('public','crm_lead_commercial_proposals','snapshot_authority','snapshot authority is explicit');
+select has_function('public','commercial_proposal_terms_hash',array['jsonb'],'database hash function exists');
+select has_function('public','commercial_proposal_snapshot_v1_minimally_valid',array['jsonb'],'minimum envelope validator exists');
+select has_trigger('public','crm_lead_commercial_proposals','crm_lead_commercial_proposals_snapshot_metadata','snapshot metadata trigger exists');
+select ok(public.commercial_proposal_snapshot_v1_minimally_valid($${"schemaVersion":"commercial-proposal/v1","proposalKind":"standard_simulation","provenance":{"authority":"client_structured_legacy"},"product":{},"strategy":{},"composition":[{}],"commercialTerms":{},"disclosures":[]}$$::jsonb),'minimum V1 envelope is accepted');
+select isnt(public.commercial_proposal_terms_hash($${"commercialTerms":{},"composition":[],"disclosures":[],"product":{},"strategy":{}}$$::jsonb),null,'hash is produced');
+select is(length(public.commercial_proposal_terms_hash($${"commercialTerms":{},"composition":[],"disclosures":[],"product":{},"strategy":{}}$$::jsonb)),64,'hash is sha256 hex');
+select is(public.commercial_proposal_terms_hash($${"strategy":{},"product":{},"disclosures":[],"composition":[],"commercialTerms":{}}$$::jsonb),public.commercial_proposal_terms_hash($${"commercialTerms":{},"composition":[],"disclosures":[],"product":{},"strategy":{}}$$::jsonb),'key order does not affect hash');
+select is(public.commercial_proposal_terms_hash($${"commercialTerms":{},"composition":[],"disclosures":[],"product":{},"strategy":{},"presentationReference":{"publicationId":"a"}}$$::jsonb),public.commercial_proposal_terms_hash($${"commercialTerms":{},"composition":[],"disclosures":[],"product":{},"strategy":{},"presentationReference":{"publicationId":"b"}}$$::jsonb),'publication is outside commercial hash');
+select isnt(public.commercial_proposal_terms_hash($${"commercialTerms":{"conditions":[]},"composition":[],"disclosures":[],"product":{},"strategy":{}}$$::jsonb),public.commercial_proposal_terms_hash($${"commercialTerms":{"conditions":["changed"]},"composition":[],"disclosures":[],"product":{},"strategy":{}}$$::jsonb),'commercial change affects hash');
+select ok(not public.commercial_proposal_snapshot_v1_minimally_valid($${"schemaVersion":"commercial-proposal/v1"}$$::jsonb),'incomplete V1 is rejected');
+select ok(not public.commercial_proposal_snapshot_v1_minimally_valid($${"schemaVersion":"commercial-proposal/v2","proposalKind":"standard_simulation","provenance":{"authority":"client_structured_legacy"},"product":{},"strategy":{},"composition":[{}],"commercialTerms":{},"disclosures":[]}$$::jsonb),'unknown schema is rejected');
+select * from finish();
+rollback;
