@@ -28,7 +28,7 @@ select throws_ok(format('select complete_materialized_contract_identification_tr
 select throws_ok(format('select complete_materialized_contract_identification_transaction(%L,true,%L,false,null,%L)',(select id from ids where n=2),'002','reason'),'P0001','CID_NUMBER_CONFLICT','number duplicate blocked');
 select throws_ok(format('select complete_materialized_contract_identification_transaction(%L,false,null,false,null,null)',(select id from ids where n=1)),'P0001','CID_NO_FIELDS','no fields blocked');
 select throws_ok(format('select complete_materialized_contract_identification_transaction(%L,true,%L,false,null,null)',(select id from ids where n=1),''),'P0001','CID_NUMBER_INVALID','empty blocked');
-select throws_ok(format('update contracts set contract_number=%L where id=%L','bypass',(select id from ids where n=1)),'42501',null,'authenticated direct generic update blocked');
+select throws_ok(format('update contracts set contract_number=%L where id=%L','bypass',(select id from ids where n=1)),'P0001','CID_IDENTIFICATION_COMMAND_REQUIRED','authenticated direct generic update reaches the materialized-contract guard and is blocked by the identification command requirement');
 reset role;
 select set_config('app.contract_identification_origin','',true);
 select throws_ok(format('update contracts set contract_number=%L where id=%L','bypass',(select id from ids where n=1)),'P0001','CID_IDENTIFICATION_COMMAND_REQUIRED','database guard blocks privileged generic update');
