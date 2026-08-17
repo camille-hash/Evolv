@@ -42,9 +42,11 @@ type ContractRow = {
   cancelled_at: string | null;
   client_id: string | null;
   commission_plan_id: string | null;
+  commercial_catalog_code: string | null;
   completed_at: string | null;
   contemplation_model: string | null;
   contract_number: string | null;
+  contract_materialization_id: string | null;
   contract_group: string | null;
   contract_quota: string | null;
   created_at: string | null;
@@ -60,6 +62,7 @@ type ContractRow = {
   rejected_at: string | null;
   signed_at: string | null;
   source_proposal_id: string | null;
+  source_composition_item_key: string | null;
   source_proposal_version: number | null;
   status: string | null;
   submitted_at: string | null;
@@ -98,12 +101,15 @@ const contractColumns = [
   "client_id",
   "administrator_id",
   "commission_plan_id",
+  "commercial_catalog_code",
+  "contract_materialization_id",
   "contract_group",
   "contract_quota",
   "contract_number",
   "status",
   "product_type",
   "source_proposal_id",
+  "source_composition_item_key",
   "source_proposal_version",
   "proposal_snapshot",
   "credit_amount",
@@ -1172,8 +1178,10 @@ function mapContractRow(row: ContractRow): Contract {
     cancelledAt: row.cancelled_at,
     clientId: row.client_id,
     commissionPlanId: row.commission_plan_id,
+    commercialCatalogCode: row.commercial_catalog_code,
     completedAt: row.completed_at,
     contemplationModel: row.contemplation_model,
+    contractMaterializationId: row.contract_materialization_id,
     contractNumber: row.contract_number,
     createdAt: row.created_at ?? now,
     createdBy: row.created_by,
@@ -1192,6 +1200,7 @@ function mapContractRow(row: ContractRow): Contract {
     rejectedAt: row.rejected_at,
     signedAt: row.signed_at,
     sourceProposalId: row.source_proposal_id,
+    sourceCompositionItemKey: row.source_composition_item_key,
     sourceProposalVersion: row.source_proposal_version,
     status: normalizeContractStatus(row.status),
     submittedAt: row.submitted_at,

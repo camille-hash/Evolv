@@ -48,8 +48,10 @@ export type Contract = {
   cancelledAt: string | null;
   clientId: string | null;
   commissionPlanId: string | null;
+  commercialCatalogCode: string | null;
   completedAt: string | null;
   contemplationModel: string | null;
+  contractMaterializationId: string | null;
   contractNumber: string | null;
   createdAt: string;
   createdBy: string | null;
@@ -66,6 +68,7 @@ export type Contract = {
   rejectedAt: string | null;
   signedAt: string | null;
   sourceProposalId: string | null;
+  sourceCompositionItemKey: string | null;
   sourceProposalVersion: number | null;
   status: ContractStatus;
   submittedAt: string | null;
