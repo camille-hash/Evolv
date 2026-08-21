@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ProposalMaterializationPanel } from "@/components/contracts/proposal-materialization-panel";
 import { LeadContractsCard } from "@/components/crm/lead-contracts-card";
 import { PrimaryJourneyAction } from "@/components/crm/primary-journey-action";
 import { CrmStructuredNotesList } from "@/components/crm/crm-structured-notes";
@@ -24,6 +25,7 @@ import {
 import type { CommercialAttentionProductDecision } from "@/modules/decision-models/dm001-product-surface";
 import {
   fetchLeadCommercialProposals,
+  leadCommercialProposalsChangedEvent,
 } from "@/modules/crm/client/crm-lead-commercial-proposals-client";
 import {
   archiveCrmLeadKnowledgeItem,
@@ -90,7 +92,16 @@ import {
   buildExecutiveBriefing,
   buildFrictionMap,
 } from "@/modules/crm";
-import type { GeneratedProposalRecord } from "@/modules/proposal/proposal-history";
+import {
+  getCommercialProposalStatusLabel,
+  groupCommercialProposalLineages,
+  isFormalCommercialProposalV1,
+  projectCommercialProposalV1,
+  readCommercialProposalProduct,
+  readCommercialProposalQuotaCount,
+  readCommercialProposalTotalCredit,
+  type CommercialProposalLineage,
+} from "@/modules/commercial-proposals/presentation";
 import { fetchLeadContracts } from "@/modules/contracts/client";
 import type { LeadContractSummary } from "@/modules/contracts/types";
 import { generateMultiCotasCommercialPdf } from "@/modules/reports";
@@ -160,6 +171,7 @@ type DossierTabKey =
   | "summary"
   | "timeline"
   | "simulations"
+  | "proposals"
   | "tasks-notes"
   | "communications"
   | "meetings"
@@ -191,7 +203,6 @@ type CrmLeadDetailProps = {
   onGenerateReferenceCapitalStrategy?: (lead: CrmLead) => void;
   onGenerateSimulation?: (lead: CrmLead) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
-  proposals: GeneratedProposalRecord[];
 };
 
 export function CrmLeadDetail({
@@ -206,7 +217,6 @@ export function CrmLeadDetail({
   onGenerateReferenceCapitalStrategy,
   onGenerateSimulation,
   onSave,
-  proposals,
 }: CrmLeadDetailProps) {
   const [isNotesHistoryOpen, setIsNotesHistoryOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
@@ -297,6 +307,8 @@ export function CrmLeadDetail({
   const [isLoadingSimulations, setIsLoadingSimulations] = useState(false);
   const [isLoadingCommercialProposals, setIsLoadingCommercialProposals] =
     useState(false);
+  const [commercialProposalsReloadKey, setCommercialProposalsReloadKey] =
+    useState(0);
   const [isLoadingContracts, setIsLoadingContracts] = useState(false);
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [isLoadingCommercialAttention, setIsLoadingCommercialAttention] =
@@ -356,6 +368,11 @@ export function CrmLeadDetail({
         : [],
     [commercialProposalsState, lead.id],
   );
+  const commercialProposalLineages = useMemo(
+    () => groupCommercialProposalLineages(commercialProposals),
+    [commercialProposals],
+  );
+  const latestCommercialProposal = commercialProposalLineages[0]?.current ?? null;
   const leadContracts =
     contractsState?.leadId === lead.id ? contractsState.contracts : [];
   const commercialSimulations = leadSimulations.filter(
@@ -431,6 +448,12 @@ export function CrmLeadDetail({
     !isLoadingStrategicProfile &&
     !isLoadingSimulations &&
     Boolean(onConvertToClient);
+  useEffect(() => {
+    const reload = () => setCommercialProposalsReloadKey((current) => current + 1);
+    window.addEventListener(leadCommercialProposalsChangedEvent, reload);
+    return () => window.removeEventListener(leadCommercialProposalsChangedEvent, reload);
+  }, []);
+
   useEffect(() => {
     let isActive = true;
 
@@ -622,7 +645,7 @@ export function CrmLeadDetail({
     return () => {
       isActive = false;
     };
-  }, [lead.id]);
+  }, [commercialProposalsReloadKey, lead.id]);
 
   useEffect(() => {
     let isActive = true;
@@ -1427,6 +1450,10 @@ export function CrmLeadDetail({
     }
   }
 
+  function reloadCommercialProposals() {
+    setCommercialProposalsReloadKey((current) => current + 1);
+  }
+
   return (
     <section className="grid gap-4">
       {onGenerateSimulation || onGenerateMultiCotas || onGenerateReferenceCapitalStrategy ? (
@@ -1501,6 +1528,7 @@ export function CrmLeadDetail({
             activeTab={activeDossierTab}
             className="min-w-0 flex-1"
             onChange={setActiveDossierTab}
+            proposalCount={commercialProposalLineages.length}
           />
           <div className="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,14rem)_auto] xl:min-w-[34rem]">
             <Field label="Funil">
@@ -1752,7 +1780,7 @@ export function CrmLeadDetail({
               eyebrow="Comercial"
               title="Ultimos Artefatos"
             >
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-4 xl:grid-cols-3">
                 <LeadExecutiveSimulationSummary
                   emptyText="Nenhuma simulacao comercial salva para este lead."
                   simulation={latestCommercialSimulation}
@@ -1762,6 +1790,11 @@ export function CrmLeadDetail({
                   emptyText="Nenhum estudo Multi-Cotas salvo para este lead."
                   simulation={latestMultiCotasSimulation}
                   title="Ultimo Estudo Multi-Cotas"
+                />
+                <LeadExecutiveProposalSummary
+                  isLoading={isLoadingCommercialProposals}
+                  onOpen={() => setActiveDossierTab("proposals")}
+                  proposal={latestCommercialProposal}
                 />
               </div>
             </ExecutiveDossierCard>
@@ -1906,23 +1939,23 @@ export function CrmLeadDetail({
                     </ExecutiveDossierCard>
 
                     <ExecutiveDossierCard
-                      description="Artefatos comerciais ja existentes no EVOLV."
+                      description="A consulta principal usa propostas persistidas do lead."
                       eyebrow="Card 6"
                       title="Propostas e Simulacoes"
                     >
-                      <div className="grid gap-3">
-                        {proposals.length ? (
-                          proposals.map((proposal) => (
-                            <GeneratedProposalItem
-                              key={`${proposal.generatedAt}-${proposal.fileName ?? "pdf"}`}
-                              proposal={proposal}
-                            />
-                          ))
-                        ) : (
-                          <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                            Nenhuma proposta gerada nesta sessao.
-                          </p>
-                        )}
+                      <div className="grid gap-3 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                        <p>
+                          {commercialProposalLineages.length
+                            ? `${commercialProposalLineages.length} proposta(s) comercial(is) registrada(s) para este lead.`
+                            : "Nenhuma proposta comercial registrada para este lead."}
+                        </p>
+                        <Button
+                          onClick={() => setActiveDossierTab("proposals")}
+                          type="button"
+                          variant="secondary"
+                        >
+                          Ver propostas persistidas
+                        </Button>
                       </div>
                     </ExecutiveDossierCard>
                   </div>
@@ -2017,18 +2050,6 @@ export function CrmLeadDetail({
             </ExecutiveDossierCard>
 
             <ExecutiveDossierCard
-              description="Propostas comerciais preservadas como snapshot historico do lead."
-              eyebrow="Propostas"
-              title="Propostas Comerciais"
-            >
-              <LeadCommercialProposalList
-                error={commercialProposalsError}
-                isLoading={isLoadingCommercialProposals}
-                proposals={commercialProposals}
-              />
-            </ExecutiveDossierCard>
-
-            <ExecutiveDossierCard
               description="Historico de estudos Multi-Cotas vinculados a este lead."
               eyebrow="Estrategia"
               title="Estrategia Multi-Cotas"
@@ -2071,6 +2092,29 @@ export function CrmLeadDetail({
                 error={contractsError}
                 isLoading={isLoadingContracts}
                 leadId={lead.id}
+              />
+            </ExecutiveDossierCard>
+          </div>
+        ) : null}
+
+        {activeDossierTab === "proposals" ? (
+          <div className="grid gap-4">
+            <DossierAreaHeader
+              description="Propostas comerciais persistidas, organizadas por linhagem e versão corrente."
+              id="dossie-propostas"
+              title="Propostas"
+            />
+            <ExecutiveDossierCard
+              description="Aprovação, histórico e materialização contratual permanecem disponíveis depois de atualizar a página."
+              eyebrow="Propostas"
+              title="Propostas Comerciais"
+            >
+              <LeadCommercialProposalList
+                error={commercialProposalsError}
+                isLoading={isLoadingCommercialProposals}
+                lineages={commercialProposalLineages}
+                onChanged={reloadCommercialProposals}
+                onRetry={reloadCommercialProposals}
               />
             </ExecutiveDossierCard>
           </div>
@@ -2850,6 +2894,7 @@ const dossierNavigationItems: Array<{ key: DossierTabKey; label: string }> = [
   { key: "summary", label: "Resumo" },
   { key: "timeline", label: "Timeline" },
   { key: "simulations", label: "Simulacoes" },
+  { key: "proposals", label: "Propostas" },
   { key: "tasks-notes", label: "Tarefas e Notas" },
   { key: "communications", label: "Comunicacoes" },
   { key: "meetings", label: "Reunioes" },
@@ -2860,10 +2905,12 @@ function DossierMultichannelNavigation({
   activeTab,
   className,
   onChange,
+  proposalCount,
 }: {
   activeTab: DossierTabKey;
   className?: string;
   onChange: (tab: DossierTabKey) => void;
+  proposalCount: number;
 }) {
   return (
     <nav
@@ -2885,6 +2932,11 @@ function DossierMultichannelNavigation({
             type="button"
           >
             {item.label}
+            {item.key === "proposals" && proposalCount > 0 ? (
+              <span className="ml-2 rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                {proposalCount}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -3728,51 +3780,54 @@ function LeadSimulationHistoryList({
 function LeadCommercialProposalList({
   error,
   isLoading,
-  proposals,
+  lineages,
+  onChanged,
+  onRetry,
 }: {
   error: string | null;
   isLoading: boolean;
-  proposals: CrmLeadCommercialProposal[];
+  lineages: CommercialProposalLineage[];
+  onChanged: () => void;
+  onRetry: () => void;
 }) {
   const [selectedProposalId, setSelectedProposalId] = useState<string | null>(
     null,
   );
-  const orderedProposals = [...proposals].sort(
-    (first, second) =>
-      new Date(second.createdAt).getTime() -
-      new Date(first.createdAt).getTime(),
-  );
-
   if (isLoading) {
     return (
-      <p className="rounded-md border bg-background/70 p-4 text-sm text-muted-foreground">
-        Carregando propostas comerciais...
-      </p>
+      <div className="grid gap-3" aria-label="Carregando propostas comerciais">
+        {[0, 1].map((item) => (
+          <div className="h-28 animate-pulse rounded-md border bg-muted/40" key={item} />
+        ))}
+      </div>
     );
   }
 
   if (error) {
     return (
-      <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
-        {error}
-      </p>
+      <div className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
+        <p>{error}</p>
+        <Button className="mt-3" onClick={onRetry} type="button" variant="secondary">
+          Tentar novamente
+        </Button>
+      </div>
     );
   }
 
-  if (!orderedProposals.length) {
+  if (!lineages.length) {
     return (
       <p className="rounded-md border border-dashed bg-background/60 p-4 text-sm text-muted-foreground">
-        Nenhuma proposta comercial salva neste lead.
+        Nenhuma proposta comercial registrada para este lead.
       </p>
     );
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {orderedProposals.map((proposal) => (
+    <div className="grid gap-3">
+      {lineages.map(({ current: proposal, versions }) => (
         <article
           className="rounded-md border bg-background/70 p-4 text-sm"
-          key={proposal.id}
+          key={proposal.rootProposalId}
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -3780,39 +3835,26 @@ function LeadCommercialProposalList({
                 {proposal.title}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {commercialProposalSourceLabels[proposal.sourceSuggestion]}
+                {proposal.proposalNumber} · Versão {proposal.version}
               </p>
             </div>
-            <span className="shrink-0 rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground">
-              {dateFormatter.format(new Date(proposal.createdAt))}
+            <span className="shrink-0 rounded-full border bg-card px-2 py-1 text-[11px] font-medium text-foreground">
+              {getCommercialProposalStatusLabel(proposal.status)}
             </span>
           </div>
-          <div className="mt-4 grid gap-2">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <LeadInfo label="Produto" value={readCommercialProposalProduct(proposal)} />
             <LeadInfo
-              label="Credito"
-              value={formatCurrencyOrDash(
-                readProposalSummaryNumber(proposal.summary.commercialCredit),
-              )}
+              label="Crédito total"
+              value={formatCurrencyOrDash(readCommercialProposalTotalCredit(proposal))}
             />
             <LeadInfo
-              label="Parcela"
-              value={formatCurrencyOrDash(
-                readProposalSummaryNumber(proposal.summary.monthlyPayment),
-              )}
+              label="Cotas"
+              value={String(readCommercialProposalQuotaCount(proposal) ?? "—")}
             />
             <LeadInfo
-              label="Parcela pos"
-              value={formatCurrencyOrDash(
-                readProposalSummaryNumber(
-                  proposal.summary.postContemplationPayment,
-                ),
-              )}
-            />
-            <LeadInfo
-              label="Contemplacao"
-              value={formatMonthOrDash(
-                readProposalSummaryNumber(proposal.summary.contemplationMonth),
-              )}
+              label="Atualizada em"
+              value={dateFormatter.format(new Date(proposal.updatedAt))}
             />
           </div>
           <div className="mt-4">
@@ -3826,12 +3868,33 @@ function LeadCommercialProposalList({
               variant="secondary"
             >
               {selectedProposalId === proposal.id
-                ? "Fechar proposta"
-                : "Abrir proposta"}
+                ? "Recolher detalhes"
+                : "Ver detalhes"}
             </Button>
           </div>
           {selectedProposalId === proposal.id ? (
-            <LeadCommercialProposalSnapshotDetail proposal={proposal} />
+            <>
+              <ProposalMaterializationPanel onChanged={onChanged} proposal={proposal} />
+              {isFormalCommercialProposalV1(proposal) ? (
+                <LeadCommercialProposalV1Detail proposal={proposal} />
+              ) : (
+                <LeadCommercialProposalSnapshotDetail proposal={proposal} />
+              )}
+              {versions.length > 1 ? (
+                <details className="mt-4 rounded-md border border-dashed p-3">
+                  <summary className="cursor-pointer text-xs font-medium">
+                    Histórico de versões ({versions.length})
+                  </summary>
+                  <ul className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                    {versions.map((version) => (
+                      <li key={version.id}>
+                        Versão {version.version} · {getCommercialProposalStatusLabel(version.status)}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </>
           ) : null}
         </article>
       ))}
@@ -3847,7 +3910,7 @@ function LeadCommercialProposalSnapshotDetail({
   return (
     <div className="mt-4 rounded-md border border-dashed bg-card p-3">
       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        Snapshot persistido
+        Detalhes da proposta
       </p>
       <div className="mt-3 grid gap-3">
         <LeadProposalSnapshotColumn
@@ -4590,6 +4653,136 @@ function LeadExecutiveSimulationSummary({
         </div>
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">{emptyText}</p>
+      )}
+    </div>
+  );
+}
+
+function LeadCommercialProposalV1Detail({
+  proposal,
+}: {
+  proposal: CrmLeadCommercialProposal;
+}) {
+  const presentation = projectCommercialProposalV1(proposal);
+  if (!presentation) return null;
+
+  return (
+    <div className="mt-4 grid gap-4">
+      <section className="rounded-md border bg-card p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          Resumo do produto
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {presentation.product ? <LeadInfo label="Produto" value={presentation.product} /> : null}
+          {presentation.administrator ? <LeadInfo label="Administradora" value={presentation.administrator} /> : null}
+          {presentation.groupCode ? <LeadInfo label="Grupo" value={presentation.groupCode} /> : null}
+          {presentation.modelCode ? <LeadInfo label="Modelo" value={presentation.modelCode} /> : null}
+          {presentation.termMonths ? <LeadInfo label="Prazo" value={`${presentation.termMonths} meses`} /> : null}
+          {presentation.insurance ? <LeadInfo label="Seguro" value={presentation.insurance} /> : null}
+          {presentation.adjustment ? <LeadInfo label="Reajuste" value={`Anual pelo ${presentation.adjustment}`} /> : null}
+          {presentation.firstAdjustmentInstallment ? <LeadInfo label="Primeiro reajuste" value={`${presentation.firstAdjustmentInstallment}ª parcela`} /> : null}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-md border bg-card">
+        <div className="p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Composição comercial
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-y bg-muted/35 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2">Item</th>
+                <th className="px-4 py-2">Código comercial</th>
+                <th className="px-4 py-2">Crédito</th>
+                <th className="px-4 py-2">Meses 1–12</th>
+                <th className="px-4 py-2">Meses 13–24</th>
+                <th className="px-4 py-2">Meses 25–216</th>
+              </tr>
+            </thead>
+            <tbody>
+              {presentation.items.map((item) => (
+                <tr className="border-b last:border-b-0" key={item.label}>
+                  <td className="px-4 py-3 font-medium">{item.label}</td>
+                  <td className="px-4 py-3">{item.catalogCode}</td>
+                  <td className="px-4 py-3">{currencyFormatter.format(item.credit)}</td>
+                  {item.phaseAmounts.map((amount, index) => (
+                    <td className="px-4 py-3" key={index}>
+                      {amount === null ? null : currencyFormatter.format(amount)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t bg-muted/20 font-semibold">
+              <tr>
+                <td className="px-4 py-3" colSpan={2}>Total consolidado</td>
+                <td className="px-4 py-3">{presentation.totalCredit === null ? null : currencyFormatter.format(presentation.totalCredit)}</td>
+                {presentation.totalPhaseAmounts.map((amount, index) => (
+                  <td className="px-4 py-3" key={index}>
+                    {amount === null ? null : currencyFormatter.format(amount)}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      {(presentation.insurance || presentation.adjustment || presentation.contemplation || presentation.commercialConditions.length) ? (
+        <section className="rounded-md border bg-card p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Condições comerciais
+          </p>
+          <ul className="mt-3 grid gap-2 text-sm text-foreground">
+            {presentation.insurance ? <li>Seguro: {presentation.insurance}.</li> : null}
+            {presentation.adjustment ? <li>Reajuste anual pelo {presentation.adjustment}{presentation.firstAdjustmentInstallment ? `, com primeiro reajuste na ${presentation.firstAdjustmentInstallment}ª parcela` : ""}.</li> : null}
+            {presentation.contemplation ? <li>{presentation.contemplation}</li> : null}
+            {presentation.commercialConditions.map((condition) => <li key={condition}>{condition}</li>)}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function LeadExecutiveProposalSummary({
+  isLoading,
+  onOpen,
+  proposal,
+}: {
+  isLoading: boolean;
+  onOpen: () => void;
+  proposal: CrmLeadCommercialProposal | null;
+}) {
+  return (
+    <div className="rounded-md border bg-background/70 p-4 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        Última proposta comercial
+      </p>
+      {isLoading ? (
+        <div className="mt-3 h-24 animate-pulse rounded-md bg-muted/40" />
+      ) : proposal ? (
+        <div className="mt-3 grid gap-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <LeadInfo label="Número" value={proposal.proposalNumber} />
+            <LeadInfo label="Versão" value={String(proposal.version)} />
+            <LeadInfo label="Status" value={getCommercialProposalStatusLabel(proposal.status)} />
+            <LeadInfo
+              label="Crédito total"
+              value={formatCurrencyOrDash(readCommercialProposalTotalCredit(proposal))}
+            />
+          </div>
+          <Button onClick={onOpen} type="button" variant="secondary">
+            Abrir proposta
+          </Button>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Nenhuma proposta comercial registrada para este lead.
+        </p>
       )}
     </div>
   );
@@ -5456,15 +5649,6 @@ const leadSimulationStatusLabels: Record<
   proposal_generated: "Proposta gerada",
 };
 
-const commercialProposalSourceLabels: Record<
-  CrmLeadCommercialProposal["sourceSuggestion"],
-  string
-> = {
-  conservative: "Conservadora",
-  patrimonial: "Patrimonial",
-  recommended: "Recomendada",
-};
-
 const simulationScenarioLabels: Record<string, string> = {
   full: "Parcela cheia",
   half: "50%",
@@ -5581,10 +5765,6 @@ function formatCentsAsCurrency(cents: number) {
   return currencyFormatter.format(centsToCurrencyAmount(cents));
 }
 
-function readProposalSummaryNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function readProposalSnapshotNumber(
   snapshot: Record<string, unknown>,
   key: string,
@@ -5668,37 +5848,6 @@ function ExecutiveDossierCard({
       <SectionHeader description={description} title={title} />
       <div className="mt-4">{children}</div>
     </article>
-  );
-}
-
-function GeneratedProposalItem({
-  proposal,
-}: {
-  proposal: GeneratedProposalRecord;
-}) {
-  return (
-    <div className="rounded-md border bg-card p-3 text-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-medium text-foreground">
-            {proposal.recommendedScenario}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {dateFormatter.format(new Date(proposal.generatedAt))}
-          </p>
-        </div>
-        <span className="text-xs font-medium text-muted-foreground">
-          {percentFormatter.format(proposal.roiPercent)}
-        </span>
-      </div>
-      <div className="mt-3 grid gap-2">
-        <LeadInfo
-          label="Credito"
-          value={currencyFormatter.format(proposal.commercialCredit)}
-        />
-        <LeadInfo label="Arquivo" value={proposal.fileName || "-"} />
-      </div>
-    </div>
   );
 }
 

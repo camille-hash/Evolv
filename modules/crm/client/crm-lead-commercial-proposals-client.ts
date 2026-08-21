@@ -15,6 +15,9 @@ type ProposalPayload = {
   proposal?: CrmLeadCommercialProposal;
 };
 
+export const leadCommercialProposalsChangedEvent =
+  "evolv:lead-commercial-proposals-changed";
+
 export async function fetchLeadCommercialProposals(
   accessToken: string,
   leadId: string,
@@ -60,6 +63,7 @@ export async function createLeadCommercialProposal(
     );
   }
 
+  notifyLeadCommercialProposalsChanged();
   return payload.proposal;
 }
 
@@ -88,6 +92,7 @@ export async function updateLeadCommercialProposalStatus(
     );
   }
 
+  notifyLeadCommercialProposalsChanged();
   return payload.proposal;
 }
 
@@ -106,6 +111,7 @@ export async function reviseLeadCommercialProposal(
   if (!response.ok || !payload?.proposal || !payload.previousProposal) {
     throw new Error(payload?.error ?? "Nao foi possivel revisar a proposta comercial.");
   }
+  notifyLeadCommercialProposalsChanged();
   return payload as ReviseCommercialProposalResult;
 }
 
@@ -122,5 +128,12 @@ export async function revokeLeadCommercialProposalApproval(
   if (!response.ok || !payload?.proposal) {
     throw new Error(payload?.error ?? "Nao foi possivel revogar a aprovacao.");
   }
+  notifyLeadCommercialProposalsChanged();
   return payload.proposal;
+}
+
+function notifyLeadCommercialProposalsChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(leadCommercialProposalsChangedEvent));
+  }
 }

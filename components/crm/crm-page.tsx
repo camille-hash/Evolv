@@ -538,7 +538,6 @@ export function CrmPage({
         onGenerateReferenceCapitalStrategy={onGenerateReferenceCapitalStrategy}
         onGenerateSimulation={onGenerateSimulation}
         onSave={handleSaveSelectedLead}
-        proposals={[]}
       />
     );
   }
