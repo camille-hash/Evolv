@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { buildEvidenceObjectPath, buildInternalRecordCommand, canUseEvidenceEndpoint, EvidenceIngestionError, inspectEvidenceFile, parseEvidenceMultipart, sha256 } from "./contract-evidence-ingestion.ts";
+import { buildEvidenceObjectPath, buildInternalRecordCommand, buildSupersedeObjectPath, canUseEvidenceEndpoint, EvidenceIngestionError, inspectEvidenceFile, parseEvidenceLifecycleJson, parseEvidenceMultipart, parseEvidenceSupersedeMultipart, sha256 } from "./contract-evidence-ingestion.ts";
 
 const org="11111111-1111-4111-8111-111111111111"; const contract="22222222-2222-4222-8222-222222222222";
 const correlation="33333333-3333-4333-8333-333333333333";
@@ -57,8 +57,25 @@ test("master and admin write while SDR remains read-only",()=>{
 test("server source preserves cleanup and ambiguous reconciliation semantics",()=>{
   const server=readFileSync(new URL("./contract-evidence-ingestion-server.ts",import.meta.url),"utf8");
   assert.match(server,/remove\(\[path\]\)/);assert.match(server,/cleanup_pending/);assert.match(server,/outcome_unknown/);
-  assert.match(server,/if\(!created\)return fail/);
-  assert.match(server,/createdObject=false/);
-  assert.match(server,/record_manual_contract_evidence_transaction/);assert.doesNotMatch(server,/validate_contract_evidence_transaction|invalidate_contract_evidence_transaction|supersede_contract_evidence_transaction/);
-  assert.match(server,/context\.reader\.from\("contract_evidences"\)/);
+  assert.match(server,/if \(!created\) return fail/);
+  assert.match(server,/createdObject = false/);
+  assert.match(server,/record_manual_contract_evidence_transaction/);
+  assert.match(server,/validate_contract_evidence_transaction/);assert.match(server,/invalidate_contract_evidence_transaction/);assert.match(server,/supersede_contract_evidence_transaction/);
+  assert.match(server,/parseSupersedeContractEvidenceCommand/);
+  assert.doesNotMatch(server,/parseRecordManualContractEvidenceCommand/);
+  assert.match(server,/context\.reader\s*\.from\("contract_evidences"\)/);
+});
+
+test("lifecycle JSON is exact and invalidation requires a reason",()=>{
+  assert.deepEqual(parseEvidenceLifecycleJson({idempotencyKey:"validate-key-001",correlationId:correlation},false),{idempotencyKey:"validate-key-001",correlationId:correlation,reason:null});
+  assert.throws(()=>parseEvidenceLifecycleJson({idempotencyKey:"invalidate-key-001"},true),(error:unknown)=>error instanceof EvidenceIngestionError&&error.code==="CE_REASON_REQUIRED");
+  assert.throws(()=>parseEvidenceLifecycleJson({idempotencyKey:"validate-key-001",actorId:org},false),EvidenceIngestionError);
+});
+
+test("supersession derives a private deterministic path and rejects client evidence type",async()=>{
+  const value=new FormData();value.set("idempotencyKey","supersede-key-001");value.set("correlationId",correlation);value.set("reason","Documento corrigido");value.set("eventAt","2026-08-21T13:00:00Z");value.set("detail",JSON.stringify({signatureMethod:"digital"}));value.set("file",file(pdf,"application/pdf"));
+  const intent=parseEvidenceSupersedeMultipart(value);const inspected=await inspectEvidenceFile(intent.file);
+  const path=buildSupersedeObjectPath({organizationId:org,contractId:contract,evidenceType:"signed_contract",idempotencyKey:intent.idempotencyKey,contentSha256:inspected.contentSha256,extension:inspected.extension});
+  assert.match(path,/\/signed_contract\/supersede\/[a-f0-9]{64}\/[a-f0-9]{64}\.pdf$/);
+  value.set("evidenceType","patrion_commission_receipt");assert.throws(()=>parseEvidenceSupersedeMultipart(value),EvidenceIngestionError);
 });

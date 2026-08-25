@@ -5,9 +5,12 @@ import type { ContractEvidenceType } from "./contract-evidence-types.ts";
 export const contractEvidenceMaxBytes = 15 * 1024 * 1024;
 const allowedFields = new Set(["evidenceType","idempotencyKey","correlationId","eventAt","externalReference","detail","file"]);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const idempotency = /^[A-Za-z0-9._:-]{8,128}$/;
 
 export type InspectedEvidenceFile = { bytes: Uint8Array; contentSha256: string; extension: "pdf"|"jpg"|"png"; fileSize: number; mediaType: "application/pdf"|"image/jpeg"|"image/png" };
 export type EvidenceIngestionIntent = { correlationId: string; detail: Record<string,unknown>; eventAt: string; evidenceType: ContractEvidenceType; externalReference?: string; file: File; idempotencyKey: string };
+export type EvidenceLifecycleIntent={idempotencyKey:string;correlationId:string;reason:string|null};
+export type EvidenceSupersedeIntent=Omit<EvidenceIngestionIntent,"evidenceType">&{reason:string};
 
 export class EvidenceIngestionError extends Error {
   readonly code:string; readonly status:number;
@@ -25,7 +28,7 @@ export function parseEvidenceMultipart(form:FormData):EvidenceIngestionIntent{
   const evidenceType=text(form.get("evidenceType"),"evidenceType")! as ContractEvidenceType;
   if(!["signed_contract","first_installment_payment","patrion_commission_receipt"].includes(evidenceType))throw new EvidenceIngestionError("CE_EVIDENCE_TYPE_INVALID",400,"Tipo de evidencia invalido.");
   const idempotencyKey=text(form.get("idempotencyKey"),"idempotencyKey")!;
-  if(!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Chave de idempotencia invalida.");
+  if(!idempotency.test(idempotencyKey))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Chave de idempotencia invalida.");
   const eventAt=text(form.get("eventAt"),"eventAt")!; if(!Number.isFinite(Date.parse(eventAt)))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Data do evento invalida.");
   const correlationInput=text(form.get("correlationId"),"correlationId",false); const correlationId=correlationInput??crypto.randomUUID();
   if(!uuid.test(correlationId))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Correlacao invalida.");
@@ -34,6 +37,11 @@ export function parseEvidenceMultipart(form:FormData):EvidenceIngestionIntent{
   const file=form.get("file"); if(!(file instanceof File))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Arquivo obrigatorio.");
   return {correlationId,detail:detail as Record<string,unknown>,eventAt,evidenceType,externalReference:text(form.get("externalReference"),"externalReference",false),file,idempotencyKey};
 }
+
+function exactObject(value:unknown,allowed:string[]){if(!value||typeof value!=="object"||Array.isArray(value)||Object.keys(value).some(key=>!allowed.includes(key)))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Payload invalido.");return value as Record<string,unknown>;}
+function lifecycleReason(value:unknown,required:boolean){if(value===undefined||value===null){if(required)throw new EvidenceIngestionError("CE_REASON_REQUIRED",400,"Motivo obrigatorio.");return null;}if(typeof value!=="string")throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Motivo invalido.");const reason=value.trim();if((required&&reason.length<3)||reason.length>1000||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(reason))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Motivo invalido.");return reason||null;}
+export function parseEvidenceLifecycleJson(input:unknown,reasonRequired:boolean):EvidenceLifecycleIntent{const value=exactObject(input,["idempotencyKey","correlationId","reason"]);if(typeof value.idempotencyKey!=="string"||!idempotency.test(value.idempotencyKey))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Chave de idempotencia invalida.");const correlationId=value.correlationId===undefined?crypto.randomUUID():value.correlationId;if(typeof correlationId!=="string"||!uuid.test(correlationId))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Correlacao invalida.");return{idempotencyKey:value.idempotencyKey,correlationId,reason:lifecycleReason(value.reason,reasonRequired)};}
+export function parseEvidenceSupersedeMultipart(form:FormData):EvidenceSupersedeIntent{const allowed=new Set(["idempotencyKey","correlationId","reason","eventAt","externalReference","detail","file"]),seen=new Set<string>();for(const key of form.keys()){if(!allowed.has(key)||seen.has(key))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"O formulario contem campos nao permitidos.");seen.add(key);}const idempotencyKey=text(form.get("idempotencyKey"),"idempotencyKey")!;if(!idempotency.test(idempotencyKey))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Chave de idempotencia invalida.");const correlationId=text(form.get("correlationId"),"correlationId",false)??crypto.randomUUID();if(!uuid.test(correlationId))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Correlacao invalida.");const eventAt=text(form.get("eventAt"),"eventAt")!;if(!Number.isFinite(Date.parse(eventAt)))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Data invalida.");let detail:unknown;try{detail=JSON.parse(text(form.get("detail"),"detail")!)}catch{throw new EvidenceIngestionError("CE_EVIDENCE_DETAIL_INVALID",422,"Detalhes invalidos.");}if(!detail||typeof detail!=="object"||Array.isArray(detail))throw new EvidenceIngestionError("CE_EVIDENCE_DETAIL_INVALID",422,"Detalhes invalidos.");const file=form.get("file");if(!(file instanceof File))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Arquivo obrigatorio.");return{idempotencyKey,correlationId,reason:lifecycleReason(text(form.get("reason"),"reason"),true)!,eventAt,externalReference:text(form.get("externalReference"),"externalReference",false),detail:detail as Record<string,unknown>,file};}
 
 export async function inspectEvidenceFile(file:File):Promise<InspectedEvidenceFile>{
   if(file.size===0)throw new EvidenceIngestionError("CE_FILE_EMPTY",400,"O arquivo esta vazio.");
@@ -54,6 +62,7 @@ export function buildEvidenceObjectPath(input:{organizationId:string;contractId:
   if(!uuid.test(input.organizationId)||!uuid.test(input.contractId)||!/^[a-f0-9]{64}$/.test(input.contentSha256)||!["pdf","jpg","png"].includes(input.extension))throw new EvidenceIngestionError("CE_INVALID_PAYLOAD",400,"Identidade de arquivo invalida.");
   return `${input.organizationId}/${input.contractId}/${input.evidenceType}/${sha256(input.idempotencyKey)}/${input.contentSha256}.${input.extension}`;
 }
+export function buildSupersedeObjectPath(input:{organizationId:string;contractId:string;evidenceType:ContractEvidenceType;idempotencyKey:string;contentSha256:string;extension:string}){const base=buildEvidenceObjectPath(input).split("/");base.splice(3,0,"supersede");return base.join("/");}
 
 export function buildInternalRecordCommand(intent:EvidenceIngestionIntent,file:InspectedEvidenceFile,actorId:string,contractId:string,path:string){
   return parseRecordManualContractEvidenceCommand({actorId,contractId,evidenceType:intent.evidenceType,idempotencyKey:intent.idempotencyKey,correlationId:intent.correlationId,eventAt:intent.eventAt,externalReference:intent.externalReference??null,file:{storageBucket:"contract-evidences",storageObjectPath:path,contentSha256:file.contentSha256,mediaType:file.mediaType,fileSize:file.fileSize},detail:intent.detail});

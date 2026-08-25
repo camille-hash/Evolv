@@ -1,0 +1,18 @@
+begin;
+select plan(14);
+select has_column('public','contract_evidence_upload_attempts','operation_type','operation type exists');
+select has_column('public','contract_evidence_upload_attempts','previous_evidence_id','previous evidence exists');
+select col_default_is('public','contract_evidence_upload_attempts','operation_type','record','C8C1 rows remain record attempts');
+select has_function('public','prepare_contract_evidence_supersede_upload_attempt',array['uuid','uuid','uuid','text','text','text','text','bigint'],'supersede prepare RPC exists');
+select ok(has_function_privilege('service_role','public.prepare_contract_evidence_supersede_upload_attempt(uuid,uuid,uuid,text,text,text,text,bigint)','EXECUTE'),'service role executes prepare');
+select ok(not has_function_privilege('authenticated','public.prepare_contract_evidence_supersede_upload_attempt(uuid,uuid,uuid,text,text,text,text,bigint)','EXECUTE'),'authenticated cannot prepare');
+select ok(not has_function_privilege('anon','public.prepare_contract_evidence_supersede_upload_attempt(uuid,uuid,uuid,text,text,text,text,bigint)','EXECUTE'),'anon cannot prepare');
+select is((select prosecdef from pg_proc where oid='public.prepare_contract_evidence_supersede_upload_attempt(uuid,uuid,uuid,text,text,text,text,bigint)'::regprocedure),true,'prepare is security definer');
+select is((select pg_get_userbyid(proowner) from pg_proc where oid='public.prepare_contract_evidence_supersede_upload_attempt(uuid,uuid,uuid,text,text,text,text,bigint)'::regprocedure),'evolv_contract_evidence_owner','dedicated owner');
+select ok((select not rolcanlogin and not rolinherit from pg_roles where rolname='evolv_contract_evidence_owner'),'owner remains NOLOGIN NOINHERIT');
+select ok((select relrowsecurity from pg_class where oid='public.contract_evidence_upload_attempts'::regclass),'attempt RLS remains enabled');
+select ok(not has_table_privilege('authenticated','public.contract_evidence_upload_attempts','SELECT,INSERT,UPDATE,DELETE'),'authenticated has no attempt access');
+select is((select public from storage.buckets where id='contract-evidences'),false,'bucket remains private');
+select is((select count(*)::integer from pg_policies where schemaname='storage' and tablename='objects' and (qual like '%contract-evidences%' or with_check like '%contract-evidences%')),0,'no direct storage policy');
+select * from finish();
+rollback;
