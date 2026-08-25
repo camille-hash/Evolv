@@ -291,6 +291,8 @@ export async function listContractEvidences(
       validatedAt: row.validated_at,
       reference: row.external_reference,
       hasDocument: Boolean(row.media_type),
+      canDownloadDocument: Boolean(row.media_type),
+      documentDownloadPath: row.media_type?`/api/contracts/${contractId}/evidences/${row.id}/document`:null,
       mediaType: row.media_type,
       fileSize: row.file_size,
       supersedesEvidenceId: row.supersedes_evidence_id,
