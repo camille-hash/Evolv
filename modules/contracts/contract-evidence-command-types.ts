@@ -372,9 +372,15 @@ export function parseSupersedeContractEvidenceCommand(
     "eventAt", "externalReference", "file", "detail",
   ]);
   const record = parseRecordManualContractEvidenceCommand({
-    ...value,
+    actorId: value.actorId,
     contractId: "00000000-0000-4000-8000-000000000000",
     evidenceType,
+    idempotencyKey: value.idempotencyKey,
+    correlationId: value.correlationId,
+    eventAt: value.eventAt,
+    externalReference: value.externalReference,
+    file: value.file,
+    detail: value.detail,
   });
   const { contractId: _contractId, evidenceType: _evidenceType, ...newEvidence } = record;
   void _contractId;

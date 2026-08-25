@@ -92,6 +92,85 @@ test("parses validate and requires a reason for invalidate and supersede", () =>
   }, "signed_contract"));
 });
 
+test("parses a valid supersession through the canonical record parser without mutation", () => {
+  const input = {
+    actorId,
+    evidenceId,
+    idempotencyKey: "c8b-supersede-valid-1",
+    correlationId,
+    reason: "  Corrected signed document  ",
+    eventAt,
+    externalReference: "provider-document-2",
+    file: null,
+    detail: structuredClone(signedRecord.detail),
+  };
+  const original = structuredClone(input);
+
+  const parsed = parseSupersedeContractEvidenceCommand(input, "signed_contract");
+
+  assert.equal(parsed.evidenceId, evidenceId);
+  assert.equal(parsed.reason, "Corrected signed document");
+  assert.equal(parsed.actorId, actorId);
+  assert.equal(parsed.idempotencyKey, input.idempotencyKey);
+  assert.equal(parsed.correlationId, correlationId);
+  assert.equal(parsed.eventAt, eventAt);
+  assert.equal(parsed.externalReference, "provider-document-2");
+  assert.equal(parsed.file, null);
+  assert.deepEqual(parsed.detail, signedRecord.detail);
+  assert.equal(parsed.detail.signatureMethod, "electronic");
+  assert.deepEqual(input, original);
+
+  const logicalRequest = JSON.stringify(parsed);
+  assert.match(logicalRequest, new RegExp(evidenceId));
+  assert.match(logicalRequest, /Corrected signed document/);
+});
+
+test("supersession remains strict at the envelope and nested record boundaries", () => {
+  const valid = {
+    actorId,
+    evidenceId,
+    idempotencyKey: "c8b-supersede-strict-1",
+    correlationId,
+    reason: "Corrected signed document",
+    eventAt,
+    externalReference: "provider-document-2",
+    file: null,
+    detail: signedRecord.detail,
+  };
+
+  for (const field of ["organizationId", "tenantId", "source", "status", "actor", "actorRole"] as const) {
+    assert.throws(
+      () => parseSupersedeContractEvidenceCommand({ ...valid, [field]: "forged" }, "signed_contract"),
+      ContractEvidenceCommandParseError,
+    );
+  }
+  assert.throws(
+    () => parseSupersedeContractEvidenceCommand({ ...valid, unexpected: true }, "signed_contract"),
+    ContractEvidenceCommandParseError,
+  );
+  assert.throws(
+    () => parseSupersedeContractEvidenceCommand({
+      ...valid,
+      detail: { ...valid.detail, unexpected: true },
+    }, "signed_contract"),
+    ContractEvidenceCommandParseError,
+  );
+  assert.throws(
+    () => parseSupersedeContractEvidenceCommand({
+      ...valid,
+      file: {
+        storageBucket: "private-contract-evidence",
+        storageObjectPath: "tenant/contract/evidence.pdf",
+        contentSha256: "a".repeat(64),
+        mediaType: "application/pdf",
+        fileSize: 10,
+        unexpected: true,
+      },
+    }, "signed_contract"),
+    ContractEvidenceCommandParseError,
+  );
+});
+
 test("maps the stable domain catalog to future HTTP semantics", () => {
   assert.equal(contractEvidenceCommandErrorHttpStatus.CE_ACTOR_FORBIDDEN, 403);
   assert.equal(contractEvidenceCommandErrorHttpStatus.CE_EVIDENCE_NOT_FOUND, 404);
