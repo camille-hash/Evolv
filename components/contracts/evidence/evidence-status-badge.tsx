@@ -1,0 +1,4 @@
+import {evidenceStateLabels} from "@/modules/contracts/contract-evidence-presenter";
+import type {ContractEvidenceVisualState} from "@/modules/contracts/contract-evidence-read-model";
+const styles:Record<ContractEvidenceVisualState,string>={pending:"border-slate-300 bg-slate-50 text-slate-700",awaiting_validation:"border-amber-300 bg-amber-50 text-amber-900",validated:"border-emerald-300 bg-emerald-50 text-emerald-900",invalidated:"border-rose-300 bg-rose-50 text-rose-900",superseded:"border-slate-300 bg-slate-100 text-slate-700",reserved:"border-sky-300 bg-sky-50 text-sky-900"};
+export function EvidenceStatusBadge({state}:{state:ContractEvidenceVisualState}){return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${styles[state]}`}>{evidenceStateLabels[state]}</span>}

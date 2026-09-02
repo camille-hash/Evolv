@@ -14,6 +14,7 @@ import {
 } from "./contract-evidence-ingestion";
 import { parseSupersedeContractEvidenceCommand } from "./contract-evidence-command-types";
 import type { ContractEvidenceType } from "./contract-evidence-types";
+import type { ContractEvidenceReadModel } from "./contract-evidence-read-model";
 
 type Result<T> =
   | ({ ok: true } & T)
@@ -226,7 +227,7 @@ export async function ingestContractEvidence(
 export async function listContractEvidences(
   token: string | null,
   contractId: string,
-): Promise<Result<{ evidences: unknown[] }>> {
+): Promise<Result<{ evidences: ContractEvidenceReadModel[] }>> {
   const context = await resolve(token, contractId, true);
   if (!context.ok) return context;
   const evidence = await context.reader
@@ -246,7 +247,7 @@ export async function listContractEvidences(
   const rows = (evidence.data ?? []) as Row[];
   const ids = rows.map((row) => String(row.id));
   if (!ids.length) return { ok: true, evidences: [] };
-  const [signed, payment, receipt] = await Promise.all([
+  const [signed, payment, receipt, audit] = await Promise.all([
     context.reader
       .from("contract_signed_evidence_details")
       .select(
@@ -265,8 +266,15 @@ export async function listContractEvidences(
         "evidence_id,expected_revenue_entry_id,amount_cents,currency,received_at,receipt_reference,competence_date,attributable_amount_cents",
       )
       .in("evidence_id", ids),
+    context.reader
+      .from("contract_evidence_audit_events")
+      .select("evidence_id,event_type,actor_id,reason,occurred_at")
+      .eq("organization_id", context.profile.organization_id)
+      .eq("contract_id", contractId)
+      .in("evidence_id", ids)
+      .order("occurred_at", { ascending: true }),
   ]);
-  if (signed.error || payment.error || receipt.error)
+  if (signed.error || payment.error || receipt.error || audit.error)
     return fail(
       500,
       "CE_INTERNAL_UNAVAILABLE",
@@ -279,9 +287,22 @@ export async function listContractEvidences(
     ...(receipt.data ?? []),
   ] as Row[])
     detailMap.set(String(item.evidence_id), item);
+  const auditRows=(audit.data??[]) as Row[];
+  const actorIds=[...new Set(auditRows.map(item=>String(item.actor_id??"")).filter(Boolean))];
+  const actors=actorIds.length?await context.reader.from("profiles").select("id,name").eq("organization_id",context.profile.organization_id).in("id",actorIds):{data:[],error:null};
+  if(actors.error)return fail(500,"CE_INTERNAL_UNAVAILABLE","Nao foi possivel carregar os atores das evidencias.");
+  const actorNames=new Map(((actors.data??[]) as Row[]).map(item=>[String(item.id),typeof item.name==="string"&&item.name.trim()?item.name.trim():"Usuário da equipe"]));
+  const lifecycle=new Map<string,Map<string,Row>>();
+  for(const item of auditRows){const evidenceId=String(item.evidence_id),eventType=String(item.event_type);const events=lifecycle.get(evidenceId)??new Map<string,Row>();events.set(eventType,item);lifecycle.set(evidenceId,events);}
+  const supersededBy=new Map(rows.filter(row=>row.supersedes_evidence_id).map(row=>[String(row.supersedes_evidence_id),String(row.id)]));
+  const displayName=(event:Row|undefined)=>event?.actor_id?actorNames.get(String(event.actor_id))??"Usuário da equipe":null;
+  const reason=(event:Row|undefined)=>typeof event?.reason==="string"?event.reason:null;
+  const occurredAt=(event:Row|undefined)=>typeof event?.occurred_at==="string"?event.occurred_at:null;
   return {
     ok: true,
-    evidences: rows.map((row) => ({
+    evidences: rows.map((row) => {
+      const events=lifecycle.get(String(row.id));const recorded=events?.get("evidence_recorded"),validated=events?.get("evidence_validated"),invalidated=events?.get("evidence_invalidated"),superseded=events?.get("evidence_superseded");
+      return ({
       evidenceId: row.id,
       type: row.evidence_type,
       status: row.status,
@@ -296,10 +317,13 @@ export async function listContractEvidences(
       mediaType: row.media_type,
       fileSize: row.file_size,
       supersedesEvidenceId: row.supersedes_evidence_id,
+      supersededByEvidenceId: supersededBy.get(String(row.id))??null,
       isCurrent: row.status === "recorded" || row.status === "validated",
       isValidated: row.status === "validated",
       detail: safeDetail(detailMap.get(String(row.id)) ?? {}),
-    })),
+      recordedByDisplayName:displayName(recorded),validatedByDisplayName:displayName(validated),invalidatedByDisplayName:displayName(invalidated),supersededByDisplayName:displayName(superseded),
+      invalidationReason:reason(invalidated),supersessionReason:reason(superseded),invalidatedAt:occurredAt(invalidated),supersededAt:occurredAt(superseded),
+    }) as ContractEvidenceReadModel}),
   };
 }
 

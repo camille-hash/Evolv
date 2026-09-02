@@ -1,4 +1,5 @@
 import type { LeadContractSummary } from "@/modules/contracts/types";
+import Link from "next/link";
 
 const contractStatusLabels: Record<LeadContractSummary["status"], string> = {
   active: "Ativo",
@@ -26,6 +27,7 @@ export function LeadContractsCard({
   contracts,
   error,
   isLoading,
+  leadId,
 }: {
   contracts: LeadContractSummary[];
   error: string | null;
@@ -105,6 +107,7 @@ export function LeadContractsCard({
               value={contract.clientId ?? "Nao vinculado"}
             />
           </div>
+          <div className="mt-4"><Link className="inline-flex rounded-md border bg-card px-3 py-2 text-sm font-medium transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href={`/operations/contracts/${encodeURIComponent(contract.id)}?tab=documents&origin=lead&leadId=${encodeURIComponent(leadId)}`}>Abrir documentos</Link></div>
         </article>
       ))}
     </div>

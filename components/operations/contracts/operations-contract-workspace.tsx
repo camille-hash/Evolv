@@ -11,8 +11,9 @@ import { OperationsContextLink } from "../operations-context-link";
 import { OperationsPageHeader } from "../operations-page-header";
 import { ContractCommissionSummaryCard } from "./contract-commission-summary-card";
 import { ContractOperationalTimeline } from "./contract-operational-timeline";
+import { ContractEvidencePanel } from "@/components/contracts/evidence/contract-evidence-panel";
 
-type WorkspaceTab = "summary" | "timeline";
+export type WorkspaceTab = "summary" | "documents" | "timeline";
 
 const statusLabels: Record<OperationsContractStatus, string> = {
   active: "Ativo",
@@ -33,32 +34,43 @@ export function OperationsContractWorkspace({
   clientId,
   contractId,
   initialAssemblyId,
+  initialTab = "summary",
+  leadId,
   origin,
+  proposalId,
   prepareBid = false,
 }: {
   clientId?: string;
   contractId: string;
   initialAssemblyId?: string;
+  initialTab?: WorkspaceTab;
+  leadId?: string;
   origin?: string;
+  proposalId?: string;
   prepareBid?: boolean;
 }) {
   const returnToClient = origin === "client" && Boolean(clientId);
   const returnToMyDay = origin === "my-day";
+  const returnToCrm = (origin === "proposal" || origin === "lead") && Boolean(leadId);
   const returnHref = returnToMyDay
     ? "/?section=crm&crmTab=my-day"
     : returnToClient
       ? `/?section=client&clientId=${encodeURIComponent(clientId!)}`
+      : returnToCrm
+        ? `/?section=crm${proposalId ? `&proposalId=${encodeURIComponent(proposalId)}` : ""}`
       : "/operations/contracts";
   const returnLabel = returnToMyDay
     ? "Voltar para Meu Dia"
     : returnToClient
       ? "Voltar para cliente"
+      : returnToCrm
+        ? "Voltar para o lead"
       : "Voltar para contratos";
   const [contract, setContract] = useState<OperationsContractRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(
-    prepareBid || initialAssemblyId ? "timeline" : "summary",
+    prepareBid || initialAssemblyId ? "timeline" : initialTab,
   );
 
   useEffect(() => {
@@ -174,12 +186,19 @@ export function OperationsContractWorkspace({
       <nav
         aria-label="Navegação do Workspace do Contrato"
         className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm"
+        role="tablist"
       >
         <WorkspaceTabButton
           active={activeTab === "summary"}
           onClick={() => setActiveTab("summary")}
         >
           Resumo
+        </WorkspaceTabButton>
+        <WorkspaceTabButton
+          active={activeTab === "documents"}
+          onClick={() => setActiveTab("documents")}
+        >
+          Documentos
         </WorkspaceTabButton>
         <WorkspaceTabButton
           active={activeTab === "timeline"}
@@ -190,9 +209,11 @@ export function OperationsContractWorkspace({
       </nav>
 
       {activeTab === "summary" ? (
-        <ContractSummary contract={contract} />
+        <div aria-label="Resumo do contrato" role="tabpanel"><ContractSummary contract={contract} /></div>
+      ) : activeTab === "documents" ? (
+        <div aria-label="Documentos do contrato" role="tabpanel"><ContractEvidencePanel contractId={contract.id}/></div>
       ) : (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section aria-label="Timeline operacional" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm" role="tabpanel">
           <ContractOperationalTimeline
             contractId={contract.id}
             creditValue={contract.creditValue}
@@ -284,12 +305,14 @@ function WorkspaceTabButton({
   return (
     <button
       aria-current={active ? "page" : undefined}
+      aria-selected={active}
       className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
         active
           ? "bg-slate-900 text-white"
           : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
       }`}
       onClick={onClick}
+      role="tab"
       type="button"
     >
       {children}

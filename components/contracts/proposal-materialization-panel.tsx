@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { fetchClients } from "@/modules/clients/client";
 import type { ClientListItem } from "@/modules/clients/types";
@@ -82,7 +83,7 @@ export function ProposalMaterializationPanel({ onChanged, proposal }: Props) {
     {confirming ? <Confirmation proposal={proposal} clientName={selectedClient?.name ?? "Cliente selecionado"} count={count} creditEach={creditEach} totalCredit={summary?.totalCredit ?? null} product={summary?.product ?? null} administrator={summary?.administrator ?? null} group={summary?.groupCode ?? null} busy={busy} onCancel={() => setConfirming(false)} onConfirm={() => void materialize()} /> : null}
     {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-900" role="status">{message}</p> : null}
     {error ? <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-2 text-sm text-rose-900" role="alert">{error}</p> : null}
-    {experience.contracts.length ? <div className="mt-4 grid gap-3"><p className="text-sm font-semibold">Contratos gerados · {experience.contracts.length} contratos em rascunho</p>{experience.contracts.map((contract, index) => <MaterializedContractCard contract={contract} index={index} key={contract.id} onSaved={async () => { await reload(); onChanged?.(); }} canManage={experience.actorCanManage} />)}</div> : null}
+    {experience.contracts.length ? <div className="mt-4 grid gap-3"><p className="text-sm font-semibold">Contratos gerados · {experience.contracts.length} contratos em rascunho</p>{experience.contracts.map((contract, index) => <MaterializedContractCard contract={contract} index={index} key={contract.id} onSaved={async () => { await reload(); onChanged?.(); }} canManage={experience.actorCanManage} leadId={proposal.leadId} proposalId={proposal.id} />)}</div> : null}
   </section>;
 }
 
@@ -98,7 +99,7 @@ function Confirmation({ administrator, busy, clientName, count, creditEach, grou
 function Datum({ label, value }: { label:string; value:string|null }) { return value ? <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-medium">{value}</dd></div> : null; }
 function money(value:number|null) { return value === null ? null : new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(value); }
 
-function MaterializedContractCard({ canManage, contract, index, onSaved }: { canManage:boolean; contract:Contract; index:number; onSaved:()=>Promise<void> }) {
+function MaterializedContractCard({ canManage, contract, index, leadId, onSaved, proposalId }: { canManage:boolean; contract:Contract; index:number; leadId:string; onSaved:()=>Promise<void>; proposalId:string }) {
   const identificationState = getContractIdentificationState(contract.contractNumber, contract.quota);
   const [editing, setEditing] = useState(identificationState !== "complete");
   const interaction = getContractIdentificationInteraction(canManage, identificationState, editing);
@@ -113,6 +114,7 @@ function MaterializedContractCard({ canManage, contract, index, onSaved }: { can
     <p className="font-medium">Cota {index + 1} · {money(contract.creditAmount)}</p>
     <p className="mt-1 text-xs text-muted-foreground">Contrato em rascunho</p>
     <IdentificationReadOnly contract={contract} state={identificationState} />
+    <div className="mt-3"><Link className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href={`/operations/contracts/${encodeURIComponent(contract.id)}?tab=documents&origin=proposal&leadId=${encodeURIComponent(leadId)}&proposalId=${encodeURIComponent(proposalId)}`}>Abrir documentos</Link></div>
     {interaction.showCorrectionAction ? <div className="mt-3"><Button onClick={() => setEditing(true)} type="button" variant="secondary">Corrigir identificação</Button></div> : null}
     {interaction.showEditor ? <div className="mt-3 grid gap-2 sm:grid-cols-2"><label className="grid gap-1 text-xs">Número contratual<input className="rounded-md border px-3 py-2 text-sm" value={number} onChange={(e)=>setNumber(e.target.value)} /></label><label className="grid gap-1 text-xs">Cota operacional<input className="rounded-md border px-3 py-2 text-sm" value={quota} onChange={(e)=>setQuota(e.target.value)} /></label>{correction ? <label className="grid gap-1 text-xs sm:col-span-2">Motivo da correção<input className="rounded-md border px-3 py-2 text-sm" value={reason} onChange={(e)=>setReason(e.target.value)} /></label> : null}{guidance ? <p className="text-xs text-muted-foreground sm:col-span-2">{guidance}</p> : null}<div className="flex gap-2 sm:col-span-2"><Button disabled={disabled} onClick={()=>void save()} type="button">{busy ? "Salvando..." : identificationState === "complete" || correction ? "Corrigir identificação" : "Completar identificação"}</Button>{identificationState === "complete" ? <Button disabled={busy} onClick={cancel} type="button" variant="secondary">Cancelar</Button> : null}</div></div> : null}
     {error ? <p className="mt-2 text-xs text-rose-700" role="alert">{error}</p> : null}
