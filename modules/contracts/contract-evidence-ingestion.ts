@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { parseRecordManualContractEvidenceCommand } from "./contract-evidence-command-types.ts";
+import { PdfValidationError, validatePdfStructure } from "./contract-evidence-pdf-validation.ts";
 import type { ContractEvidenceType } from "./contract-evidence-types.ts";
 
 export const contractEvidenceMaxBytes = 15 * 1024 * 1024;
@@ -53,6 +54,12 @@ export async function inspectEvidenceFile(file:File):Promise<InspectedEvidenceFi
   else if(bytes.length>=8&&new TextDecoder("ascii").decode(bytes.slice(0,5))==="%PDF-"&&hasTail(bytes,[0x25,0x25,0x45,0x4f,0x46])){mediaType="application/pdf";extension="pdf";}
   if(!mediaType||!extension)throw new EvidenceIngestionError("CE_FILE_TYPE_UNSUPPORTED",415,"Formato de arquivo nao suportado.");
   if(file.type && file.type!==mediaType)throw new EvidenceIngestionError("CE_FILE_MIME_MISMATCH",415,"O tipo declarado nao corresponde ao conteudo.");
+  if(mediaType==="application/pdf"){
+    try{await validatePdfStructure(bytes);}catch(error){
+      if(error instanceof PdfValidationError&&error.kind==="password-protected")throw new EvidenceIngestionError("CE_PDF_PASSWORD_PROTECTED",422,"PDFs protegidos por senha não são aceitos.");
+      throw new EvidenceIngestionError("CE_PDF_STRUCTURE_INVALID",422,"O arquivo PDF está corrompido ou não possui uma estrutura válida.");
+    }
+  }
   return {bytes,contentSha256:sha256(bytes),extension,fileSize:bytes.length,mediaType};
 }
 

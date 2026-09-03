@@ -11,10 +11,10 @@ import {
   parseEvidenceMultipart,
   parseEvidenceSupersedeMultipart,
   sha256,
-} from "./contract-evidence-ingestion";
-import { parseSupersedeContractEvidenceCommand } from "./contract-evidence-command-types";
-import type { ContractEvidenceType } from "./contract-evidence-types";
-import type { ContractEvidenceReadModel } from "./contract-evidence-read-model";
+} from "./contract-evidence-ingestion.ts";
+import { parseSupersedeContractEvidenceCommand } from "./contract-evidence-command-types.ts";
+import type { ContractEvidenceType } from "./contract-evidence-types.ts";
+import type { ContractEvidenceReadModel } from "./contract-evidence-read-model.ts";
 
 type Result<T> =
   | ({ ok: true } & T)

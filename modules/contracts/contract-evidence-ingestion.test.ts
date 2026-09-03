@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { jsPDF } from "jspdf";
 import { buildEvidenceObjectPath, buildInternalRecordCommand, buildSupersedeObjectPath, canUseEvidenceEndpoint, EvidenceIngestionError, inspectEvidenceFile, parseEvidenceLifecycleJson, parseEvidenceMultipart, parseEvidenceSupersedeMultipart, sha256 } from "./contract-evidence-ingestion.ts";
 
 const org="11111111-1111-4111-8111-111111111111"; const contract="22222222-2222-4222-8222-222222222222";
 const correlation="33333333-3333-4333-8333-333333333333";
-const pdf=new Uint8Array([...Buffer.from("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n"),...Buffer.from("%%EOF\n")]);
+function buildPdf(text=true){const document=new jsPDF();if(text)document.text("EVOLV",10,10);return new Uint8Array(document.output("arraybuffer"));}
+function buildZeroPagePdf(){const source=Buffer.from(buildPdf()).toString("binary").replace("/Count 1","/Count 0");return new Uint8Array(Buffer.from(source,"binary"));}
+function buildIncrementalPdf(){const base=buildPdf();const source=Buffer.from(base).toString("binary");const previous=Number(source.match(/startxref\s+(\d+)\s+%%EOF/)?.[1]);const size=Number(source.match(/\/Size (\d+)/)?.[1]);const objectOffset=Buffer.byteLength(source,"binary");const object=`${size} 0 obj\n<< /Producer (EVOLV incremental) >>\nendobj\n`;const xrefOffset=objectOffset+Buffer.byteLength(object);return new Uint8Array(Buffer.from(`${source}${object}xref\n${size} 1\n${String(objectOffset).padStart(10,"0")} 00000 n \ntrailer\n<< /Size ${size+1} /Root 1 0 R /Prev ${previous} /Info ${size} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`,"binary"));}
+function buildEncryptedPdf(){const document=new jsPDF({encryption:{userPassword:"secret",ownerPassword:"owner",userPermissions:["print"]}});document.text("protected",10,10);return new Uint8Array(document.output("arraybuffer"));}
+const pdf=buildPdf();
 const png=new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0,0x49,0x45,0x4e,0x44]);
 const jpeg=new Uint8Array([0xff,0xd8,0xff,0xe0,0,0,0xff,0xd9]);
 function file(bytes:Uint8Array,type:string,name="unsafe/../name.pdf"){return new File([bytes.slice().buffer as ArrayBuffer],name,{type});}
@@ -13,13 +18,24 @@ function form(type:string,detail:object,document=file(pdf,"application/pdf")){co
 
 test("accepts PDF JPEG and PNG by bytes and derives authoritative MIME",async()=>{
   assert.equal((await inspectEvidenceFile(file(pdf,"application/pdf"))).extension,"pdf");
+  assert.equal((await inspectEvidenceFile(file(buildPdf(false),"application/pdf"))).extension,"pdf");
+  assert.equal((await inspectEvidenceFile(file(buildIncrementalPdf(),"application/pdf"))).extension,"pdf");
   assert.equal((await inspectEvidenceFile(file(jpeg,"image/jpeg"))).mediaType,"image/jpeg");
   assert.equal((await inspectEvidenceFile(file(png,"image/png"))).extension,"png");
+});
+test("rejects malformed empty-page and password-protected PDFs deterministically",async()=>{
+  const malformed=new Uint8Array(Buffer.from("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n"));
+  const superficial=new Uint8Array(Buffer.from("%PDF-1.7\n%%EOF\n"));
+  const truncated=new Uint8Array([...pdf.slice(0,Math.floor(pdf.length/2)),...Buffer.from("\n%%EOF\n")]);
+  for(const bytes of [malformed,superficial,truncated,buildZeroPagePdf()])await assert.rejects(()=>inspectEvidenceFile(file(bytes,"application/pdf")),(error:unknown)=>error instanceof EvidenceIngestionError&&error.code==="CE_PDF_STRUCTURE_INVALID"&&error.status===422&&error.message==="O arquivo PDF está corrompido ou não possui uma estrutura válida.");
+  await assert.rejects(()=>inspectEvidenceFile(file(buildEncryptedPdf(),"application/pdf")),(error:unknown)=>error instanceof EvidenceIngestionError&&error.code==="CE_PDF_PASSWORD_PROTECTED"&&error.status===422&&error.message==="PDFs protegidos por senha não são aceitos.");
 });
 test("rejects empty unsupported false MIME and oversize",async()=>{
   await assert.rejects(()=>inspectEvidenceFile(file(new Uint8Array(),"application/pdf")),(e:unknown)=>e instanceof EvidenceIngestionError&&e.status===400);
   await assert.rejects(()=>inspectEvidenceFile(file(new Uint8Array([1,2,3]),"application/pdf")),(e:unknown)=>e instanceof EvidenceIngestionError&&e.status===415);
   await assert.rejects(()=>inspectEvidenceFile(file(pdf,"image/png")),(e:unknown)=>e instanceof EvidenceIngestionError&&e.code==="CE_FILE_MIME_MISMATCH");
+  await assert.rejects(()=>inspectEvidenceFile(file(png,"application/pdf")),(e:unknown)=>e instanceof EvidenceIngestionError&&e.code==="CE_FILE_MIME_MISMATCH");
+  await assert.rejects(()=>inspectEvidenceFile(file(jpeg,"application/pdf")),(e:unknown)=>e instanceof EvidenceIngestionError&&e.code==="CE_FILE_MIME_MISMATCH");
   const huge={size:15*1024*1024+1,arrayBuffer:async()=>new ArrayBuffer(0)} as File;
   await assert.rejects(()=>inspectEvidenceFile(huge),(e:unknown)=>e instanceof EvidenceIngestionError&&e.status===413);
 });
