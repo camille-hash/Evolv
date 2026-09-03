@@ -14,5 +14,5 @@ export async function POST(request:NextRequest,{params}:{params:Promise<{id:stri
   const result=await ingestContractEvidence(token(request),id,form);return result.ok?NextResponse.json({result:result.result},{status:result.status}):NextResponse.json({error:result.code,message:result.message},{status:result.status});
 }
 export async function GET(request:NextRequest,{params}:{params:Promise<{id:string}>}){
-  const {id}=await params;const result=await listContractEvidences(token(request),id);return result.ok?NextResponse.json({evidences:result.evidences}):NextResponse.json({error:result.code,message:result.message},{status:result.status});
+  const {id}=await params;const result=await listContractEvidences(token(request),id);return result.ok?NextResponse.json({evidences:result.evidences,capabilities:result.capabilities}):NextResponse.json({error:result.code,message:result.message},{status:result.status});
 }

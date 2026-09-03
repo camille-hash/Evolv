@@ -211,7 +211,7 @@ export function OperationsContractWorkspace({
       {activeTab === "summary" ? (
         <div aria-label="Resumo do contrato" role="tabpanel"><ContractSummary contract={contract} /></div>
       ) : activeTab === "documents" ? (
-        <div aria-label="Documentos do contrato" role="tabpanel"><ContractEvidencePanel contractId={contract.id}/></div>
+        <div aria-label="Documentos do contrato" role="tabpanel"><ContractEvidencePanel administratorId={contract.administratorId} administratorName={contract.administratorName} contractId={contract.id}/></div>
       ) : (
         <section aria-label="Timeline operacional" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm" role="tabpanel">
           <ContractOperationalTimeline

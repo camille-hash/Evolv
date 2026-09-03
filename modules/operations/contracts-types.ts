@@ -10,6 +10,7 @@ export type OperationsContractStatus =
   | "unknown";
 
 export type OperationsContractRow = {
+  administratorId: string | null;
   administratorName: string;
   attentionItems: string[];
   clientName: string;

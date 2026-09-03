@@ -18,3 +18,5 @@ export type ContractEvidenceVisualState="pending"|"awaiting_validation"|"validat
 export type ContractEvidenceVersion=ContractEvidenceReadModel;
 export type ContractEvidenceLineage={current:ContractEvidenceVersion|null;history:ContractEvidenceVersion[];versions:ContractEvidenceVersion[]};
 export type ContractEvidenceRequirement={type:ContractEvidenceType;label:string;description:string;state:ContractEvidenceVisualState;lineage:ContractEvidenceLineage;reserved:boolean};
+export type ContractEvidenceCapabilities={canWriteEvidence:boolean};
+export type ContractEvidenceListResponse={evidences:ContractEvidenceReadModel[];capabilities:ContractEvidenceCapabilities};

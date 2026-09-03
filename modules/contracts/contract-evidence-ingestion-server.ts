@@ -227,7 +227,7 @@ export async function ingestContractEvidence(
 export async function listContractEvidences(
   token: string | null,
   contractId: string,
-): Promise<Result<{ evidences: ContractEvidenceReadModel[] }>> {
+): Promise<Result<{ evidences: ContractEvidenceReadModel[]; capabilities: { canWriteEvidence: boolean } }>> {
   const context = await resolve(token, contractId, true);
   if (!context.ok) return context;
   const evidence = await context.reader
@@ -246,7 +246,8 @@ export async function listContractEvidences(
     );
   const rows = (evidence.data ?? []) as Row[];
   const ids = rows.map((row) => String(row.id));
-  if (!ids.length) return { ok: true, evidences: [] };
+  const capabilities={canWriteEvidence:canUseEvidenceEndpoint(context.profile.role,true)};
+  if (!ids.length) return { ok: true, evidences: [], capabilities };
   const [signed, payment, receipt, audit] = await Promise.all([
     context.reader
       .from("contract_signed_evidence_details")
@@ -300,6 +301,7 @@ export async function listContractEvidences(
   const occurredAt=(event:Row|undefined)=>typeof event?.occurred_at==="string"?event.occurred_at:null;
   return {
     ok: true,
+    capabilities,
     evidences: rows.map((row) => {
       const events=lifecycle.get(String(row.id));const recorded=events?.get("evidence_recorded"),validated=events?.get("evidence_validated"),invalidated=events?.get("evidence_invalidated"),superseded=events?.get("evidence_superseded");
       return ({

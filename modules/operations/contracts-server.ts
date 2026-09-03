@@ -144,6 +144,7 @@ function buildOperationsContractRows(dataset: {
     });
 
     return {
+      administratorId: contract.administrator_id,
       administratorName,
       attentionItems,
       clientName,
