@@ -4,6 +4,7 @@ import type { ContractEvidenceListResponse, ContractFirstInstallmentReadDetail, 
 export type EvidenceUploadInput =
   | { evidenceType: "signed_contract"; eventAt: string; detail: ContractSignedEvidenceReadDetail; file: File }
   | { evidenceType: "first_installment_payment"; eventAt: string; detail: ContractFirstInstallmentReadDetail; file: File };
+export type EvidenceSupersedeInput = Omit<EvidenceUploadInput, "evidenceType"> & { reason: string };
 export type EvidenceMutationResult =
   | { kind: "confirmed"; httpStatus: 200 | 201; evidenceId: string; status: string; outcome: string }
   | { kind: "outcome_unknown"; httpStatus: 202; message: string };
@@ -24,6 +25,15 @@ export function buildEvidenceUploadForm(input: EvidenceUploadInput, idempotencyK
   form.set("file", input.file);
   return form;
 }
+export function buildEvidenceSupersedeForm(input: EvidenceSupersedeInput, idempotencyKey: string) {
+  const form = new FormData();
+  form.set("idempotencyKey", idempotencyKey);
+  form.set("reason", input.reason.trim());
+  form.set("eventAt", input.eventAt);
+  form.set("detail", JSON.stringify(input.detail));
+  form.set("file", input.file);
+  return form;
+}
 export async function fetchContractEvidences(contractId: string) {
   const token = await requireSupabaseAccessToken("Sessão inválida para consultar documentos.");
   const response = await fetch(`/api/contracts/${encodeURIComponent(contractId)}/evidences`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
@@ -34,6 +44,7 @@ export async function fetchContractEvidences(contractId: string) {
 export async function uploadContractEvidence(contractId: string, input: EvidenceUploadInput, idempotencyKey: string) { return mutate(`/api/contracts/${encodeURIComponent(contractId)}/evidences`, buildEvidenceUploadForm(input, idempotencyKey)); }
 export async function validateContractEvidence(contractId: string, evidenceId: string, idempotencyKey: string) { return mutate(lifecyclePath(contractId, evidenceId, "validate"), { idempotencyKey, reason: null }); }
 export async function invalidateContractEvidence(contractId: string, evidenceId: string, reason: string, idempotencyKey: string) { return mutate(lifecyclePath(contractId, evidenceId, "invalidate"), { idempotencyKey, reason }); }
+export async function supersedeContractEvidence(contractId: string, evidenceId: string, input: EvidenceSupersedeInput, idempotencyKey: string) { return mutate(`/api/contracts/${encodeURIComponent(contractId)}/evidences/${encodeURIComponent(evidenceId)}/supersede`, buildEvidenceSupersedeForm(input, idempotencyKey)); }
 export async function downloadContractEvidence(path: string) {
   if (!isRelativeDocumentPath(path)) throw new ContractEvidenceClientError("CED_DOCUMENT_NOT_FOUND", "Documento não encontrado.");
   const token = await requireSupabaseAccessToken("Sessão inválida para baixar o documento.");
