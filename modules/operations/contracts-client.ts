@@ -24,6 +24,7 @@ export async function fetchOperationsContracts(accessToken?: string | null) {
   }
 
   return {
+    canManageLifecycle: payload.canManageLifecycle === true,
     contracts: payload.contracts,
     summary: payload.summary,
   };

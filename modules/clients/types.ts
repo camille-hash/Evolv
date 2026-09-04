@@ -51,6 +51,7 @@ export type ClientContract = {
 };
 
 export type ClientDetailResponse = {
+  canManageLifecycle: boolean;
   client: ClientDetail;
   contracts: ClientContract[];
   summary: ClientSummary;

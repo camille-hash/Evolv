@@ -4,7 +4,6 @@ import { resolveCommissionEventTypeForContractStatus } from "@/modules/commissio
 import {
   activateCommissionScheduleForEvent,
   cancelFutureCommissionEntriesForContract,
-  ensureContractCommissionSnapshotAndSchedule,
   reactivateFutureCommissionEntriesForContract,
 } from "@/modules/commission-engine/server";
 import type {
@@ -42,6 +41,7 @@ type ContractRow = {
   cancelled_at: string | null;
   client_id: string | null;
   commission_plan_id: string | null;
+  financial_authority: "commission_engine" | "legacy_revenue" | "not_applicable" | null;
   commercial_catalog_code: string | null;
   completed_at: string | null;
   contemplation_model: string | null;
@@ -101,6 +101,7 @@ const contractColumns = [
   "client_id",
   "administrator_id",
   "commission_plan_id",
+  "financial_authority",
   "commercial_catalog_code",
   "contract_materialization_id",
   "contract_group",
@@ -228,6 +229,7 @@ export async function createContract(
   if (!context.ok) {
     return context;
   }
+  if (input.status === "active" || input.status === "inactive") return {error:"Use a operacao controlada para ativar ou inativar contratos.",ok:false,status:409};
 
   const relationshipValidation = await validateContractRelationships(
     context,
@@ -265,19 +267,6 @@ export async function createContract(
   }
 
   const contract = mapContractRow(data as unknown as ContractRow);
-  const commissionEngineResult = await ensureCommissionEngineForContract(
-    context,
-    contract,
-  );
-
-  if (!commissionEngineResult.ok) {
-    return commissionEngineResult;
-  }
-
-  await activateCommissionEngineForContractStatusTransition(context, {
-    contract,
-    previousStatus: "draft",
-  });
 
   return {
     contract,
@@ -304,6 +293,7 @@ export async function updateContract(
   if (!context.ok) {
     return context;
   }
+  if (input.status === "active" || input.status === "inactive") return {error:"Use a operacao controlada para ativar ou inativar contratos.",ok:false,status:409};
 
   const contractValidation = await validateContractOrganization(
     context,
@@ -344,19 +334,6 @@ export async function updateContract(
   }
 
   const contract = mapContractRow(data as unknown as ContractRow);
-  const commissionEngineResult = await ensureCommissionEngineForContract(
-    context,
-    contract,
-  );
-
-  if (!commissionEngineResult.ok) {
-    return commissionEngineResult;
-  }
-
-  await activateCommissionEngineForContractStatusTransition(context, {
-    contract,
-    previousStatus: contractValidation.contract.status,
-  });
 
   return {
     contract,
@@ -472,6 +449,13 @@ export async function maybeActivateCommissionEngineForContractStatusTransition(
     previousStatus: ContractStatus;
   },
 ) {
+  if (input.contract.financialAuthority !== "commission_engine") {
+    return {
+      ok: true as const,
+      skippedReason: "financial_authority_not_commission_engine",
+    };
+  }
+
   const eventType = resolveCommissionEventTypeForContractStatus(
     input.contract.status,
   );
@@ -562,27 +546,6 @@ async function activateCommissionEngineForContractStatusTransition(
       "activationResult" in result
         ? result.activationResult.skippedReason
         : result.skippedReason,
-  };
-}
-
-async function ensureCommissionEngineForContract(
-  context: RequestContext,
-  contract: Contract,
-): Promise<ContractMutationResult | { ok: true }> {
-  const result = await ensureContractCommissionSnapshotAndSchedule({
-    commissionPlanId: contract.commissionPlanId,
-    contractId: contract.id,
-    createdBy: context.profile.id,
-    organizationId: context.profile.organization_id,
-    supabase: context.supabase,
-  });
-
-  if (!result.ok) {
-    return result;
-  }
-
-  return {
-    ok: true,
   };
 }
 
@@ -1178,6 +1141,7 @@ function mapContractRow(row: ContractRow): Contract {
     cancelledAt: row.cancelled_at,
     clientId: row.client_id,
     commissionPlanId: row.commission_plan_id,
+    financialAuthority: row.financial_authority,
     commercialCatalogCode: row.commercial_catalog_code,
     completedAt: row.completed_at,
     contemplationModel: row.contemplation_model,

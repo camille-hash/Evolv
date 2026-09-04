@@ -26,12 +26,8 @@ import {
 } from "@/modules/client-context";
 import { createContract } from "@/modules/contracts/client";
 import type { ContractStatus } from "@/modules/contracts/types";
-import {
-  createExpectedContractRevenue,
-  generateContractRevenue,
-} from "@/modules/revenue/client";
 import { generateEvolvMasterReport } from "@/modules/reports";
-import type { UpdateContractStatusResult } from "@/modules/contracts/client";
+import type { ContractActivationResult } from "@/modules/contracts/contract-activation-types";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
@@ -61,8 +57,6 @@ type ContractCreationFormState = {
   contemplationModel: string;
   contractNumber: string;
   creditAmount: string;
-  expectedCommissionAmount: string;
-  expectedCommissionDueDate: string;
   group: string;
   installmentAmount: string;
   productType: string;
@@ -77,13 +71,11 @@ const emptyContractCreationForm: ContractCreationFormState = {
   contemplationModel: "",
   contractNumber: "",
   creditAmount: "",
-  expectedCommissionAmount: "",
-  expectedCommissionDueDate: "",
   group: "",
   installmentAmount: "",
   productType: "",
   quota: "",
-  status: "active",
+  status: "draft",
   termMonths: "",
 };
 
@@ -375,18 +367,10 @@ export function ClientPage({
     const installmentAmount = parseOptionalCurrencyValue(
       contractForm.installmentAmount,
     );
-    const expectedCommissionAmount = parseOptionalCurrencyValue(
-      contractForm.expectedCommissionAmount,
-    );
     const termMonths = parseOptionalPositiveInteger(contractForm.termMonths);
 
     if (installmentAmount === undefined) {
       setContractError("Valor de parcela invalido.");
-      return;
-    }
-
-    if (expectedCommissionAmount === undefined) {
-      setContractError("Valor de comissao esperada invalido.");
       return;
     }
 
@@ -407,7 +391,7 @@ export function ClientPage({
     setContractSuccessMessage(null);
 
     try {
-      const contract = await createContract(accessToken, {
+      await createContract(accessToken, {
         administratorId: contractForm.administratorId || null,
         clientId: selectedClientDetail.client.id,
         commissionPlanId: contractForm.commissionPlanId || null,
@@ -426,30 +410,6 @@ export function ClientPage({
         status: contractForm.status,
         termMonths,
       });
-
-      if (contractForm.commissionPlanId) {
-        try {
-          await generateContractRevenue(
-            accessToken,
-            contract.id,
-            "replace_expected",
-          );
-        } catch (error) {
-          if (!isRevenueTriggerNotReachedError(error)) {
-            throw error;
-          }
-        }
-      } else if (expectedCommissionAmount !== null) {
-        await createExpectedContractRevenue(accessToken, contract.id, {
-          dueDate:
-            normalizeOptionalFormText(contractForm.expectedCommissionDueDate) ??
-            null,
-          expectedAmount: expectedCommissionAmount,
-          metadata: {
-            origin: "client_contract_creation_flow",
-          },
-        });
-      }
 
       const refreshedDetail = await fetchClientById(
         accessToken,
@@ -491,11 +451,11 @@ export function ClientPage({
     setRefreshVersion((current) => current + 1);
   }
 
-  async function handleContractStatusUpdated(result: UpdateContractStatusResult) {
+  async function handleContractStatusUpdated(result: ContractActivationResult) {
     await refreshSelectedClientDetail();
     setContractError(null);
     setContractSuccessMessage(
-      result.warning ?? "Situacao do contrato atualizada com sucesso.",
+      result.financialOutcome === "not_applicable" ? "Contrato ativado. Nao ha comissao aplicavel." : result.financialOutcome === "failed" ? "Contrato alterado, mas o processamento financeiro requer atencao." : "Situacao do contrato atualizada com sucesso.",
     );
     setDetailError(null);
   }
@@ -765,29 +725,6 @@ export function ClientPage({
                     placeholder="Opcional"
                     value={contractForm.contemplationModel}
                   />
-                  <ContractFormInput
-                    disabled={Boolean(contractForm.commissionPlanId)}
-                    label="Comissao manual"
-                    onChange={(value) =>
-                      updateContractForm({ expectedCommissionAmount: value })
-                    }
-                    placeholder={
-                      contractForm.commissionPlanId
-                        ? "Calculada pelo plano"
-                        : "Opcional"
-                    }
-                    type="number"
-                    value={contractForm.expectedCommissionAmount}
-                  />
-                  <ContractFormInput
-                    disabled={Boolean(contractForm.commissionPlanId)}
-                    label="Vencimento manual"
-                    onChange={(value) =>
-                      updateContractForm({ expectedCommissionDueDate: value })
-                    }
-                    type="date"
-                    value={contractForm.expectedCommissionDueDate}
-                  />
                 </div>
               </div>
 
@@ -917,9 +854,9 @@ export function ClientPage({
             ) : selectedClientDetail ? (
               <ClientPersistedDetail
                 detail={selectedClientDetail}
-                onChangeContractStatus={(contract) =>
+                onChangeContractStatus={selectedClientDetail.canManageLifecycle ? (contract) =>
                   setSelectedStatusContract(contract)
-                }
+                : undefined}
               />
             ) : null}
           </section>
@@ -949,7 +886,7 @@ function ClientPersistedDetail({
   onChangeContractStatus,
 }: {
   detail: ClientDetailResponse;
-  onChangeContractStatus: (contract: ClientContract) => void;
+  onChangeContractStatus?: (contract: ClientContract) => void;
 }) {
   return (
     <>
@@ -1030,7 +967,7 @@ function ClientPersistedDetail({
                 contract={contract}
                 clientId={detail.client.id}
                 key={contract.id}
-                onChangeStatus={() => onChangeContractStatus(contract)}
+                onChangeStatus={onChangeContractStatus ? () => onChangeContractStatus(contract) : undefined}
               />
             ))}
           </div>
@@ -1097,7 +1034,7 @@ function ClientContractItem({
 }: {
   contract: ClientContract;
   clientId: string;
-  onChangeStatus: () => void;
+  onChangeStatus?: () => void;
 }) {
   return (
     <article className="rounded-md border bg-background/70 p-4 text-sm">
@@ -1167,13 +1104,13 @@ function ClientContractItem({
         >
           Abrir contrato
         </Link>
-        <button
+        {onChangeStatus ? <button
           className="inline-flex items-center justify-center rounded-md border border-primary/25 bg-primary/[0.06] px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary/45 hover:bg-primary/[0.1]"
           onClick={onChangeStatus}
           type="button"
         >
           Alterar situacao
-        </button>
+        </button> : null}
       </div>
     </article>
   );
@@ -1223,13 +1160,6 @@ function resolveClientPageError(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim()
     ? error.message
     : fallback;
-}
-
-function isRevenueTriggerNotReachedError(error: unknown) {
-  return (
-    error instanceof Error &&
-    error.message === "Contrato ainda nao atingiu o gatilho de receita."
-  );
 }
 
 function formatDate(value: string) {

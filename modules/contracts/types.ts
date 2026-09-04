@@ -48,6 +48,7 @@ export type Contract = {
   cancelledAt: string | null;
   clientId: string | null;
   commissionPlanId: string | null;
+  financialAuthority?: "commission_engine" | "legacy_revenue" | "not_applicable" | null;
   commercialCatalogCode: string | null;
   completedAt: string | null;
   contemplationModel: string | null;

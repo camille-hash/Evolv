@@ -39,6 +39,7 @@ export type OperationsContractsSummary = {
 };
 
 export type OperationsContractsResponse = {
+  canManageLifecycle: boolean;
   contracts: OperationsContractRow[];
   summary: OperationsContractsSummary;
 };

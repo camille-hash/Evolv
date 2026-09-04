@@ -27,6 +27,7 @@ import { resolveCommissionEventTypeForContractStatus } from "./contract-status-e
 type ContractRow = {
   activated_at: string | null;
   commission_plan_id: string | null;
+  financial_authority?: "commission_engine" | "legacy_revenue" | "not_applicable" | null;
   contract_number: string | null;
   credit_amount: number | string | null;
   id: string;
@@ -1138,6 +1139,7 @@ async function listContractsForBackfill(
         "organization_id",
         "contract_number",
         "commission_plan_id",
+        "financial_authority",
         "status",
         "activated_at",
         "credit_amount",
@@ -1185,6 +1187,7 @@ async function backfillSingleContract(
       ignoredReason: "missing_commission_plan",
     };
   }
+  if (contract.financial_authority !== "commission_engine") return {...baseReport,ignoredReason:"financial_authority_not_commission_engine"};
 
   if (params.dryRun) {
     let scheduleItemsCreated = 0;

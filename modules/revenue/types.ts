@@ -72,6 +72,7 @@ export type RevenueInstallmentDraft = {
 };
 
 export type RevenueContractSnapshot = {
+  financialAuthority: "commission_engine" | "legacy_revenue" | "not_applicable" | null;
   administratorId: string | null;
   approvedAt: string | null;
   activatedAt: string | null;

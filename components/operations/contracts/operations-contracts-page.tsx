@@ -7,7 +7,7 @@ import { ContractStatusDialog } from "@/components/contracts/contract-status-dia
 import type { Contract } from "@/modules/contracts/types";
 import type { ContractStatus } from "@/modules/contracts/types";
 import { fetchOperationsContracts } from "@/modules/operations/contracts-client";
-import type { UpdateContractStatusResult } from "@/modules/contracts/client";
+import type { ContractActivationResult } from "@/modules/contracts/contract-activation-types";
 import type {
   OperationsContractsResponse,
   OperationsContractsSummary,
@@ -97,12 +97,12 @@ export function OperationsContractsPage() {
     }
   }
 
-  async function handleContractStatusUpdated(result: UpdateContractStatusResult) {
+  async function handleContractStatusUpdated(result: ContractActivationResult) {
     await refreshContracts();
     setFeedbackMessage(
-      result.warning ?? "Situacao do contrato atualizada com sucesso.",
+      result.financialOutcome === "not_applicable" ? "Contrato ativado. Nao ha comissao aplicavel para este contrato." : result.financialOutcome === "failed" ? "Contrato alterado, mas o processamento financeiro requer atencao." : "Situacao do contrato atualizada com sucesso.",
     );
-    setFeedbackTone(result.warning ? "warning" : "success");
+    setFeedbackTone(result.financialOutcome === "failed" ? "warning" : "success");
   }
 
   async function handleContractUpdated(contract: Contract) {
@@ -232,10 +232,10 @@ export function OperationsContractsPage() {
         <OperationsContractsList
           contracts={visibleContracts}
           highlightedContractId={highlightedContractId}
-          onChangeStatus={(contract) => {
+          onChangeStatus={contractsResponse?.canManageLifecycle ? (contract) => {
             setSelectedStatusContract(contract);
             setFeedbackMessage(null);
-          }}
+          } : undefined}
           onResolveMissingContractNumber={(contract) => {
             setSelectedEditContract(contract);
             setFeedbackMessage(null);

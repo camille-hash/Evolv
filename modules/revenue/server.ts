@@ -29,6 +29,7 @@ type ContractRow = {
   approved_at: string | null;
   client_id: string | null;
   commission_plan_id: string | null;
+  financial_authority: "commission_engine" | "legacy_revenue" | "not_applicable" | null;
   credit_amount: number | string | null;
   id: string;
   organization_id: string | null;
@@ -134,6 +135,7 @@ const contractColumns = [
   "client_id",
   "administrator_id",
   "commission_plan_id",
+  "financial_authority",
   "credit_amount",
   "status",
   "signed_at",
@@ -440,6 +442,7 @@ export async function createExpectedRevenueForContract(
   }
 
   const contract = contractResult.contract;
+  if (contract.financialAuthority !== "legacy_revenue") return {error:"Classifique este contrato para o fluxo financeiro anterior antes de gerar receita.",ok:false,status:409};
   const { data, error } = await context.supabase
     .from("revenue_entries")
     .insert({
@@ -527,6 +530,7 @@ async function generateRevenueForContractInContext(
   }
 
   const contract = contractResult.contract;
+  if (contract.financialAuthority !== "legacy_revenue") return {error:"Classifique este contrato para o fluxo financeiro anterior antes de gerar receita.",ok:false,status:409};
   const commissionEngineEntries = await getCommissionEngineRevenueEntries(
     context,
     [contract],
@@ -1196,6 +1200,7 @@ function mapContractRow(row: ContractRow): RevenueContractSnapshot {
     approvedAt: row.approved_at,
     clientId: row.client_id,
     commissionPlanId: row.commission_plan_id,
+    financialAuthority: row.financial_authority,
     creditAmount: normalizeNumber(row.credit_amount) ?? 0,
     id: row.id,
     organizationId: row.organization_id ?? "",

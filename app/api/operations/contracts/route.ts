@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
+    canManageLifecycle: result.canManageLifecycle,
     contracts: result.contracts,
     summary: result.summary,
   });

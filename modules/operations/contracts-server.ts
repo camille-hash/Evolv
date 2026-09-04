@@ -23,6 +23,7 @@ type ContractRow = {
   created_at: string | null;
   credit_amount: number | string | null;
   id: string;
+  financial_authority: "commission_engine" | "legacy_revenue" | "not_applicable" | null;
   organization_id: string | null;
   status: string | null;
   updated_at: string | null;
@@ -89,6 +90,7 @@ export async function listOperationsContracts(
     });
 
   return {
+    canManageLifecycle: context.profile.role === "master" || context.profile.role === "admin",
     contracts,
     ok: true,
     summary: summarizeContracts(contracts),
@@ -490,6 +492,7 @@ async function loadOperationsContractRows(context: RequestContext) {
         "contract_quota",
         "contract_number",
         "status",
+        "financial_authority",
         "credit_amount",
         "created_at",
         "updated_at",

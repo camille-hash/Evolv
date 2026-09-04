@@ -279,6 +279,7 @@ export async function getClientById(
   );
 
   return {
+    canManageLifecycle: context.profile.role === "master" || context.profile.role === "admin",
     client: mapClientDetail(data),
     contracts,
     ok: true,
